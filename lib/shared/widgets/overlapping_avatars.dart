@@ -1,0 +1,86 @@
+import 'package:flutter/material.dart';
+import 'package:eigen_engine/shared/data/models/player_info.dart';
+import 'package:eigen_engine/shared/widgets/player_avatar.dart';
+
+/// Displays a row of [PlayerAvatar]s that partially overlap horizontally.
+///
+/// Used in home screen game cards and lobby cards to show the players
+/// in a game. When more than [maxVisible] players exist, the excess
+/// count is shown as a "+N" badge.
+class OverlappingAvatars extends StatelessWidget {
+  const OverlappingAvatars({
+    super.key,
+    required this.players,
+    this.radius = 16,
+    this.overlapFraction = 0.3,
+    this.maxVisible = 4,
+  });
+
+  /// The list of players to display as overlapping avatars.
+  final List<PlayerInfo> players;
+
+  /// Radius of each avatar circle.
+  final double radius;
+
+  /// Fraction of the diameter that each subsequent avatar overlaps
+  /// the previous one. 0.3 means 30% overlap.
+  final double overlapFraction;
+
+  /// Max avatars to show before displaying a "+N" overflow badge.
+  final int maxVisible;
+
+  @override
+  Widget build(BuildContext context) {
+    if (players.isEmpty) return const SizedBox.shrink();
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final diameter = radius * 2;
+    final step = diameter * (1 - overlapFraction);
+    final visible = players.take(maxVisible).toList();
+    final overflow = players.length - maxVisible;
+    final totalItems = visible.length + (overflow > 0 ? 1 : 0);
+    final totalWidth = diameter + (totalItems - 1) * step;
+
+    return SizedBox(
+      width: totalWidth,
+      height: diameter,
+      child: Stack(
+        children: [
+          for (var i = 0; i < visible.length; i++)
+            Positioned(
+              left: i * step,
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: colorScheme.surface, width: 2),
+                ),
+                child: PlayerAvatar(playerInfo: visible[i], radius: radius - 2),
+              ),
+            ),
+          if (overflow > 0)
+            Positioned(
+              left: visible.length * step,
+              child: Container(
+                width: diameter,
+                height: diameter,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: colorScheme.surfaceContainerHighest,
+                  border: Border.all(color: colorScheme.surface, width: 2),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  '+$overflow',
+                  style: TextStyle(
+                    fontSize: radius * 0.6,
+                    fontWeight: FontWeight.bold,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}

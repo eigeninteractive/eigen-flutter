@@ -1,0 +1,173 @@
+import 'dart:async';
+import 'dart:math';
+
+import 'package:flutter/material.dart';
+
+/// Headless widget that ticks toward a [deadline], exposing the remaining
+/// [Duration] to a [builder] callback every second.
+///
+/// The timer self-cancels once the deadline passes. Use this as the
+/// computation layer beneath any styled countdown widget.
+///
+/// Set [isPaused] to freeze the displayed value without cancelling the
+/// underlying timer — the frozen duration resumes from the correct wall-clock
+/// value as soon as [isPaused] becomes false again.
+class TurnTimerBuilder extends StatefulWidget {
+  const TurnTimerBuilder({
+    super.key,
+    required this.deadline,
+    required this.builder,
+    this.isPaused = false,
+  });
+
+  final DateTime deadline;
+  final bool isPaused;
+
+  /// Called every second with the remaining duration (clamped to zero).
+  final Widget Function(BuildContext context, Duration remaining) builder;
+
+  @override
+  State<TurnTimerBuilder> createState() => _TurnTimerBuilderState();
+}
+
+class _TurnTimerBuilderState extends State<TurnTimerBuilder> {
+  Timer? _timer;
+  Duration _remaining = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    // Always compute the initial value so the widget is visible even when
+    // created while paused (e.g. device is already offline on first render).
+    _tickForced();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
+  }
+
+  @override
+  void didUpdateWidget(TurnTimerBuilder oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.deadline != widget.deadline) {
+      _timer?.cancel();
+      _tickForced();
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
+      return;
+    }
+    // Resync immediately when unpausing so the displayed value reflects the
+    // wall-clock elapsed time rather than the frozen snapshot.
+    if (oldWidget.isPaused && !widget.isPaused) _tickForced();
+  }
+
+  /// Updates [_remaining] regardless of [isPaused]. Used for the initial
+  /// render and on deadline change so the widget is never invisibly blank.
+  void _tickForced() {
+    final r = widget.deadline.difference(DateTime.now());
+    if (!mounted) return;
+    if (r.isNegative) {
+      _timer?.cancel();
+      setState(() => _remaining = Duration.zero);
+    } else {
+      setState(() => _remaining = r);
+    }
+  }
+
+  void _tick() {
+    if (widget.isPaused) return;
+    final r = widget.deadline.difference(DateTime.now());
+    if (!mounted) return;
+    if (r.isNegative) {
+      _timer?.cancel();
+      setState(() => _remaining = Duration.zero);
+    } else {
+      setState(() => _remaining = r);
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _remaining);
+}
+
+/// Headless widget that computes a single player's remaining budget time,
+/// exposing it to a [builder] callback every second.
+///
+/// The active player's bank drains live using [turnStartedAt]; inactive
+/// players receive their static [playerTimes] value. Use this as the
+/// computation layer beneath any styled clock cell.
+///
+/// Set [isPaused] to freeze the displayed value while offline.
+class PlayerTimerBuilder extends StatefulWidget {
+  const PlayerTimerBuilder({
+    super.key,
+    required this.playerTimes,
+    required this.turnStartedAt,
+    required this.pendingPlayers,
+    required this.playerIndex,
+    required this.builder,
+    this.isPaused = false,
+  });
+
+  /// Remaining time in milliseconds per player, 0-indexed.
+  final List<int> playerTimes;
+
+  /// When the current turn began. Used to compute live drain for the active
+  /// player. Null before the first turn or during untimed phases.
+  final DateTime? turnStartedAt;
+
+  /// Indices of currently active (draining) players.
+  final List<int> pendingPlayers;
+
+  /// The player whose time this widget tracks.
+  final int playerIndex;
+
+  final bool isPaused;
+
+  /// Called every second with the computed remaining milliseconds and whether
+  /// this player is currently active.
+  final Widget Function(BuildContext context, int remainingMs, bool isActive)
+  builder;
+
+  @override
+  State<PlayerTimerBuilder> createState() => _PlayerTimerBuilderState();
+}
+
+class _PlayerTimerBuilderState extends State<PlayerTimerBuilder> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      // Only rebuild when active and not paused — inactive players return a
+      // static value so rebuilding every second is wasteful. Parent rebuilds
+      // (new observation) still update inactive cells immediately via the
+      // widget getters.
+      if (mounted && _isActive && !widget.isPaused) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  bool get _isActive => widget.pendingPlayers.contains(widget.playerIndex);
+
+  int get _remainingMs {
+    final base = widget.playerTimes[widget.playerIndex];
+    if (!_isActive || widget.turnStartedAt == null) return base;
+    final elapsed = DateTime.now()
+        .difference(widget.turnStartedAt!)
+        .inMilliseconds;
+    return max(0, base - elapsed);
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      widget.builder(context, _remainingMs, _isActive);
+}

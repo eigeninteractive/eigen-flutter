@@ -1,0 +1,241 @@
+-- Create private schema (not exposed via Supabase API)
+CREATE SCHEMA IF NOT EXISTS private;
+
+-- ============================================
+-- Shared enum types
+-- ============================================
+CREATE TYPE game_status AS ENUM ('waiting', 'ready', 'active', 'finished', 'aborted');
+CREATE TYPE game_access AS ENUM ('public', 'private', 'friends');
+CREATE TYPE action_type AS ENUM ('user', 'bot', 'system');
+CREATE TYPE game_result AS ENUM ('win', 'loss', 'draw', 'eliminated');
+-- Infra-defined system event subtypes. Game implementors handle these in
+-- game_handle_system_action but never add new values — only infra does.
+CREATE TYPE system_action_type AS ENUM ('timeout', 'forfeit', 'auto_forfeit');
+CREATE TYPE participant_type AS ENUM ('human', 'bot');
+
+-- Users table (system/immutable)
+CREATE TABLE public.users (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  username TEXT UNIQUE NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  payment_tier TEXT NOT NULL DEFAULT 'free',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================
+-- Bots table
+-- ============================================
+-- AI/bot participants. Bots receive skill ratings in player_ratings,
+-- keyed by bot_id rather than user_id.
+CREATE TABLE public.bots (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- Unique handle, e.g. 'easy_ai'. Used like a username for identity lookups.
+  username TEXT UNIQUE NOT NULL,
+  -- Human-readable display name, e.g. 'Easy AI'.
+  display_name TEXT NOT NULL,
+  -- Optional avatar image URL.
+  avatar_url TEXT,
+  -- Machine-readable type identifier used by game engines, e.g. 'easy_ai'.
+  bot_type TEXT NOT NULL,
+  -- Game type this bot belongs to (NULL = game-agnostic).
+  game_type TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.bots ENABLE ROW LEVEL SECURITY;
+
+-- All authenticated users can read bot definitions (needed for game displays).
+CREATE POLICY "bots_select" ON public.bots
+  FOR SELECT TO authenticated USING (true);
+
+-- Enable RLS
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+
+-- Only the owner can read their own row.
+-- Cross-user reads go through get_players() (defined in the
+-- user_profiles migration, which depends on this table).
+CREATE POLICY "users_select_self" ON public.users
+  FOR SELECT
+  TO authenticated
+  USING ((SELECT auth.uid()) = id);
+
+-- Function to handle new user signup. Derives the username from the email
+-- prefix, sanitised to the same charset/length rules update_username enforces
+-- (^[a-zA-Z0-9_.]{3,20}$). On collision, retries with a random 4-digit
+-- suffix — a plain unique violation here would roll back the entire signup.
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_base     TEXT;
+  v_username TEXT;
+BEGIN
+  v_base := lower(
+    regexp_replace(split_part(NEW.email, '@', 1), '[^a-zA-Z0-9_.]', '', 'g')
+  );
+  v_base := left(v_base, 20);
+  IF v_base = '' THEN
+    v_base := 'player';
+  ELSIF length(v_base) < 3 THEN
+    v_base := rpad(v_base, 3, '0');
+  END IF;
+
+  v_username := v_base;
+  FOR i IN 1..10 LOOP
+    BEGIN
+      INSERT INTO public.users (id, username, email)
+      VALUES (NEW.id, v_username, NEW.email);
+      RETURN NEW;
+    EXCEPTION WHEN unique_violation THEN
+      -- left(…, 15) keeps base + '_' + 4 digits within the 20-char limit.
+      v_username := left(v_base, 15) || '_'
+        || lpad(floor(random() * 10000)::INT::TEXT, 4, '0');
+    END;
+  END LOOP;
+  RAISE EXCEPTION 'Could not generate a unique username for %', NEW.id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
+-- Trigger on auth.users insert
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Trigger-only: never callable directly via the REST API.
+REVOKE EXECUTE ON FUNCTION public.handle_new_user() FROM PUBLIC, anon, authenticated;
+
+-- Reusable function to update updated_at timestamp
+CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = '';
+
+-- Trigger to auto-update updated_at on users table
+CREATE TRIGGER update_users_updated_at
+  BEFORE UPDATE ON public.users
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+-- RPC to update username with validation (SECURITY DEFINER)
+CREATE OR REPLACE FUNCTION public.update_username(new_username TEXT)
+RETURNS TEXT AS $$
+DECLARE
+  current_user_id UUID;
+BEGIN
+  -- Get the current user's ID
+  current_user_id := auth.uid();
+  
+  IF current_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+  
+  -- Validate username format (alphanumeric, underscores, dots, 3-20 chars)
+  IF new_username !~ '^[a-zA-Z0-9_.]{3,20}$' THEN
+    RAISE EXCEPTION 'Username must be 3-20 characters, alphanumeric, underscores, or dots only';
+  END IF;
+  
+  -- Check uniqueness (case-insensitive)
+  IF EXISTS (
+    SELECT 1 FROM public.users 
+    WHERE LOWER(username) = LOWER(new_username) 
+    AND id != current_user_id
+  ) THEN
+    RAISE EXCEPTION 'Username already taken';
+  END IF;
+  
+  -- Update username
+  UPDATE public.users 
+  SET username = new_username 
+  WHERE id = current_user_id;
+  
+  RETURN new_username;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
+REVOKE EXECUTE ON FUNCTION public.update_username(text) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.update_username(text) TO authenticated;
+
+-- ============================================
+-- Search optimizations
+-- ============================================
+
+CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA extensions;
+CREATE INDEX IF NOT EXISTS users_username_trgm_idx ON public.users USING gist (username extensions.gist_trgm_ops);
+
+-- ============================================
+-- Account deletion
+-- ============================================
+-- Deletes the caller's row from auth.users. Cascade behaviour:
+--
+--   Via public.users (ON DELETE CASCADE from auth.users):
+--     • user_profiles, relationships, player_ratings, rating_history,
+--       observations — deleted automatically.
+--     • participants.user_id, game_outcomes.user_id, games.created_by,
+--       actions.user_id — SET NULL; game history is preserved but anonymised.
+--
+--   Direct from auth.users (ON DELETE CASCADE):
+--     • device_tokens — deleted automatically.
+--
+-- Avatar file in the storage bucket is deleted client-side before this RPC
+-- is called. If the client fails mid-flow the file becomes orphaned (no
+-- user_profiles row will reference it, so it is invisible to other users).
+CREATE OR REPLACE FUNCTION public.delete_account()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_user_id UUID;
+  v_game    RECORD;
+BEGIN
+  v_user_id := auth.uid();
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  -- Cancel all waiting/ready games this user created.
+  -- Lock first so cancel_game's FOR UPDATE on the same row is a no-op.
+  FOR v_game IN
+    SELECT id FROM public.games
+    WHERE created_by = v_user_id
+      AND status IN ('waiting', 'ready')
+    FOR UPDATE
+  LOOP
+    PERFORM public.cancel_game(v_game.id);
+  END LOOP;
+
+  -- Leave all waiting/ready games this user joined but did not create.
+  -- leave_game compacts player_index values and transitions ready→waiting
+  -- if the count drops below min_players — plain SET NULL skips that logic.
+  FOR v_game IN
+    SELECT g.id FROM public.games g
+    JOIN public.participants p ON p.game_id = g.id AND p.user_id = v_user_id
+    WHERE g.status IN ('waiting', 'ready')
+      AND g.created_by != v_user_id
+    FOR UPDATE OF g
+  LOOP
+    PERFORM public.leave_game(v_game.id);
+  END LOOP;
+
+  -- Forfeit all active games through the existing forfeit infrastructure so
+  -- outcomes, observations, and rating triggers fire normally. forfeit_game
+  -- acquires its own FOR UPDATE lock on the games row.
+  FOR v_game IN
+    SELECT g.id
+    FROM public.games g
+    JOIN public.participants p
+      ON p.game_id = g.id AND p.user_id = v_user_id
+    WHERE g.status = 'active'
+  LOOP
+    PERFORM public.forfeit_game(v_game.id);
+  END LOOP;
+
+  DELETE FROM auth.users WHERE id = v_user_id;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.delete_account() FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.delete_account() TO authenticated;
