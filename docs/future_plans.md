@@ -34,7 +34,7 @@ The schema and identity stack are bot-ready today:
 
 `submit_action` is the only action entry point and it requires `auth.uid()` to
 be a human participant (`require_participant`). Adding bots means a **second
-entry point** that targets a *bot* seat — everything downstream
+entry point** that targets a _bot_ seat — everything downstream
 (`game_apply_action` → `commit_action` → observation fan-out) is reused
 unchanged:
 
@@ -45,8 +45,8 @@ unchanged:
   `anon`/`authenticated` like `store_fcm_access_token`. A trigger on observation
   fan-out (or a pg_cron poller) wakes the runner when a bot seat enters
   `pending_players`.
-- **Local**: an authenticated RPC that lets a human submit on behalf of a *bot
-  seat in their own game* (validate the caller is a participant and the target
+- **Local**: an authenticated RPC that lets a human submit on behalf of a _bot
+  seat in their own game_ (validate the caller is a participant and the target
   seat is a bot). The client computes the move with the same `BaseEngine`.
 
 When implemented, the "your turn" notification trigger should skip bot seats
@@ -58,9 +58,9 @@ guard documents intent).
 ## Spectating — Finished Public Games (own PR)
 
 Scope intentionally limited to **spectating finished, public games** (replay).
-Live spectating is explicitly out of scope: spectating a live
-hidden-information game from a second account is a cheating vector, so it is
-deferred until there is a per-game policy for it.
+Live spectating is explicitly out of scope: spectating a live hidden-information
+game from a second account is a cheating vector, so it is deferred until there
+is a per-game policy for it.
 
 `PlayersContext.myPlayerIndex` already reserves `-1` for a spectator, but no
 spectator path is wired up yet.
@@ -69,35 +69,11 @@ What this PR needs:
 
 - **Server**: relax `get_replay`'s participant check to "participant **or** the
   game is finished and its access is public." It already projects each
-  `game_states` row through `game_compute_observation` with `p_is_replay = true`,
-  so post-game reveal rules stay the hook's responsibility — raw state is never
-  exposed.
+  `game_states` row through `game_compute_observation` with
+  `p_is_replay = true`, so post-game reveal rules stay the hook's responsibility
+  — raw state is never exposed.
 - **Client**: a spectator entry point into the existing replay UI from a
   finished public game (lobby/profile), with `myPlayerIndex == -1`. Guard
   against `PlayersContext.me` being called for a spectator.
 
 Not in scope: live/active spectating, delayed feeds, hidden-info live policy.
-
----
-
-## Simultaneous-Game Version-Conflict Handling
-
-Today `submit_action` uses a strict optimistic lock and the client just shows a
-humanized "board updated — try again" on a `Stale state` conflict. That's fine
-for sequential games (conflicts are rare and meaningful) but wrong for
-**simultaneous** games (multiple players pending in one round, e.g.
-Rock-Paper-Scissors), where an opponent's concurrent, independent move bumps the
-version and produces a *spurious* conflict for a move that is still valid.
-
-Build this with the first simultaneous game (not before — the right mechanism
-depends on its exact turn semantics). Preferred approach when we do:
-
-- On a conflict, **fetch the latest observation** off the existing Realtime
-  subscription (the `UPDATE` that bumped the version is the same event the
-  conflict is about), then re-validate the pending action with
-  `engine.isValidAction` against that fresh observation and resubmit only if
-  still valid and still pending.
-- Avoid the rejected prototype's shortcut of parsing the version out of the
-  server error string and blindly resubmitting — it couples the client to the
-  error wording and skips re-validation.
-
