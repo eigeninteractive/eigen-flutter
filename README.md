@@ -39,12 +39,12 @@ eigen_engine/
 
 ## Using the engine in an app
 
-1. Add the `eigen_engine` dependency (above) to your game package and app.
-2. Implement a `GameModule` (rules engine + content widget + models) and its five
-   SQL hooks; register it in the app's `main.dart` via
+1. Add the `eigen_engine` dependency (above) to your app.
+2. Implement a `GameModule` (rules engine + content widget + models) under
+   `lib/game/` and its five SQL hooks; register it in `main.dart` via
    `runEngineApp(module: const MyGameModule(), config: AppConfig(…), …)`.
-3. Assemble migrations from the app directory:
-   `dart run eigen_engine:sync_migrations --game <my_game>`.
+3. Vendor the engine's migrations into your committed `supabase/migrations/`
+   (alongside your game hook): `dart run eigen_engine:sync_migrations`.
 
 The full walkthrough — project structure, the `GameModule` contract, the SQL
 hooks, timing, ratings, deep links — is in

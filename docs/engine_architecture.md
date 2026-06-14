@@ -971,36 +971,28 @@ lib/
 │                                         # FriendStatus enum, computeFriendStatus helper
 ```
 
-A game package in a consuming app (`packages/my_game/lib/`):
+A consuming app is a standard Flutter app with the game under `lib/game/`:
 
 ```
-packages/my_game/lib/
-├── my_game.dart                         # Public barrel (exports MyGameModule)
-├── data/models/
-│   └── game_models.dart                 # ObservationData, ActionData, GameConfigData
-├── logic/
-│   └── my_game_engine.dart              # BaseEngine implementation
-├── presentation/
-│   ├── my_game_board.dart               # Board widget
-│   └── my_game_content.dart             # Game content widget
-└── game_module.dart                     # MyGameModule — the single file to swap games
-```
-
-The app shell (`apps/my_app/`):
-
-```
-apps/my_app/
+my_app/                                  # repo root (a standard Flutter app)
+├── pubspec.yaml                         # depends on eigen_engine
 ├── lib/
 │   ├── main.dart                        # ~30-line entry: runEngineApp(module, config, …)
 │   ├── env/                             # Envied-generated env config (Env)
-│   └── firebase_options.dart
+│   ├── firebase_options.dart
+│   └── game/                            # the game
+│       ├── data/models/game_models.dart # ObservationData, ActionData, GameConfigData
+│       ├── logic/my_game_engine.dart    # BaseEngine implementation
+│       ├── presentation/{my_game_board,my_game_content}.dart
+│       └── game_module.dart             # MyGameModule
 ├── android/ ios/ web/ macos/ linux/ windows/
 ├── assets/                              # google_fonts, icons
-└── supabase/                            # config.toml, functions, seed.sql, migrations/ (assembled)
+└── supabase/                            # config.toml, functions, seed.sql, migrations/ (committed)
 ```
 
-Migrations are assembled by the engine-owned CLI, run from the app:
-`dart run eigen_engine:sync_migrations --game my_game`.
+The engine's infra migrations are **vendored** into the app's committed
+`supabase/migrations/` (alongside the app's game hook migration) by the
+engine-owned CLI, run from the app: `dart run eigen_engine:sync_migrations`.
 
 ---
 

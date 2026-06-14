@@ -1,23 +1,24 @@
-/// Assembles an Eigen Engine app's Supabase migrations from its packages.
+/// Vendors the Eigen Engine's Supabase migrations into the current app.
 ///
-/// Supabase's CLI expects one flat, timestamp-ordered `migrations/` directory,
-/// but the canonical SQL is split across packages: the framework/infra
-/// migrations ship with `eigen_engine`, and each game's hook migration ships
-/// with its game package. This tool copies them into the app's (git-ignored)
-/// `supabase/migrations/` so `supabase db reset`/`db push` work unchanged.
+/// Supabase has no native "depend on another project's migrations" mechanism,
+/// so the engine's infra migrations are **vendored** (copied, committed) into
+/// the app's `supabase/migrations/`, sitting alongside the app's own
+/// (hand-authored) game hook migration. `supabase db reset`/`db push` then work
+/// unchanged, and the app's migration history lives in its own repo.
 ///
-/// Run from an app package's directory:
+/// Run from the app directory (the app must depend on `eigen_engine`):
 /// ```sh
-/// dart run eigen_engine:sync_migrations --game tic_tac_toe
+/// dart run eigen_engine:sync_migrations [--out supabase/migrations]
 /// ```
 ///
-/// Package locations are resolved via `package:` URIs (not relative paths), so
-/// this keeps working if the engine is later consumed as a hosted/git
-/// dependency rather than a path dependency. Supabase applies the result in
-/// lexicographic (timestamp) order; Postgres does not resolve plpgsql function
-/// references at `CREATE` time, so a game's hooks may sort before or after the
-/// infra functions. The tool's only structural guard is against filename
-/// collisions between packages.
+/// Idempotent: copies the engine's `*.sql` into `--out`, overwriting previously
+/// vendored copies and leaving every other file (your game migrations)
+/// untouched. Commit the result. Re-run when you bump the engine version.
+///
+/// The engine is resolved via its `package:` URI (not a relative path), so this
+/// keeps working whether the engine is a path, git, or hosted dependency.
+/// Engine migration filenames are timestamped and reserved — don't author app
+/// migrations with the same names.
 library;
 
 import 'dart:io';
@@ -26,15 +27,11 @@ import 'dart:isolate';
 const _enginePackage = 'eigen_engine';
 
 Future<void> main(List<String> args) async {
-  final games = <String>[];
   var out = 'supabase/migrations';
 
   for (var i = 0; i < args.length; i++) {
     final arg = args[i];
     switch (arg) {
-      case '--game':
-        if (i + 1 >= args.length) _fail('--game requires a package name');
-        games.add(args[++i]);
       case '--out':
         if (i + 1 >= args.length) _fail('--out requires a directory');
         out = args[++i];
@@ -46,64 +43,36 @@ Future<void> main(List<String> args) async {
     }
   }
 
-  if (games.isEmpty) {
-    _fail('at least one --game <package_name> is required');
+  final srcDir = Directory.fromUri(await _engineMigrationsDir());
+  if (!srcDir.existsSync()) {
+    _fail('engine has no supabase/migrations directory at ${srcDir.path}');
   }
 
-  // Engine infra migrations first, then each game's hook migrations.
-  final sources = <String, Uri>{
-    _enginePackage: await _migrationsDir(_enginePackage),
-  };
-  for (final game in games) {
-    sources[game] = await _migrationsDir(game);
-  }
+  final outDir = Directory(out)..createSync(recursive: true);
 
-  final outDir = Directory(out);
-  if (outDir.existsSync()) outDir.deleteSync(recursive: true);
-  outDir.createSync(recursive: true);
-
-  final origin = <String, String>{}; // filename -> source package
   var copied = 0;
-  for (final entry in sources.entries) {
-    final dir = Directory.fromUri(entry.value);
-    if (!dir.existsSync()) {
-      stderr.writeln(
-        "sync_migrations: warning: '${entry.key}' has no "
-        'supabase/migrations directory — skipping.',
-      );
-      continue;
-    }
-    for (final file in dir.listSync().whereType<File>()) {
-      if (!file.path.endsWith('.sql')) continue;
-      final name = file.uri.pathSegments.last;
-      final clash = origin[name];
-      if (clash != null) {
-        _fail(
-          "duplicate migration filename '$name' in both '$clash' and "
-          "'${entry.key}'. Re-timestamp one of them.",
-        );
-      }
-      origin[name] = entry.key;
-      file.copySync('${outDir.path}/$name');
-      copied++;
-    }
+  for (final file in srcDir.listSync().whereType<File>()) {
+    if (!file.path.endsWith('.sql')) continue;
+    final name = file.uri.pathSegments.last;
+    file.copySync('${outDir.path}/$name');
+    copied++;
   }
 
   stdout.writeln(
-    'Synced $copied migration(s) into $out '
-    '(Supabase applies them in timestamp order).',
+    'Vendored $copied engine migration(s) into $out. '
+    'Commit them alongside your game migrations.',
   );
 }
 
-/// Resolves `<package>/supabase/migrations/` via the running app's package
-/// config. Returns a `file:` directory URI.
-Future<Uri> _migrationsDir(String package) async {
+/// Resolves `eigen_engine/supabase/migrations/` via the engine's `package:`
+/// URI. Returns a `file:` directory URI.
+Future<Uri> _engineMigrationsDir() async {
   final libUri = await Isolate.resolvePackageUri(
-    Uri.parse('package:$package/'),
+    Uri.parse('package:$_enginePackage/'),
   );
   if (libUri == null) {
     _fail(
-      "could not resolve package '$package'. "
+      "could not resolve package '$_enginePackage'. "
       'Run this from an app that depends on it.',
     );
   }
@@ -118,8 +87,5 @@ Never _fail(String message) {
 }
 
 void _printUsage(IOSink sink) {
-  sink.writeln(
-    'Usage: dart run eigen_engine:sync_migrations '
-    '--game <package> [--game <package> ...] [--out <dir>]',
-  );
+  sink.writeln('Usage: dart run eigen_engine:sync_migrations [--out <dir>]');
 }

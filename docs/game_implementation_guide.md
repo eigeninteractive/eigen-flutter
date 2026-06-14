@@ -31,28 +31,33 @@ dependencies:
     path: ../path/to/eigen_engine
 ```
 
-**Recommended structure.** Keep the *pure game* (rules engine, content widgets,
-models — no Firebase/secrets/platform) in its own package, separate from the
-*app shell* (Firebase, `.env`, platform folders, store identity). A small pub
-workspace with two members is the clean way to do this, but a single app package
-with the game under a `lib/game/` folder also works:
+**Recommended structure.** A single Flutter app with the game under a
+`lib/game/` folder. The game ↔ engine boundary is already compiler-enforced
+(the engine is a separate package), so a folder is enough; you don't need a
+separate game package:
 
 ```
-my_app/
-├── packages/my_game/             # the game package (depends on eigen_engine)
-│   ├── lib/
-│   │   ├── my_game.dart          # Public barrel (exports MyGameModule)
-│   │   ├── data/models/game_models.dart  # ObservationData, ActionData, GameConfigData (Freezed)
-│   │   ├── logic/my_game_engine.dart     # BaseEngine implementation
-│   │   ├── presentation/{my_game_board,my_game_content}.dart
-│   │   └── game_module.dart      # the GameModule
-│   └── supabase/migrations/      # this game's SQL hook migration
-└── apps/my_app/                  # the Flutter app shell (main.dart → runEngineApp)
+my_app/                           # a standard Flutter app (this is the repo root)
+├── pubspec.yaml                  # depends on eigen_engine
+├── lib/
+│   ├── main.dart                 # runEngineApp(module: const MyGameModule(), …)
+│   ├── env/                      # envied env config
+│   └── game/                     # the game (no Firebase/secrets/platform here)
+│       ├── data/models/game_models.dart  # ObservationData, ActionData, GameConfigData (Freezed)
+│       ├── logic/my_game_engine.dart      # BaseEngine implementation
+│       ├── presentation/{my_game_board,my_game_content}.dart
+│       └── game_module.dart      # the GameModule
+└── supabase/                     # config + migrations (engine vendored + your game hook)
 ```
 
 Engine contracts are imported from `package:eigen_engine/...` (or the
-`package:eigen_engine/eigen_engine.dart` barrel); files within your game package
-import each other via `package:my_game/...`.
+`package:eigen_engine/eigen_engine.dart` barrel); game files import each other
+via `package:my_app/game/...`.
+
+> *Optional (advanced):* if you ever need to share one game across multiple apps
+> or test it in isolation, extract `lib/game/` into its own package and make the
+> app a small pub workspace (`packages/my_game` + `apps/my_app`). Not needed for
+> a one-game-per-app product.
 
 ---
 
@@ -664,13 +669,15 @@ When you provide custom timing display inside your content widget, the infra hea
 
 Replacing **five SQL functions** produces a completely different game. All infra RPC functions stay untouched.
 
-Write your hooks in a migration file in your game package,
-`packages/<my_game>/supabase/migrations/YYYYMMDD_my_game.sql`. The app assembles
-its `supabase/migrations/` from the engine and game packages via the
-engine-owned CLI — run `dart run eigen_engine:sync_migrations --game <my_game>`
-from the app directory before `supabase db reset`.
+Write your hooks as a normal, committed migration in your app's
+`supabase/migrations/YYYYMMDD_my_game.sql`. The engine's infra migrations are
+**vendored** in alongside it — run `dart run eigen_engine:sync_migrations` from
+the app directory (it copies the engine's `*.sql` into `supabase/migrations/`,
+leaving your game migration untouched), then commit everything and
+`supabase db reset`. Re-run the command when you bump the engine version.
+
 Because Postgres does not resolve plpgsql function references at `CREATE` time,
-the migration may either define the hooks early (before the infra-functions
+your migration may either define the hooks early (before the infra-functions
 migration) or **override** the defaults with a later-timestamped
 `CREATE OR REPLACE`.
 

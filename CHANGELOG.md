@@ -19,3 +19,9 @@ and this project adheres to
 - **BREAKING**: `EngineConfig.supabaseAnonKey` renamed to
   `supabasePublishableKey`; `Supabase.initialize` now uses `publishableKey:`
   (supabase_flutter 2.14 deprecated `anonKey`).
+- **BREAKING**: `sync_migrations` CLI dropped the `--game` flag. It now vendors
+  only the engine's migrations into the app's `supabase/migrations/`
+  (idempotent, leaves app-authored game migrations untouched), which the app
+  commits — instead of assembling a git-ignored dir from a game package. The
+  recommended app structure is a single Flutter app with the game under
+  `lib/game/` (no separate game package).
