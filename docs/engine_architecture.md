@@ -1,4 +1,4 @@
-# Strategy Engine — System Design
+# Eigen Engine — System Design
 
 ## 1. Vision & Architecture
 
@@ -845,19 +845,18 @@ Client:
 
 ## 12. File Structure
 
-The repo is a Dart pub workspace. The tree below shows the **engine package**
-(`packages/eigen_engine/lib/`). Elsewhere in this document, paths written as
-`lib/core/...`, `lib/features/...`, `lib/shared/...` are relative to that
-package; the game lives in `games/tic_tac_toe/lib/`, and the app shell
-(`main.dart`, `env/`, `firebase_options.dart`, platform folders, Supabase
-config) lives in `apps/strategy/`.
+This is the **`eigen_engine` package** (its repo root). Paths in this document
+written as `lib/core/...`, `lib/features/...`, `lib/shared/...` are relative to
+it. An **app** that uses the engine adds it as a dependency and supplies a
+`GameModule` plus its own `main.dart`, `env/`, `firebase_options.dart`, platform
+folders and Supabase config — see `game_implementation_guide.md` for how a
+consuming app is structured.
 
-The engine package also has `bin/sync_migrations.dart` (the migration-assembly
-CLI) and `supabase/migrations/` (canonical framework/infra migrations) alongside
-`lib/`.
+The engine also ships `bin/sync_migrations.dart` (the migration-assembly CLI)
+and `supabase/migrations/` (canonical framework/infra migrations) alongside `lib/`.
 
 ```
-packages/eigen_engine/lib/
+lib/
 ├── eigen_engine.dart                 # Public barrel (runEngineApp, AppConfig, GameModule, …)
 ├── app_runner.dart                      # runEngineApp(...) entry point + root MyApp
 ├── core/
@@ -972,25 +971,25 @@ packages/eigen_engine/lib/
 │                                         # FriendStatus enum, computeFriendStatus helper
 ```
 
-The game package (`games/tic_tac_toe/lib/`):
+A game package in a consuming app (`packages/my_game/lib/`):
 
 ```
-games/tic_tac_toe/lib/
-├── tic_tac_toe.dart                     # Public barrel (exports TicTacToeModule)
+packages/my_game/lib/
+├── my_game.dart                         # Public barrel (exports MyGameModule)
 ├── data/models/
 │   └── game_models.dart                 # ObservationData, ActionData, GameConfigData
 ├── logic/
-│   └── tic_tac_toe_engine.dart          # BaseEngine implementation
+│   └── my_game_engine.dart              # BaseEngine implementation
 ├── presentation/
-│   ├── tic_tac_toe_board.dart           # Board widget
-│   └── tic_tac_toe_content.dart         # Game content widget
-└── game_module.dart                     # TicTacToeModule — the single file to swap games
+│   ├── my_game_board.dart               # Board widget
+│   └── my_game_content.dart             # Game content widget
+└── game_module.dart                     # MyGameModule — the single file to swap games
 ```
 
-The app shell (`apps/strategy/`):
+The app shell (`apps/my_app/`):
 
 ```
-apps/strategy/
+apps/my_app/
 ├── lib/
 │   ├── main.dart                        # ~30-line entry: runEngineApp(module, config, …)
 │   ├── env/                             # Envied-generated env config (Env)
@@ -1001,7 +1000,7 @@ apps/strategy/
 ```
 
 Migrations are assembled by the engine-owned CLI, run from the app:
-`dart run eigen_engine:sync_migrations --game tic_tac_toe`.
+`dart run eigen_engine:sync_migrations --game my_game`.
 
 ---
 
@@ -1032,7 +1031,7 @@ OS launches process → OS shows native splash (static, instant)
 **`app_runner.dart`** (engine) — `runEngineApp` captures the binding before any async work and passes it to `preserve()`, then initialises Firebase/Supabase and runs the app. The app's `main.dart` just calls it:
 
 ```dart
-// packages/eigen_engine/lib/app_runner.dart
+// lib/app_runner.dart
 Future<void> runEngineApp({...}) async {
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
@@ -1040,9 +1039,9 @@ Future<void> runEngineApp({...}) async {
   runApp(ProviderScope(overrides: [...], child: AppStartup(child: MyApp())));
 }
 
-// apps/strategy/lib/main.dart
+// apps/my_app/lib/main.dart
 Future<void> main() => runEngineApp(
-  module: const TicTacToeModule(),
+  module: const MyGameModule(),
   config: AppConfig(branding: ..., engine: EngineConfig(...Env...)),
   firebaseOptions: DefaultFirebaseOptions.currentPlatform,
   onBackgroundMessage: _firebaseMessagingBackgroundHandler,

@@ -13,3 +13,9 @@ and this project adheres to
 - Extracted Eigen Engine into its own repository from the original monorepo
   (history preserved). Consumed by game apps via a relative path dependency.
 - `Branding.madeByCredit` so the settings footer credit is configurable.
+
+### Changed
+
+- **BREAKING**: `EngineConfig.supabaseAnonKey` renamed to
+  `supabasePublishableKey`; `Supabase.initialize` now uses `publishableKey:`
+  (supabase_flutter 2.14 deprecated `anonKey`).

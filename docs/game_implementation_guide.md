@@ -1,37 +1,58 @@
 # Game Implementation Guide
 
-This guide explains how to implement a new game type using the Strategy Engine.
+This guide explains how to implement a new game using the **Eigen Engine**.
 
 ---
 
 ## Overview
 
-The Strategy Engine is a **whitelabel game engine** — the core infrastructure (auth, networking, real-time updates, timing) is shared, while each game provides its own rules and UI by implementing five SQL hooks (three core — `game_initial_state`, `game_apply_action`, `game_compute_observation`; two optional — `game_rating_pool`, `game_handle_system_action`) and one Dart `GameModule`.
+Eigen Engine is a **whitelabel game engine** — the core infrastructure (auth, networking, real-time updates, timing) is shared, while each game provides its own rules and UI by implementing five SQL hooks (three core — `game_initial_state`, `game_apply_action`, `game_compute_observation`; two optional — `game_rating_pool`, `game_handle_system_action`) and one Dart `GameModule`.
 
-The repo is a Dart pub workspace. A game is its **own package** under `games/`,
-depending on `eigen_engine` and exposing one `GameModule`. To add a new game,
-create `games/<my_game>/` as a workspace member (add it to the root
-`pubspec.yaml` `workspace:` list, give it a `pubspec.yaml` with
-`resolution: workspace` and a `eigen_engine` path dependency — copy
-`games/tic_tac_toe/` as a template):
+### Project setup
+
+Your game is a Flutter **app** that depends on `eigen_engine`. Add the engine to
+your app's `pubspec.yaml`:
+
+```yaml
+dependencies:
+  eigen_engine:
+    git:
+      url: <eigen_engine repository URL>
+      ref: <tag or commit>        # pin to a released version
+```
+
+If you are **developing the engine in parallel** with your app (editing both
+locally), depend on a local checkout instead — directly, or as a
+`dependency_overrides` on top of the git dependency:
+
+```yaml
+dependencies:
+  eigen_engine:
+    path: ../path/to/eigen_engine
+```
+
+**Recommended structure.** Keep the *pure game* (rules engine, content widgets,
+models — no Firebase/secrets/platform) in its own package, separate from the
+*app shell* (Firebase, `.env`, platform folders, store identity). A small pub
+workspace with two members is the clean way to do this, but a single app package
+with the game under a `lib/game/` folder also works:
 
 ```
-games/my_game/lib/
-├── my_game.dart            # Public barrel (exports MyGameModule)
-├── data/
-│   └── models/
-│       └── game_models.dart    # ObservationData, ActionData, GameConfigData (Freezed)
-├── logic/
-│   └── my_game_engine.dart     # BaseEngine implementation
-├── presentation/
-│   ├── my_game_board.dart      # Board widget
-│   └── my_game_content.dart    # Content widget
-└── game_module.dart            # GameModule — the single file to swap games
+my_app/
+├── packages/my_game/             # the game package (depends on eigen_engine)
+│   ├── lib/
+│   │   ├── my_game.dart          # Public barrel (exports MyGameModule)
+│   │   ├── data/models/game_models.dart  # ObservationData, ActionData, GameConfigData (Freezed)
+│   │   ├── logic/my_game_engine.dart     # BaseEngine implementation
+│   │   ├── presentation/{my_game_board,my_game_content}.dart
+│   │   └── game_module.dart      # the GameModule
+│   └── supabase/migrations/      # this game's SQL hook migration
+└── apps/my_app/                  # the Flutter app shell (main.dart → runEngineApp)
 ```
 
 Engine contracts are imported from `package:eigen_engine/...` (or the
-`package:eigen_engine/eigen_engine.dart` barrel); intra-package files use
-`package:my_game/...`.
+`package:eigen_engine/eigen_engine.dart` barrel); files within your game package
+import each other via `package:my_game/...`.
 
 ---
 
@@ -235,7 +256,7 @@ class MyGameModule extends GameModule {
 }
 ```
 
-`buildContent` takes a single [`GameContentContext`](../packages/eigen_engine/lib/core/game/game_module.dart) and your content widget consumes it directly (`MyGameContent(content: context)`) rather than re-declaring and unpacking each field — so adding new infra data later never changes the signature or forces every game to update. The context exposes the two halves of the live game as separate members — `engine` (created once from config, long-lived) and `frame` (the per-event observation snapshot: `frame.observation`, `frame.pendingPlayers`, `frame.version`, `frame.timing`) — plus `gameStatus`, `outcomes`, `actionPending`, `onAction`, `onInvalidAction`, `playersContext`, and the convenience getters `myPlayerIndex` (delegates to `playersContext.myPlayerIndex`) and `timing` (delegates to `frame.timing`).
+`buildContent` takes a single [`GameContentContext`](../lib/core/game/game_module.dart) and your content widget consumes it directly (`MyGameContent(content: context)`) rather than re-declaring and unpacking each field — so adding new infra data later never changes the signature or forces every game to update. The context exposes the two halves of the live game as separate members — `engine` (created once from config, long-lived) and `frame` (the per-event observation snapshot: `frame.observation`, `frame.pendingPlayers`, `frame.version`, `frame.timing`) — plus `gameStatus`, `outcomes`, `actionPending`, `onAction`, `onInvalidAction`, `playersContext`, and the convenience getters `myPlayerIndex` (delegates to `playersContext.myPlayerIndex`) and `timing` (delegates to `frame.timing`).
 
 Register the module — and the app's branding + runtime config — in the app's
 `main.dart` (`apps/<my_app>/lib/main.dart`) by calling `runEngineApp`. It
@@ -644,7 +665,7 @@ When you provide custom timing display inside your content widget, the infra hea
 Replacing **five SQL functions** produces a completely different game. All infra RPC functions stay untouched.
 
 Write your hooks in a migration file in your game package,
-`games/<my_game>/supabase/migrations/YYYYMMDD_my_game.sql`. The app assembles
+`packages/<my_game>/supabase/migrations/YYYYMMDD_my_game.sql`. The app assembles
 its `supabase/migrations/` from the engine and game packages via the
 engine-owned CLI — run `dart run eigen_engine:sync_migrations --game <my_game>`
 from the app directory before `supabase db reset`.
@@ -1007,7 +1028,7 @@ test('valid action is accepted', () {
 
 ### What `APP_HOST` Controls
 
-`APP_HOST` in `apps/strategy/.env` is the authoritative source for the game's subdomain (e.g. `strategy.eigeninteractive.com`). The app reads it via `Env.appHost` (`apps/strategy/lib/env/env.dart`), passes it into `EngineConfig.appHost`, and the framework generates invite links from `appConfigProvider`.
+`APP_HOST` in your app's `.env` is the authoritative source for the game's subdomain (e.g. `mygame.example.com`). The app reads it via `Env.appHost` (your app's `lib/env/env.dart`), passes it into `EngineConfig.appHost`, and the framework generates invite links from `appConfigProvider`.
 
 When `APP_HOST` is set, the pre-game waiting room automatically shows a QR code (via `qr_flutter`) encoding the invite deep link (`https://<APP_HOST>/join/<short_code>`), alongside the copy-code and share-link buttons. When `APP_HOST` is not set, the QR code and share button are both hidden.
 
@@ -1015,7 +1036,7 @@ However, Android and iOS verify domain ownership at **install time** by fetching
 
 ### What `LEGAL_HOST` Controls
 
-`LEGAL_HOST` in `apps/strategy/.env` is the root domain where the terms of service and privacy policy pages are hosted (e.g. `eigeninteractive.com`). The app reads it via `Env.legalHost`, passes it into `EngineConfig.legalHost`, and the settings screen builds terms/privacy links via `legalPageUrl()` (`packages/eigen_engine/lib/core/utils/deep_links.dart`).
+`LEGAL_HOST` in your app's `.env` is the root domain where the terms of service and privacy policy pages are hosted (e.g. `example.com`). The app reads it via `Env.legalHost`, passes it into `EngineConfig.legalHost`, and the settings screen builds terms/privacy links via `legalPageUrl()` (`lib/core/utils/deep_links.dart`).
 
 This is intentionally **separate from `APP_HOST`** for a critical reason: the App Links / Universal Links deep link configuration only covers `APP_HOST` (the game subdomain). If the terms and privacy URLs were built on `APP_HOST`, the OS would intercept them as deep links and route them back into the app rather than opening them in the browser. By using the root domain, which has no deep link configuration, the in-app browser opens them directly.
 
@@ -1029,7 +1050,7 @@ Then add `LEGAL_HOST` as a GitHub Actions secret (repo Settings → Secrets → 
 
 ### The Four Places to Update
 
-When the domain changes (e.g. from `strategy.eigeninteractive.com` to `mygame.eigeninteractive.com`), update all four of the following atomically:
+When the domain changes (e.g. from `mygame.example.com` to `newgame.example.com`), update all four of the following atomically:
 
 #### 1. `.env`
 
@@ -1113,7 +1134,7 @@ Common failure causes:
 
 ## Splash Screen Assets
 
-The splash screen is **infra-owned**. Game implementors do not call `FlutterNativeSplash.remove()` or touch `AppStartup` — the remove is driven by `authStateChangesProvider.future` in `packages/eigen_engine/lib/core/startup/app_startup.dart` and fires as soon as Supabase emits `INITIAL_SESSION`. See `engine_architecture.md §13` for the full architecture, sequence diagram, and generated file inventory.
+The splash screen is **infra-owned**. Game implementors do not call `FlutterNativeSplash.remove()` or touch `AppStartup` — the remove is driven by `authStateChangesProvider.future` in `lib/core/startup/app_startup.dart` and fires as soon as Supabase emits `INITIAL_SESSION`. See `engine_architecture.md §13` for the full architecture, sequence diagram, and generated file inventory.
 
 When deploying a new game app, provide the logo assets and regenerate the platform files.
 

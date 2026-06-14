@@ -54,7 +54,7 @@ Future<void> runEngineApp({
 
   await Supabase.initialize(
     url: config.engine.supabaseUrl,
-    publishableKey: config.engine.supabaseAnonKey,
+    publishableKey: config.engine.supabasePublishableKey,
   );
 
   GoogleFonts.config.allowRuntimeFetching = false;

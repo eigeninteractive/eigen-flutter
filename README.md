@@ -5,19 +5,21 @@ A Flutter + Supabase **whitelabel engine** for turn-based multiplayer games
 single Dart `GameModule` plus a handful of SQL hooks; an app boots with
 `runEngineApp(...)`.
 
-This is a **standalone package** with no bundled example game. Game apps live in
-their own repos (e.g. `strategy`, `bravado`) and consume the engine via a
-relative path dependency:
+This is a **standalone package** with no bundled example game. An app depends on
+it and supplies a `GameModule`:
 
 ```yaml
-# in a game/app pubspec.yaml (repos kept as siblings)
+# in your app's pubspec.yaml
 dependencies:
   eigen_engine:
-    path: ../../../eigen_engine
+    git:
+      url: <eigen_engine repository URL>
+      ref: <tag or commit>
 ```
 
-This keeps engine edits picked up instantly during local development — no
-commit/tag cycle.
+When co-developing the engine alongside an app, depend on a local checkout via a
+`path:` dependency instead, so engine edits are picked up instantly with no
+commit/tag cycle. See [`docs/game_implementation_guide.md`](docs/game_implementation_guide.md).
 
 ## Layout
 
@@ -37,14 +39,19 @@ eigen_engine/
 
 ## Using the engine in an app
 
-1. Add the path dependency (above) in the game package and the app package.
-2. Implement a `GameModule` in the game package; register it in the app's
-   `main.dart` via `runEngineApp(module: const MyGameModule(), config: AppConfig(…), …)`.
+1. Add the `eigen_engine` dependency (above) to your game package and app.
+2. Implement a `GameModule` (rules engine + content widget + models) and its five
+   SQL hooks; register it in the app's `main.dart` via
+   `runEngineApp(module: const MyGameModule(), config: AppConfig(…), …)`.
 3. Assemble migrations from the app directory:
    `dart run eigen_engine:sync_migrations --game <my_game>`.
 
-See [`docs/game_implementation_guide.md`](docs/game_implementation_guide.md) and
-[`docs/engine_architecture.md`](docs/engine_architecture.md).
+The full walkthrough — project structure, the `GameModule` contract, the SQL
+hooks, timing, ratings, deep links — is in
+[`docs/game_implementation_guide.md`](docs/game_implementation_guide.md).
+[`docs/engine_architecture.md`](docs/engine_architecture.md) explains how the
+engine works internally, and [`docs/future_plans.md`](docs/future_plans.md)
+tracks planned engine capabilities (bots, spectating, simultaneous-move games).
 
 ## Development
 

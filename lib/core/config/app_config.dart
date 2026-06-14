@@ -37,7 +37,7 @@ class AppConfig {
 class EngineConfig {
   const EngineConfig({
     required this.supabaseUrl,
-    required this.supabaseAnonKey,
+    required this.supabasePublishableKey,
     required this.googleWebClientId,
     this.firebaseVapidKey,
     this.appHost,
@@ -47,8 +47,8 @@ class EngineConfig {
   /// Supabase project URL.
   final String supabaseUrl;
 
-  /// Supabase anon/publishable key.
-  final String supabaseAnonKey;
+  /// Supabase publishable key (formerly the "anon" key).
+  final String supabasePublishableKey;
 
   /// Google Sign-In web/server client id.
   final String googleWebClientId;
@@ -100,7 +100,7 @@ class Branding {
 ///     ),
 ///     engine: EngineConfig(
 ///       supabaseUrl: Env.supabaseUrl,
-///       supabaseAnonKey: Env.supabasePublishableKey,
+///       supabasePublishableKey: Env.supabasePublishableKey,
 ///       googleWebClientId: Env.googleWebClientId,
 ///     ),
 ///   ),
