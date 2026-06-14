@@ -71,13 +71,21 @@ class EngineConfig {
 /// configured outside Dart.)
 @immutable
 class Branding {
-  const Branding({required this.appName, required this.seedColor});
+  const Branding({
+    required this.appName,
+    required this.seedColor,
+    this.madeByCredit = 'Made with ❤️ by Eigen Interactive',
+  });
 
   /// User-facing application name (window title, drawer header, login screen).
   final String appName;
 
   /// Material 3 seed color; the full light/dark [ColorScheme] derives from it.
   final Color seedColor;
+
+  /// Credit line shown in the settings footer. Defaults to the Eigen
+  /// Interactive umbrella credit; override per app if needed.
+  final String madeByCredit;
 }
 
 /// The active [AppConfig].

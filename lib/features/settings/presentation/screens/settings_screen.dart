@@ -288,15 +288,16 @@ class _AppVersionTile extends ConsumerWidget {
   }
 }
 
-class _AppInfoFooter extends StatelessWidget {
+class _AppInfoFooter extends ConsumerWidget {
   const _AppInfoFooter();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final credit = ref.watch(appConfigProvider).branding.madeByCredit;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Text(
-        'Made with ❤️ by Eigen Interactive',
+        credit,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
           color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
