@@ -670,8 +670,9 @@ its `supabase/migrations/` from the engine and game packages via the
 engine-owned CLI — run `dart run eigen_engine:sync_migrations --game <my_game>`
 from the app directory before `supabase db reset`.
 Because Postgres does not resolve plpgsql function references at `CREATE` time,
-the migration may either define the hooks early (as the tic_tac_toe reference
-does) or **override** the defaults with a later-timestamped `CREATE OR REPLACE`.
+the migration may either define the hooks early (before the infra-functions
+migration) or **override** the defaults with a later-timestamped
+`CREATE OR REPLACE`.
 
 ---
 

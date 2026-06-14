@@ -796,7 +796,7 @@ GRANT  EXECUTE ON FUNCTION public.<fn>(…) TO authenticated;
 Auth, dashboard, settings, `users`/`user_profiles` tables, Material 3 theming.
 
 ### Phase 2 ✓ — Networking & Infra
-Full schema (`games`, `game_states`, `participants`, `observations`, `actions`, `game_outcomes`), all RPC functions, PRNG, timing system, TicTacToe game implementation.
+Full schema (`games`, `game_states`, `participants`, `observations`, `actions`, `game_outcomes`), all RPC functions, PRNG, timing system, and a reference game implementation.
 
 Client features:
 - Home screen with active games, "your turn" sorting, live `TurnCountdown` on cards, pull-to-refresh with staleness label.
@@ -1475,7 +1475,7 @@ onCellTap: (position) {
 |------|------|
 | `lib/features/game/presentation/screens/game_screen.dart` | `_submitAction` → `lightImpact`; `_maybeTriggerWinHaptic` → `heavyImpact`; `_ActiveGameContent` → wires `onInvalidAction` to `selectionClick` |
 | `lib/core/game/game_module.dart` | `buildContent` contract — declares `onInvalidAction: VoidCallback` |
-| `lib/game_implementation/presentation/tic_tac_toe_content.dart` | Calls `onInvalidAction()` in the rejection branch |
+| the game package's content widget (`presentation/<game>_content.dart`) | Calls `onInvalidAction()` in the rejection branch |
 
 ---
 
