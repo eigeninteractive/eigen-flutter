@@ -1,0 +1,19 @@
+# Dart/Flutter
+.dart_tool/
+.flutter-plugins-dependencies
+.packages
+build/
+pubspec.lock
+
+# Generated code
+*.g.dart
+*.freezed.dart
+
+# IDE / OS
+.idea/
+*.iml
+.DS_Store
+
+# Logs
+*.log
+custom_lint.log
