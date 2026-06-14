@@ -50,8 +50,10 @@ The full walkthrough — project structure, the `GameModule` contract, the SQL
 hooks, timing, ratings, deep links — is in
 [`docs/game_implementation_guide.md`](docs/game_implementation_guide.md).
 [`docs/engine_architecture.md`](docs/engine_architecture.md) explains how the
-engine works internally, and [`docs/future_plans.md`](docs/future_plans.md)
-tracks planned engine capabilities (bots, spectating, simultaneous-move games).
+engine works internally, [`docs/versioning.md`](docs/versioning.md) covers
+versioning + backward compatibility (how the engine and apps evolve in
+production), and [`docs/future_plans.md`](docs/future_plans.md) tracks planned
+engine capabilities (bots, spectating, simultaneous-move games).
 
 ## Development
 

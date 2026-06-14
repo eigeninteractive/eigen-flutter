@@ -681,6 +681,11 @@ your migration may either define the hooks early (before the infra-functions
 migration) or **override** the defaults with a later-timestamped
 `CREATE OR REPLACE`.
 
+Once your app is in production, migrations become append-only and schema changes
+must stay backward-compatible with app versions still in the wild — see
+[`versioning.md`](versioning.md) (expand/contract, mobile update lag, in-flight
+game state).
+
 ---
 
 ### Hook 0: `game_rating_pool(p_access, p_turn_seconds, p_budget_seconds, p_increment_seconds, p_min_players, p_max_players, p_config)` → TEXT
