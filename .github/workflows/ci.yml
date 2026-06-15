@@ -42,5 +42,4 @@ jobs:
         run: flutter analyze
 
       - name: Test
-        run: |
-          if [ -d test ]; then flutter test; else echo "No tests yet — skipping."; fi
+        run: flutter test
