@@ -13,13 +13,24 @@ it and supplies a `GameModule`:
 dependencies:
   eigen_engine:
     git:
-      url: <eigen_engine repository URL>
-      ref: <tag or commit>
+      url: https://github.com/seenu-k/eigen_engine.git
+      ref: main   # or a tag/commit for a reproducible release
 ```
 
-When co-developing the engine alongside an app, depend on a local checkout via a
-`path:` dependency instead, so engine edits are picked up instantly with no
-commit/tag cycle. See [`docs/game_implementation_guide.md`](docs/game_implementation_guide.md).
+For **local engine co-development**, add a git-ignored `pubspec_overrides.yaml`
+pointing at a local checkout, so engine edits are picked up instantly with no
+push/fetch cycle:
+
+```yaml
+# pubspec_overrides.yaml (git-ignored)
+dependency_overrides:
+  eigen_engine: { path: ../eigen_engine }
+```
+
+See [`docs/game_implementation_guide.md`](docs/game_implementation_guide.md) and
+[`docs/versioning.md`](docs/versioning.md).
+[`seenu-k/strategy`](https://github.com/seenu-k/strategy) is the reference app
+built on this engine.
 
 ## Layout
 

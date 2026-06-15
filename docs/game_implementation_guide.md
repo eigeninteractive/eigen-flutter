@@ -10,26 +10,30 @@ Eigen Engine is a **whitelabel game engine** — the core infrastructure (auth, 
 
 ### Project setup
 
-Your game is a Flutter **app** that depends on `eigen_engine`. Add the engine to
-your app's `pubspec.yaml`:
+Your game is a Flutter **app** that depends on `eigen_engine` as a git
+dependency in your app's `pubspec.yaml`:
 
 ```yaml
 dependencies:
   eigen_engine:
     git:
       url: <eigen_engine repository URL>
-      ref: <tag or commit>        # pin to a released version
+      ref: main        # or a tag/commit for a reproducible release
 ```
 
 If you are **developing the engine in parallel** with your app (editing both
-locally), depend on a local checkout instead — directly, or as a
-`dependency_overrides` on top of the git dependency:
+locally), add a git-ignored `pubspec_overrides.yaml` that points the dependency
+at a local checkout — engine edits are then picked up instantly, while CI and
+fresh clones use the git dependency:
 
 ```yaml
-dependencies:
+# pubspec_overrides.yaml (git-ignored)
+dependency_overrides:
   eigen_engine:
-    path: ../path/to/eigen_engine
+    path: ../eigen_engine
 ```
+
+See [`versioning.md`](versioning.md) for tracking `main` vs pinning a release.
 
 **Recommended structure.** A single Flutter app with the game under a
 `lib/game/` folder. The game ↔ engine boundary is already compiler-enforced

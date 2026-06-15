@@ -35,20 +35,28 @@ it was built against (in its CHANGELOG). Engine releases are **git tags**
 
 ## How an app depends on the engine
 
-- **Development (now):** relative path dependency `path: ../eigen_engine` — engine
-  edits are picked up instantly, no commit/tag cycle.
-- **Release:** pin a **git tag**:
+The committed dependency is a **git dependency**; the default is to track `main`:
 
-  ```yaml
-  dependencies:
-    eigen_engine:
-      git: { url: <engine repo>, ref: vX.Y.Z }
-  # optional, local-only, for ongoing engine work:
-  dependency_overrides:
-    eigen_engine: { path: ../eigen_engine }
-  ```
+```yaml
+dependencies:
+  eigen_engine:
+    git: { url: https://github.com/seenu-k/eigen_engine.git, ref: main }
+```
 
-  One app release is built against exactly one engine tag.
+- **Local engine co-development:** add a **git-ignored `pubspec_overrides.yaml`**
+  with `dependency_overrides: { eigen_engine: { path: ../eigen_engine } }`. The
+  app then resolves the engine from a local sibling checkout (instant edits);
+  CI and fresh clones, which have no override, use the git dependency.
+- **Commit `pubspec.lock`.** With `ref: main`, the lock records the *resolved
+  engine commit*, so `pub get` (CI, fresh clones) uses that pinned commit —
+  reproducible and CI-stable — while `pub upgrade eigen_engine` advances to the
+  latest `main`. Generate the committed lock from the **no-override** state so it
+  records the git source (not the local path); the path override is *transient*
+  (present only while co-developing the engine). The CI `git diff --exit-code`
+  step catches a lock accidentally committed with the path override active.
+- **Pinning a release.** For an extra-strict release you can also set `ref:` to a
+  tag (`vX.Y.Z`) or commit SHA; `ref: main` + committed lock is enough
+  pre-production.
 
 ## SQL + live users — the hard part (expand / contract)
 
