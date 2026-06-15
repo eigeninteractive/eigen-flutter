@@ -1,6 +1,5 @@
 # P0
 
-- [ ] Fix CI in the split repo case
 - [ ] Verify the sync migrations, add sync functions, etc.
 - [ ] Game Rules Page
 - [ ] Supabase Anonymous Auth
