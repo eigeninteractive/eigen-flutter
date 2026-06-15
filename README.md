@@ -39,9 +39,13 @@ eigen_engine/
 │   ├── features/           # auth, game, home, profile, rating, settings, social
 │   └── shared/             # shared widgets
 ├── bin/
-│   └── sync_migrations.dart # CLI: assembles an app's supabase/migrations from packages
-├── supabase/migrations/     # canonical framework/infra migrations
-└── docs/                    # engine_architecture.md, game_implementation_guide.md
+│   └── sync_supabase.dart # CLI: vendors the engine backend into an app
+├── supabase/                # the engine backend (canonical):
+│   ├── migrations/          #   framework/infra schema + RPCs
+│   ├── functions/           #   edge functions (update-ratings, refresh-fcm-token)
+│   ├── seed.sql             #   engine app_config + serverless-secret seed
+│   └── config.toml          #   reference config (apps base theirs on it)
+└── docs/                    # engine_architecture.md, game_implementation_guide.md, versioning.md
 ```
 
 ## Using the engine in an app
@@ -50,8 +54,8 @@ eigen_engine/
 2. Implement a `GameModule` (rules engine + content widget + models) under
    `lib/game/` and its five SQL hooks; register it in `main.dart` via
    `runEngineApp(module: const MyGameModule(), config: AppConfig(…), …)`.
-3. Vendor the engine's migrations into your committed `supabase/migrations/`
-   (alongside your game hook): `dart run eigen_engine:sync_migrations`.
+3. Vendor the engine backend (migrations + functions + seed) into your committed
+   `supabase/` (alongside your game hook): `dart run eigen_engine:sync_supabase`.
 
 The full walkthrough — project structure, the `GameModule` contract, the SQL
 hooks, timing, ratings, deep links — is in

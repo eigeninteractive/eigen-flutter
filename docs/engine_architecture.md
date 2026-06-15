@@ -852,8 +852,9 @@ it. An **app** that uses the engine adds it as a dependency and supplies a
 folders and Supabase config — see `game_implementation_guide.md` for how a
 consuming app is structured.
 
-The engine also ships `bin/sync_migrations.dart` (the migration-assembly CLI)
-and `supabase/migrations/` (canonical framework/infra migrations) alongside `lib/`.
+The engine also ships `bin/sync_supabase.dart` (the backend-vendoring CLI) and the
+canonical backend under `supabase/` — `migrations/` (schema + RPCs), `functions/`
+(edge functions), and `seed.sql` — alongside `lib/`.
 
 ```
 lib/
@@ -992,7 +993,7 @@ my_app/                                  # repo root (a standard Flutter app)
 
 The engine's infra migrations are **vendored** into the app's committed
 `supabase/migrations/` (alongside the app's game hook migration) by the
-engine-owned CLI, run from the app: `dart run eigen_engine:sync_migrations`.
+engine-owned CLI, run from the app: `dart run eigen_engine:sync_supabase`.
 
 ---
 

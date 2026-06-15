@@ -1,5 +1,9 @@
 #!/bin/bash
-DIR="assets/google_fonts"
+# Regenerates the engine's bundled Inter weights (declared under `fonts:` in
+# pubspec.yaml). Run from the engine repo root. The google_fonts-style per-weight
+# static files are fetched from gstatic by hash (Google Fonts' site download is a
+# single variable font).
+DIR="fonts"
 BASE="https://fonts.gstatic.com/s/a"
 
 download() {

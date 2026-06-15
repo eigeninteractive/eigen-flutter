@@ -31,26 +31,14 @@ The same path setup is used in local and CI — CI checks out the engine beside
 the app (private repo: via an SSH deploy key) and generates its code first. See
 [`versioning.md`](versioning.md) for the full dependency + release model.
 
-**Fonts (required).** The engine theme uses the **Inter** font and
-`runEngineApp` disables runtime font fetching (`GoogleFonts.config.allowRuntimeFetching
-= false`), so your app must **bundle Inter** or it will throw at runtime. The
-`google_fonts` package matches per-weight *static* files, but Google Fonts only
-offers a *variable* Inter download — so the engine ships
-[`tool/download_fonts.sh`](../tool/download_fonts.sh) which pulls the static
-weights. In your app:
-
-```bash
-mkdir -p assets/google_fonts
-bash ../eigen_engine/tool/download_fonts.sh   # run from your app root
-```
-
-and declare the folder in `pubspec.yaml`:
-
-```yaml
-flutter:
-  assets:
-    - assets/google_fonts/
-```
+**Fonts.** Nothing to do per app. The engine **bundles Inter as a package font**
+(all 9 weights, declared under `fonts:` in the engine `pubspec.yaml`), so Flutter
+includes it in every consuming app automatically and it **renders offline from
+the first frame** — no `google_fonts`, no runtime fetch, no per-app asset wiring.
+The theme references it as `packages/eigen_engine/Inter`. To change the typeface,
+add the new family's weights to the engine's `fonts/` + `pubspec.yaml` and update
+that one constant in `AppTheme`. (Engine maintainers regenerate the Inter weights
+with `tool/download_fonts.sh`.)
 
 **Recommended structure.** A single Flutter app with the game under a
 `lib/game/` folder. The game ↔ engine boundary is already compiler-enforced
@@ -691,11 +679,13 @@ When you provide custom timing display inside your content widget, the infra hea
 Replacing **five SQL functions** produces a completely different game. All infra RPC functions stay untouched.
 
 Write your hooks as a normal, committed migration in your app's
-`supabase/migrations/YYYYMMDD_my_game.sql`. The engine's infra migrations are
-**vendored** in alongside it — run `dart run eigen_engine:sync_migrations` from
-the app directory (it copies the engine's `*.sql` into `supabase/migrations/`,
-leaving your game migration untouched), then commit everything and
-`supabase db reset`. Re-run the command when you bump the engine version.
+`supabase/migrations/YYYYMMDD_my_game.sql`. The engine's **backend** is
+**vendored** in alongside it — run `dart run eigen_engine:sync_supabase` from
+the app directory. It copies the engine's `migrations/*.sql`, edge `functions/`
+(`update-ratings`, `refresh-fcm-token`), and `seed.sql` into your `supabase/`,
+leaving your app-owned files (your game migration, any app-specific functions)
+untouched. Commit everything, then `supabase db reset`. Re-run when you bump the
+engine version. See **Supabase project setup** below for the one-time config.
 
 Because Postgres does not resolve plpgsql function references at `CREATE` time,
 your migration may either define the hooks early (before the infra-functions
@@ -706,6 +696,33 @@ Once your app is in production, migrations become append-only and schema changes
 must stay backward-compatible with app versions still in the wild — see
 [`versioning.md`](versioning.md) (expand/contract, mobile update lag, in-flight
 game state).
+
+### Supabase project setup (one-time, per app)
+
+The engine vendors the *content* of the backend (migrations, functions, seed),
+but each app owns its Supabase **project config**:
+
+1. **`config.toml`** — `supabase init` generates a default; base yours on the
+   **engine's `supabase/config.toml`** (it's the reference) and set your own
+   `project_id`. Ensure the engine-required settings are present:
+   - `[db.seed] sql_paths = ["./seed.sql"]`
+   - `[auth] signing_keys_path = "./signing_keys.json"`,
+     `[auth.external.google]` (`client_id`/`secret` from env), and
+     `enable_anonymous_sign_ins` as desired
+   - `[edge_runtime]` + `[functions.update-ratings]` / `[functions.refresh-fcm-token]`
+     (`verify_jwt = false`, `import_map` / `entrypoint` pointing at each function)
+2. **Vendor the backend:** `dart run eigen_engine:sync_supabase` (migrations +
+   functions + seed), then commit.
+3. **`functions/.env.local`** — copy the engine's `functions/.env.local.example`
+   and fill in `SERVERLESS_SECRET` + the Firebase service-account vars
+   (`FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`, `FIREBASE_PROJECT_ID`). This
+   file is git-ignored.
+4. **`signing_keys.json`** — local JWT signing keys; git-ignored and created by
+   the Supabase CLI for local dev (see Supabase local-development docs). Not
+   vendored.
+5. `supabase start` → `supabase db reset` (applies migrations + `seed.sql`).
+6. **Production:** deploy the edge functions and set their secrets — see the
+   *Backend / Supabase Production Checklist* near the end of this guide.
 
 ---
 

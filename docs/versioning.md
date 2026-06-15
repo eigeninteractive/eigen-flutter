@@ -103,7 +103,7 @@ can span days and survive an app/engine upgrade mid-game. Therefore:
 ## Per-app rollout (N apps, N Supabase projects)
 
 An engine SQL change must be **vendored** into each app
-(`dart run eigen_engine:sync_migrations`) and applied to each app's Supabase
+(`dart run eigen_engine:sync_supabase`) and applied to each app's Supabase
 project. Sequence per project: apply the *expand* migration, then ship the app
 update. Production migrations are forward-only, so:
 
