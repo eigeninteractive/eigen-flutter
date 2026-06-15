@@ -35,28 +35,30 @@ it was built against (in its CHANGELOG). Engine releases are **git tags**
 
 ## How an app depends on the engine
 
-The committed dependency is a **git dependency**; the default is to track `main`:
+**Until the engine is published to pub.dev**, an app depends on it by **path**,
+cloned as a sibling — the same in local and CI:
 
 ```yaml
 dependencies:
   eigen_engine:
-    git: { url: https://github.com/seenu-k/eigen_engine.git, ref: main }
+    path: ../eigen_engine
 ```
 
-- **Local engine co-development:** add a **git-ignored `pubspec_overrides.yaml`**
-  with `dependency_overrides: { eigen_engine: { path: ../eigen_engine } }`. The
-  app then resolves the engine from a local sibling checkout (instant edits);
-  CI and fresh clones, which have no override, use the git dependency.
-- **Commit `pubspec.lock`.** With `ref: main`, the lock records the *resolved
-  engine commit*, so `pub get` (CI, fresh clones) uses that pinned commit —
-  reproducible and CI-stable — while `pub upgrade eigen_engine` advances to the
-  latest `main`. Generate the committed lock from the **no-override** state so it
-  records the git source (not the local path); the path override is *transient*
-  (present only while co-developing the engine). The CI `git diff --exit-code`
-  step catches a lock accidentally committed with the path override active.
-- **Pinning a release.** For an extra-strict release you can also set `ref:` to a
-  tag (`vX.Y.Z`) or commit SHA; `ref: main` + committed lock is enough
-  pre-production.
+- **Generated code is not committed in the engine** (`*.g.dart`,
+  `*.freezed.dart` are git-ignored), so after cloning the engine you must run
+  `dart run build_runner build` in it before the app can analyze/build. CI does
+  the same (checkout engine as a sibling → generate its code → build the app).
+- **Private engine in CI:** check out the engine with `actions/checkout`
+  (`repository: seenu-k/eigen_engine`, `ssh-key: ${{ secrets.ENGINE_DEPLOY_KEY }}`)
+  beside the app, then generate + build.
+- **Commit `pubspec.lock`.** With a path dependency the lock records the engine
+  as `path`, which is consistent between local and CI (both resolve the same
+  sibling), so it commits cleanly and pins the pub.dev deps.
+
+**Future (pub.dev):** once the engine is published, apps switch to a hosted
+dependency (`eigen_engine: ^X.Y.Z`) with the generated code shipped in the
+published archive — at which point the semver rules below become the contract,
+and git-tag pinning is an option for reproducible builds.
 
 ## SQL + live users — the hard part (expand / contract)
 

@@ -6,25 +6,21 @@ single Dart `GameModule` plus a handful of SQL hooks; an app boots with
 `runEngineApp(...)`.
 
 This is a **standalone package** with no bundled example game. An app depends on
-it and supplies a `GameModule`:
+it and supplies a `GameModule`. Until the engine is published to pub.dev, clone
+it as a **sibling** of your app and depend on it by **path**:
 
 ```yaml
 # in your app's pubspec.yaml
 dependencies:
   eigen_engine:
-    git:
-      url: https://github.com/seenu-k/eigen_engine.git
-      ref: main   # or a tag/commit for a reproducible release
+    path: ../eigen_engine
 ```
 
-For **local engine co-development**, add a git-ignored `pubspec_overrides.yaml`
-pointing at a local checkout, so engine edits are picked up instantly with no
-push/fetch cycle:
+The engine's generated code (`*.g.dart`, `*.freezed.dart`) is **not committed**,
+so after cloning, generate it once — and again in CI before building the app:
 
-```yaml
-# pubspec_overrides.yaml (git-ignored)
-dependency_overrides:
-  eigen_engine: { path: ../eigen_engine }
+```bash
+cd eigen_engine && flutter pub get && dart run build_runner build
 ```
 
 See [`docs/game_implementation_guide.md`](docs/game_implementation_guide.md) and
