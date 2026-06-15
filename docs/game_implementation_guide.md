@@ -31,6 +31,27 @@ The same path setup is used in local and CI — CI checks out the engine beside
 the app (private repo: via an SSH deploy key) and generates its code first. See
 [`versioning.md`](versioning.md) for the full dependency + release model.
 
+**Fonts (required).** The engine theme uses the **Inter** font and
+`runEngineApp` disables runtime font fetching (`GoogleFonts.config.allowRuntimeFetching
+= false`), so your app must **bundle Inter** or it will throw at runtime. The
+`google_fonts` package matches per-weight *static* files, but Google Fonts only
+offers a *variable* Inter download — so the engine ships
+[`tool/download_fonts.sh`](../tool/download_fonts.sh) which pulls the static
+weights. In your app:
+
+```bash
+mkdir -p assets/google_fonts
+bash ../eigen_engine/tool/download_fonts.sh   # run from your app root
+```
+
+and declare the folder in `pubspec.yaml`:
+
+```yaml
+flutter:
+  assets:
+    - assets/google_fonts/
+```
+
 **Recommended structure.** A single Flutter app with the game under a
 `lib/game/` folder. The game ↔ engine boundary is already compiler-enforced
 (the engine is a separate package), so a folder is enough; you don't need a
@@ -285,7 +306,7 @@ Future<void> main() => runEngineApp(
     branding: const Branding(appName: 'My Game', seedColor: Colors.indigo),
     engine: EngineConfig(
       supabaseUrl: Env.supabaseUrl,
-      supabaseAnonKey: Env.supabasePublishableKey,
+      supabasePublishableKey: Env.supabasePublishableKey,
       googleWebClientId: Env.googleWebClientId,
       firebaseVapidKey: Env.firebaseVapidKey,
       appHost: Env.appHost,
@@ -1420,3 +1441,32 @@ Your upload keystore SHA is optional — only needed if you test a locally-signe
 - [ ] Supavisor connection pooler: use **session mode** for `submit_action` and `expire_turn` (they use `FOR UPDATE`); transaction mode for read RPCs
 - [ ] Realtime enabled only on tables that need it (`observations`, `games`, `relationships`) — disable on others to reduce noise
 - [ ] Row-level security verified on all tables (run `SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public'`)
+
+---
+
+## Shipping the App (Android / Google Play)
+
+Store packaging and release are **app-owned** (the engine has no app to ship).
+The reference setup lives in the `strategy` app — copy it for a new game:
+
+- **`fastlane/`** — `Fastfile` with `android internal` / `android production` lanes
+  (`upload_to_play_store` with the built AAB) and `Appfile` (the `package_name`),
+  plus a `Gemfile` for the `fastlane` gem.
+- **CI** (`.github/workflows/android.yml`) — the `build` job builds a **signed,
+  obfuscated release AAB** (`flutter build appbundle --release --obfuscate
+  --split-debug-info=…`), and the `deploy` job runs `bundle exec fastlane android
+  internal` to push it to the Play internal track.
+
+Per-app setup:
+- Create an upload keystore; add `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`,
+  `KEY_ALIAS`, `KEY_PASSWORD` as GitHub Actions secrets (CI writes
+  `android/key.properties` from them).
+- Create a Google Play service account with the *Release* permission; add its
+  JSON as `GOOGLE_PLAY_JSON_KEY` (used by fastlane `upload_to_play_store`).
+- `applicationId` (Android) / bundle id (iOS) are the app's own store identity —
+  set them per product (not derived from the engine).
+- First upload must be done manually in the Play Console (to create the app
+  listing); subsequent releases flow through fastlane.
+
+iOS store submission (TestFlight/App Store) is not yet wired in the reference
+app; add an `ios` fastlane lane when you target iOS.
