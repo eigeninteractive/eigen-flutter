@@ -126,6 +126,13 @@ abstract class GameConfigData with _$GameConfigData {
 
 > **Note:** `Observation.data` in the core layer is `Map<String, dynamic>`. Your content widget receives this already deserialized into `ObservationData` at the game layer boundary (see step 5).
 
+> **Evolving these models after launch.** Once real users have games in
+> progress, these three payloads become a compatibility contract. Make new
+> fields nullable or `@Default(...)` and give enums
+> `@JsonKey(unknownEnumValue: …)`; a change that alters a field's meaning or the
+> board/action shape is breaking and needs a `schema` bump on the game type, not
+> an in-place edit. See [`backward-compatibility.md`](backward-compatibility.md).
+
 ---
 
 ### 2. Game Engine (`logic/`)

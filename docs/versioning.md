@@ -18,6 +18,11 @@ Three contracts can break across versions, each at a different layer:
 3. **Game state / observation JSONB** — the per-game payload. Breaks
    **in-flight games**.
 
+For the deep-dive on contract 3 — plus client caches and the client↔server
+version gate that bounds how long old clients must be supported — see
+[`backward-compatibility.md`](backward-compatibility.md). This doc is the
+high-level policy; that one is the game-evolution architecture.
+
 ## Versioning scheme (semver, via `cider`)
 
 The engine's **public API = the Dart barrel + the SQL migration set**.
@@ -94,8 +99,10 @@ can span days and survive an app/engine upgrade mid-game. Therefore:
 
 - `ObservationData` / state `fromJson` must **tolerate older shapes** — default
   any newly added fields so a game created under `vN` still parses under `vN+1`.
-- For larger changes, **version the state** (a `v` / `schema` field) and branch
-  on it.
+- For larger changes, **version the game type** (a `schema` field in
+  `games.config`, mirrored into state) and branch on it on both server and
+  client. See [`backward-compatibility.md`](backward-compatibility.md) for the
+  full scheme, including the drain-query + force-update-floor retirement gate.
 - `game_states` is append-only, so an in-flight game's earlier rows were written
   under the old shape; the `apply_action` hook must handle every shape a still-
   running game could have been started under, until those games finish.
