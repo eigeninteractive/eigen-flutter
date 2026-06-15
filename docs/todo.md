@@ -1,6 +1,5 @@
 # P0
 
-- [ ] Verify the sync migrations, add sync functions, etc.
 - [ ] Game Rules Page
 - [ ] Supabase Anonymous Auth
 - [ ] Tests
