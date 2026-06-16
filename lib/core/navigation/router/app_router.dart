@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:eigen_engine/core/navigation/widgets/shell_scaffold.dart';
+import 'package:eigen_engine/features/about/presentation/screens/about_screen.dart';
 import 'package:eigen_engine/features/auth/presentation/screens/login_screen.dart';
 import 'package:eigen_engine/features/game/presentation/screens/game_screen.dart';
 import 'package:eigen_engine/features/game/presentation/screens/history_screen.dart';
@@ -46,7 +47,10 @@ extension NotificationNavigation on GoRouter {
 /// - StatefulShellRoute (with drawer, preserves state):
 ///   - Branch 0: /home
 ///   - Branch 1: /lobby
-///   - Branch 2: /settings
+///   - Branch 2: /history
+///   - Branch 3: /social
+///   - Branch 4: /about
+///   - Branch 5: /settings
 ///     - /settings/profile
 final List<RouteBase> appRoutes = [
   // Login route - outside shell (no drawer)
@@ -137,7 +141,18 @@ final List<RouteBase> appRoutes = [
         ],
       ),
 
-      // Branch 4: Settings
+      // Branch 4: About
+      StatefulShellBranch(
+        routes: [
+          GoRoute(
+            path: '/about',
+            name: 'about',
+            builder: (context, state) => const AboutScreen(),
+          ),
+        ],
+      ),
+
+      // Branch 5: Settings
       StatefulShellBranch(
         routes: [
           GoRoute(

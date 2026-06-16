@@ -69,4 +69,7 @@ class SampleModule extends GameModule {
 
   @override
   Widget buildContent(GameContentContext context) => const SizedBox.shrink();
+
+  @override
+  Widget buildRules(BuildContext context) => const Text('Sample rules');
 }

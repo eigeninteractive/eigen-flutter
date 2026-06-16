@@ -14,6 +14,7 @@ enum _ShellBranch {
   lobby('Game Lobby'),
   history('History'),
   social('Social'),
+  about('About'),
   settings('Settings');
 
   const _ShellBranch(this.title);
@@ -86,6 +87,11 @@ class ShellScaffold extends ConsumerWidget {
             icon: _SocialDrawerIcon(selected: false),
             selectedIcon: _SocialDrawerIcon(selected: true),
             label: Text('Social'),
+          ),
+          NavigationDrawerDestination(
+            icon: Icon(Icons.info_outline),
+            selectedIcon: Icon(Icons.info_rounded),
+            label: Text('About'),
           ),
           NavigationDrawerDestination(
             icon: Icon(Icons.settings_outlined),

@@ -274,10 +274,15 @@ class MyGameModule extends GameModule {
   @override
   Widget buildContent(GameContentContext context) =>
       MyGameContent(content: context);
+
+  @override
+  Widget buildRules(BuildContext context) => const MyGameRules();
 }
 ```
 
 `buildContent` takes a single [`GameContentContext`](../lib/core/game/game_module.dart) and your content widget consumes it directly (`MyGameContent(content: context)`) rather than re-declaring and unpacking each field — so adding new infra data later never changes the signature or forces every game to update. The context exposes the two halves of the live game as separate members — `engine` (created once from config, long-lived) and `frame` (the per-event observation snapshot: `frame.observation`, `frame.pendingPlayers`, `frame.version`, `frame.timing`) — plus `gameStatus`, `outcomes`, `actionPending`, `onAction`, `onInvalidAction`, `playersContext`, and the convenience getters `myPlayerIndex` (delegates to `playersContext.myPlayerIndex`) and `timing` (delegates to `frame.timing`).
+
+`buildRules` is required and returns your game's how-to-play content for the engine's About page. Return plain, non-scrolling content (e.g. a `Column` of sections); the About page supplies the scroll container, padding and app chrome. It may be interactive and read `Theme.of(context)`.
 
 Register the module — and the app's branding + runtime config — in the app's
 `main.dart` (`apps/<my_app>/lib/main.dart`) by calling `runEngineApp`. It

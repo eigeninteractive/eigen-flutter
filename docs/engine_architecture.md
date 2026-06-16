@@ -898,7 +898,7 @@ lib/
 │       ├── providers/
 │       │   └── navigation_providers.dart # routerProvider (keepAlive) — GoRouter singleton with auth redirect
 │       └── widgets/
-│           └── shell_scaffold.dart        # NavigationDrawer — Home, Lobby, History, Social, Settings; _OfflineBanner; back exits app
+│           └── shell_scaffold.dart        # NavigationDrawer — Home, Lobby, History, Social, About, Settings; _OfflineBanner; back exits app
 ├── shared/
 │   ├── data/
 │   │   ├── models/
@@ -1482,6 +1482,7 @@ onCellTap: (position) {
 ├── /lobby       │  StatefulShellRoute.indexedStack — shell branches
 ├── /history     │  (sibling widgets, not Navigator stack entries)
 ├── /social      │
+├── /about       │
 └── /settings   ─┘
 /game/:gameId        parentNavigatorKey: rootNavigatorKey — covers shell entirely
 /join/:code          parentNavigatorKey: rootNavigatorKey — transient join spinner
@@ -1500,7 +1501,7 @@ onCellTap: (position) {
 
 ### Back Behavior by Route
 
-**Shell branches (Home, Lobby, History, Social, Settings):**
+**Shell branches (Home, Lobby, History, Social, About, Settings):**
 Each branch is a top-level destination. There is no `PopScope` intercepting back. Pressing Back from any branch exits the app with the system's predictive exit animation. Users switch branches via the drawer — Back is not a navigation gesture between branches.
 
 **Game screen:**

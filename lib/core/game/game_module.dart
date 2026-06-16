@@ -124,4 +124,11 @@ abstract class GameModule {
   /// [HapticFeedback.selectionClick]; game implementors do not choose the
   /// haptic.
   Widget buildContent(GameContentContext context);
+
+  /// Game-supplied rules / how-to-play content for the About page.
+  ///
+  /// Return plain, non-scrolling content (e.g. a [Column] of sections); the
+  /// About page provides the scroll container, padding and app-level chrome.
+  /// Free to be interactive (animated board examples) and to read [Theme.of].
+  Widget buildRules(BuildContext context);
 }
