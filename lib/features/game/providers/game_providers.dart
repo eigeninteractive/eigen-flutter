@@ -167,8 +167,9 @@ PlayerInfo _deletedPlayerInfo(String gameId, int playerIndex) => PlayerInfo(
 /// [ref.listen] to react to the result rather than watching the value
 /// directly, so navigation happens exactly once.
 @riverpod
-Future<String> joinByCode(Ref ref, {required String code}) =>
-    ref.read(gameRepositoryProvider).joinGameByCode(
+Future<String> joinByCode(Ref ref, {required String code}) => ref
+    .read(gameRepositoryProvider)
+    .joinGameByCode(
       code,
       clientSchemaVersion: ref.read(currentGameModuleProvider).schemaVersion,
     );

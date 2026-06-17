@@ -91,10 +91,7 @@ class GameRepository {
   }) async {
     final result = await _client.rpc(
       'join_game_by_code',
-      params: {
-        'p_code': code,
-        'p_client_schema_version': clientSchemaVersion,
-      },
+      params: {'p_code': code, 'p_client_schema_version': clientSchemaVersion},
     );
     return result as String;
   }
