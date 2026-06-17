@@ -4,7 +4,10 @@ part 'game_outcome.freezed.dart';
 part 'game_outcome.g.dart';
 
 /// Result for one participant in a completed game.
-enum OutcomeResult { win, loss, draw, eliminated }
+///
+/// [unknown] is a forward-compatibility sentinel for values a newer server may
+/// introduce. See `docs/backward-compatibility.md`.
+enum OutcomeResult { win, loss, draw, eliminated, unknown }
 
 /// One participant's outcome from the [game_outcomes] table.
 ///
@@ -18,6 +21,7 @@ abstract class GameOutcome with _$GameOutcome {
     required int playerIndex,
     String? userId,
     String? botId,
+    @JsonKey(unknownEnumValue: OutcomeResult.unknown)
     required OutcomeResult result,
     double? score,
     required int placement,

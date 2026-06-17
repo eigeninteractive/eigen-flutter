@@ -86,6 +86,7 @@ CREATE OR REPLACE FUNCTION private.update_all_observations(
   p_new_pending     INT[],
   p_new_version     INT,
   p_config          JSONB,
+  p_schema_version  INT,
   p_new_deadline    TIMESTAMPTZ DEFAULT NULL,
   p_player_times    BIGINT[]    DEFAULT NULL,
   p_turn_started_at TIMESTAMPTZ DEFAULT NULL
@@ -111,7 +112,8 @@ BEGIN
       p_new_pending,
       v_rec.player_index,
       v_count,
-      p_config
+      p_config,
+      p_schema_version
     );
 
     UPDATE public.observations
@@ -282,6 +284,7 @@ CREATE OR REPLACE FUNCTION private.commit_action(
   p_new_seed         BIGINT,
   p_new_player_times BIGINT[],
   p_config           JSONB,
+  p_schema_version   INT,
   p_outcome          JSONB,
   p_action_seconds   INT,
   p_budget_seconds   INT,
@@ -319,6 +322,7 @@ BEGIN
 
   PERFORM private.update_all_observations(
     p_game_id, p_new_state, p_new_pending, p_new_version, p_config,
+    p_schema_version,
     v_dl.deadline, p_new_player_times, v_dl.turn_started_at
   );
 END;
@@ -330,13 +334,24 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 -- game_states and observations are not created until start_game.
 -- ============================================
 CREATE OR REPLACE FUNCTION public.create_game(
+  -- Game-specific, required (no defaults): the game module always supplies these.
+  -- Player counts come from GameModule.creationSpec/playersForConfig; the schema
+  -- version from GameModule.schemaVersion. Required params must precede the
+  -- defaulted ones below.
+  p_min_players       INT,
+  p_max_players       INT,
+  p_schema_version    INT,
+  -- Infra-level, safe to default: untimed unless a timer is given, public,
+  -- unrated-unless-eligible. (Server still derives the real pool/rated flag.)
   p_access            public.game_access DEFAULT 'public',
   p_turn_seconds      INT     DEFAULT NULL,
   p_budget_seconds    INT     DEFAULT NULL,
   p_increment_seconds INT     DEFAULT NULL,
-  p_min_players       INT     DEFAULT 2,
-  p_max_players       INT     DEFAULT 2,
-  p_config            JSONB   DEFAULT NULL,
+  -- Opaque, game-owned config blob. Always an object; defaults to empty ({})
+  -- for games with no creation parameters. Whether specific keys are required
+  -- is the game's concern (validated in game_initial_state / the game's config
+  -- model), not infra's.
+  p_config            JSONB   DEFAULT '{}'::jsonb,
   -- Client supplies a preference only; the server derives the actual pool via
   -- game_rating_pool() so clients cannot forge a pool or enable rating on an
   -- ineligible game.
@@ -373,7 +388,7 @@ BEGIN
     BEGIN
       INSERT INTO public.games
         (created_by, access, turn_seconds, budget_seconds, increment_seconds,
-         min_players, max_players, config, short_code, rated, rating_pool)
+         min_players, max_players, config, schema_version, short_code, rated, rating_pool)
       VALUES (
         v_user_id,
         p_access,
@@ -382,7 +397,8 @@ BEGIN
         p_increment_seconds,
         p_min_players,
         p_max_players,
-        COALESCE(p_config, '{}'::jsonb),
+        p_config,
+        p_schema_version,
         upper(substring(md5(random()::text) from 1 for 6)),
         v_rated,
         v_pool
@@ -498,6 +514,7 @@ DECLARE
   v_initial_turn_started TIMESTAMPTZ;
   v_seed                 BIGINT;
   v_count                INT;
+  v_schema_version       INT;
   v_rec                  RECORD;
   v_obs                  JSONB;
   v_dl                   RECORD;
@@ -509,9 +526,9 @@ BEGIN
   -- leave_game cannot remove a participant between the status check and
   -- the game_states / observations inserts.
   SELECT created_by, status, config, turn_seconds, budget_seconds,
-         increment_seconds, min_players
+         increment_seconds, min_players, schema_version
   INTO v_created_by, v_status, v_config, v_turn_seconds, v_budget_seconds,
-       v_increment_seconds, v_min_players
+       v_increment_seconds, v_min_players, v_schema_version
   FROM public.games WHERE id = p_game_id
   FOR UPDATE;
 
@@ -537,7 +554,9 @@ BEGIN
   -- randomness (shuffle, deal) also derives from it deterministically.
   v_seed := greatest(floor(random() * 9223372036854775807)::BIGINT, 1);
 
-  v_initial       := private.game_initial_state(v_seed, v_config, v_count);
+  v_initial       := private.game_initial_state(
+    v_seed, v_config, v_count, v_schema_version
+  );
   v_initial_state := v_initial->'state';
   IF v_initial_state IS NULL OR jsonb_typeof(v_initial_state) = 'null' THEN
     RAISE EXCEPTION 'game_initial_state must return a non-null state';
@@ -591,7 +610,8 @@ BEGIN
       v_initial_pending,
       v_rec.player_index,
       v_count,
-      v_config
+      v_config,
+      v_schema_version
     );
 
     INSERT INTO public.observations
@@ -738,6 +758,7 @@ DECLARE
   v_config               JSONB;
   v_turn_seconds         INT;
   v_budget_seconds       INT;
+  v_schema_version       INT;
   v_current_state        JSONB;
   v_current_pending      INT[];
   v_current_version      INT;
@@ -756,8 +777,8 @@ BEGIN
 
   -- Acquire lock and check status atomically — no TOCTOU window between
   -- the active check and the lock.
-  SELECT status, config, turn_seconds, budget_seconds
-  INTO v_status, v_config, v_turn_seconds, v_budget_seconds
+  SELECT status, config, turn_seconds, budget_seconds, schema_version
+  INTO v_status, v_config, v_turn_seconds, v_budget_seconds, v_schema_version
   FROM public.games WHERE id = p_game_id
   FOR UPDATE;
 
@@ -784,7 +805,8 @@ BEGIN
     'forfeit'::public.system_action_type,
     v_action_data,
     v_current_seed,
-    v_config
+    v_config,
+    v_schema_version
   );
 
   v_new_state   := v_result->'state';
@@ -808,6 +830,7 @@ BEGIN
     v_new_seed,
     v_current_player_times,
     v_config,
+    v_schema_version,
     v_outcome,
     NULL,
     v_budget_seconds,
@@ -836,6 +859,7 @@ DECLARE
   v_budget_seconds       INT;
   v_increment_seconds    INT;
   v_action_seconds       INT;
+  v_schema_version       INT;
   v_current_state        JSONB;
   v_current_pending      INT[];
   v_current_version      INT;
@@ -858,8 +882,8 @@ BEGIN
   -- Acquire lock and check status atomically — no TOCTOU window between
   -- the active check and the lock. game_states is append-only so the games
   -- row serves as the serialization point for all concurrent writers.
-  SELECT status, config, turn_seconds, budget_seconds, increment_seconds
-  INTO v_status, v_config, v_turn_seconds, v_budget_seconds, v_increment_seconds
+  SELECT status, config, turn_seconds, budget_seconds, increment_seconds, schema_version
+  INTO v_status, v_config, v_turn_seconds, v_budget_seconds, v_increment_seconds, v_schema_version
   FROM public.games WHERE id = p_game_id
   FOR UPDATE;
 
@@ -888,7 +912,8 @@ BEGIN
   END IF;
 
   v_result      := private.game_apply_action(
-    v_current_state, v_current_pending, p_data, v_participant.player_index, v_current_seed, v_config
+    v_current_state, v_current_pending, p_data, v_participant.player_index, v_current_seed, v_config,
+    v_schema_version
   );
   v_new_state   := v_result->'state';
   v_new_pending := ARRAY(SELECT jsonb_array_elements_text(v_result->'pending_players')::INT);
@@ -930,6 +955,7 @@ BEGIN
     v_new_seed,
     v_new_player_times,
     v_config,
+    v_schema_version,
     v_outcome,
     v_action_seconds,
     v_budget_seconds,
@@ -1060,6 +1086,7 @@ DECLARE
   v_turn_seconds         INT;
   v_budget_seconds       INT;
   v_action_seconds       INT;
+  v_schema_version       INT;
   v_current_state        JSONB;
   v_current_pending      INT[];
   v_current_version      INT;
@@ -1077,8 +1104,8 @@ DECLARE
   v_action_data          JSONB;
 BEGIN
   -- FOR UPDATE on games serializes concurrent writers for this game.
-  SELECT config, turn_seconds, budget_seconds
-  INTO v_config, v_turn_seconds, v_budget_seconds
+  SELECT config, turn_seconds, budget_seconds, schema_version
+  INTO v_config, v_turn_seconds, v_budget_seconds, v_schema_version
   FROM public.games WHERE id = p_game_id AND status = 'active'
   FOR UPDATE;
 
@@ -1124,7 +1151,8 @@ BEGIN
       'timeout'::public.system_action_type,
       v_action_data,
       v_current_seed,
-      v_config
+      v_config,
+      v_schema_version
     );
 
     v_new_state      := v_result->'state';
@@ -1149,6 +1177,7 @@ BEGIN
       v_new_seed,
       v_new_player_times,
       v_config,
+      v_schema_version,
       v_outcome,
       v_action_seconds,
       v_budget_seconds,
@@ -1216,6 +1245,7 @@ DECLARE
   v_user_id UUID;
   v_status  public.game_status;
   v_config  JSONB;
+  v_schema_version INT;
   v_part    RECORD;
   v_count   INT;
   v_result  JSONB := '[]'::JSONB;
@@ -1224,7 +1254,7 @@ DECLARE
 BEGIN
   v_user_id := private.require_auth();
 
-  SELECT status, config INTO v_status, v_config
+  SELECT status, config, schema_version INTO v_status, v_config, v_schema_version
   FROM public.games WHERE id = p_game_id;
 
   IF v_status IS NULL THEN
@@ -1262,6 +1292,7 @@ BEGIN
       v_part.player_index,
       v_count,
       v_config,
+      v_schema_version,
       TRUE  -- p_is_replay: hooks may reveal post-game state
     );
 
@@ -1485,8 +1516,8 @@ $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '';
 -- Revoking from PUBLIC covers the case where the default grant was to PUBLIC;
 -- the explicit GRANT TO authenticated restores access for signed-in users.
 -- ============================================
-REVOKE EXECUTE ON FUNCTION public.create_game(public.game_access, integer, integer, integer, integer, integer, jsonb, boolean) FROM PUBLIC, anon;
-GRANT  EXECUTE ON FUNCTION public.create_game(public.game_access, integer, integer, integer, integer, integer, jsonb, boolean) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.create_game(integer, integer, integer, public.game_access, integer, integer, integer, jsonb, boolean) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.create_game(integer, integer, integer, public.game_access, integer, integer, integer, jsonb, boolean) TO authenticated;
 
 REVOKE EXECUTE ON FUNCTION public.join_game(uuid) FROM PUBLIC, anon;
 GRANT  EXECUTE ON FUNCTION public.join_game(uuid) TO authenticated;

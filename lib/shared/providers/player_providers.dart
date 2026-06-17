@@ -34,6 +34,11 @@ class PlayerInfoCache extends _$PlayerInfoCache {
       ref.watch(storageProvider.future),
       options: const StorageOptions(
         cacheTime: StorageCacheTime.unsafe_forever,
+        // Cache-schema version for the persisted PlayerInfo. Bump when the
+        // model's JSON shape changes breakingly. This cache is intentionally
+        // NOT cleared on sign-out (player identity is public data), so the
+        // destroyKey bump is the only invalidation lever. See
+        // docs/backward-compatibility.md.
         destroyKey: '1',
       ),
     );

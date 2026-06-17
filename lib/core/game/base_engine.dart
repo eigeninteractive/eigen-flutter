@@ -11,10 +11,18 @@
 /// - [TActionData]: The game-specific action payload (JSONB-backed).
 /// - [TConfigData]: The per-instance config payload (JSONB-backed).
 abstract class BaseEngine<TObservationData, TActionData, TConfigData> {
-  BaseEngine(this.config);
+  BaseEngine(this.config, {required this.schemaVersion});
 
   /// Configuration for this game instance.
   final TConfigData config;
+
+  /// The game-type schema version this game was created under
+  /// (`games.schema_version`).
+  ///
+  /// Branch on this in [parseObservation] (and rendering) when the observation
+  /// shape changes across versions, so a game started under an older schema
+  /// keeps parsing correctly. See `docs/backward-compatibility.md`.
+  final int schemaVersion;
 
   /// Parses a raw observation JSON map into the game-specific type.
   ///

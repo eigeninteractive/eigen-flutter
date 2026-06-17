@@ -5,7 +5,10 @@ part 'game.freezed.dart';
 part 'game.g.dart';
 
 /// Access level for a game.
-enum GameAccess { public, private, friends }
+///
+/// [unknown] is a forward-compatibility sentinel for values a newer server may
+/// introduce. See `docs/backward-compatibility.md`.
+enum GameAccess { public, private, friends, unknown }
 
 /// Game metadata from the games table.
 ///
@@ -16,8 +19,8 @@ abstract class Game with _$Game {
   const factory Game({
     required String id,
     String? createdBy,
-    required GameStatus status,
-    required GameAccess access,
+    @JsonKey(unknownEnumValue: GameStatus.unknown) required GameStatus status,
+    @JsonKey(unknownEnumValue: GameAccess.unknown) required GameAccess access,
 
     /// Seconds per turn (per-action timer). Null means untimed or budget mode.
     int? turnSeconds,
@@ -35,6 +38,11 @@ abstract class Game with _$Game {
     /// Maximum players allowed to join.
     required int maxPlayers,
     required Map<String, dynamic> config,
+
+    /// Game-type schema version this game was created under
+    /// (`games.schema_version`, a `NOT NULL` column the server always
+    /// provides). See `docs/backward-compatibility.md`.
+    required int schemaVersion,
     String? shortCode,
 
     /// Whether this game counts toward player skill ratings.

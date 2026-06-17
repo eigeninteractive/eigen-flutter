@@ -17,7 +17,10 @@ backend for weeks, and a `Daily`-timed game can outlive several app releases. So
 every change has to answer: *"what does an old client, and an in-flight game
 started under the old rules, do when they meet the new code?"*
 
-## What exists today (the starting point)
+## The starting point (pre-implementation baseline)
+
+> The state below is what prompted this work; see **Implementation status**
+> at the end for what is now built.
 
 - The only "version" in the system is the **per-game optimistic-lock counter**
   `game_states.version` (mirrored to `observations.version`, passed back as
@@ -48,7 +51,7 @@ architecture they implement against.
 | 2 | **Engine SQL** (infra migrations + the 4 app-owned hooks) | runtime, vs live DBs + installed binaries | expand/contract — [`versioning.md`](versioning.md) |
 | 3 | **Game JSONB** (`games.config`, `game_states.state`, `observations.data`, action `p_data`) | in-flight games | **game schema version** (below) |
 | 4 | **Client caches** (`riverpod.db`, SharedPreferences, image cache) | cold-start decode of stale rows | **`destroyKey` discipline + tolerant decode** (below) |
-| 5 | **Client↔server version** | old client meets new backend | **client-version header + `min_supported_version` gate** (below) |
+| 5 | **Client↔server version** | old client meets new backend | **client-version header + `min_supported_version` gate** (designed below; **deferred** — Android uses Play in-app-update) |
 
 Authority note: the client `BaseEngine.isValidAction` is **UX-only** (it greys
 out illegal taps); the authoritative rule check is the server hook
@@ -60,7 +63,7 @@ out illegal taps); the authoritative rule check is the server hook
 | Axis | Granularity | Where it lives | Who reads it |
 |------|-------------|----------------|--------------|
 | **Engine semver** | per engine release | git tag `vX.Y.Z`, `pubspec.yaml` | build/release |
-| **Game schema version** | per game *type* revision | `games.config.schema` (mirrored into `game_states.state.schema`) | `game_apply_action` (SQL) + the engine's `parseObservation` (Dart) |
+| **Game schema version** | per game *type* revision | `games.schema_version` **column** (threaded to the SQL hooks as `p_schema_version`; on the `Game`/`BaseEngine` model client-side) | `game_apply_action` (SQL) + the engine's `parseObservation` (Dart) |
 | **Cache schema version** | per persisted model | each provider's `destroyKey` | `riverpod_sqflite` on cold start |
 
 Keep these independent. An engine release may touch none, one, or several of the
@@ -72,53 +75,66 @@ A breaking rules/schema change does **not** mutate existing games in place.
 Instead each game is **stamped with the schema version it was created under**,
 and that version is honored for the game's whole life.
 
-**Where it lives.** A `schema` integer in **`games.config`** — set once at
-creation and immutable. `games.config` already flows to the engine
-(`module.createEngine(game.config)`) and is readable by every SQL hook, so it is
-the natural home. Mirror it into each `game_states.state` (the hooks already own
-state shape) so a state row is **self-describing** even without the config row.
-
-```jsonc
-// games.config
-{ "schema": 2, /* game-specific config… */ }
-
-// game_states.state (mirrored)
-{ "schema": 2, "board": [...], "action_count": 7 }
-```
+**Where it lives.** A first-class **`games.schema_version` column**
+(`INT NOT NULL DEFAULT 1`) — set once at creation and immutable. It is kept
+**out of** the opaque `config`/`state`/observation JSONB so those payloads stay
+fully game-owned and the drain query is a plain column scan. The engine threads
+it to the game SQL hooks as an explicit `p_schema_version` parameter, and
+surfaces it to the client on the `Game` model (`required int schemaVersion` —
+the `NOT NULL` column means the server always provides it), which
+`gameEngineProvider` passes into `BaseEngine` (`engine.schemaVersion`).
 
 **How both sides branch.**
 
 ```sql
--- server: private.game_apply_action(state, pending, action, player_index, seed, config)
-CASE (state->>'schema')::int
+-- server: private.game_apply_action(..., p_config, p_schema_version)
+CASE p_schema_version
   WHEN 1 THEN /* original rules (kept until v1 games drain) */
   WHEN 2 THEN /* new rules */
 END
 ```
 
 ```dart
-// client: BaseEngine.parseObservation / engine logic
+// client: BaseEngine.parseObservation, branching on this.schemaVersion
 ObservationData parseObservation(Map<String, dynamic> json) =>
-    switch (json['schema'] as int? ?? 1) {
+    switch (schemaVersion) {
       1 => ObservationDataV1.fromJson(json),
       _ => ObservationData.fromJson(json),
     };
 ```
 
-**Creation always stamps the current version.** `GameModule.creationSpec`'s
-`defaultConfig` seeds it on the client; `private.game_initial_state` writes it
-into the first state row on the server. New games are always created at the
-latest schema.
+**Creation always stamps the current version.** The client sends
+`GameModule.schemaVersion` as `create_game`'s `p_schema_version`, which writes
+`games.schema_version`. New games are always created at the latest schema.
 
-**Retiring an old version.** An old code path is removed only after **both**:
-1. the **drain query** returns zero —
-   `SELECT count(*) FROM games WHERE status='active' AND (config->>'schema')::int < N;`
-   (no active game still runs the old schema), **and**
-2. the **force-update floor** (surface 5) has passed the last app version that
-   could create or render that schema.
+**Retiring an old version — two paths, two lifetimes.** A schema's old code is
+*not* one thing you drop all at once. Split it:
 
-Until then, the old `CASE`/`switch` branch stays. Additive, non-breaking changes
-do **not** bump `schema` — surface 4's decode tolerance absorbs them.
+- **Write path** (`game_apply_action`, `game_handle_system_action` — anything
+  that *advances* state) can be retired once **both**:
+  1. the **drain query** returns zero —
+     `SELECT count(*) FROM games WHERE status='active' AND schema_version < N;`
+     (no active game still runs the old schema), **and**
+  2. the **force-update floor** has passed the last app version that could
+     *create* that schema.
+  Active games are the only thing that ever calls the write path, so once they
+  drain it's dead.
+
+- **Read / projection / render path** (`game_compute_observation` on the server
+  and `BaseEngine.parseObservation` + the game's rendering on the client) must
+  survive **as long as you want to replay games created under that schema** —
+  which is *not* bounded by draining. Finished games' `game_states` rows live in
+  history indefinitely, and `get_replay` re-projects every one of them through
+  `game_compute_observation` at the game's own `schema_version`. So replays of an
+  old finished game remain requestable long after the last *active* old-schema
+  game ended. Retire this path only when you stop supporting replay for that
+  schema (e.g. you archive or purge that history), not on drain.
+
+In short: **draining gates the write path; replay gates the read path, and
+replay outlives draining.**
+
+Additive, non-breaking changes do **not** bump `schema` — surface 4's decode
+tolerance absorbs them.
 
 ## Surface 3b — decode-tolerance rules (the load-bearing client convention)
 
@@ -166,10 +182,18 @@ Discipline:
 - **SharedPreferences reads must default safely** (today `theme_mode`/`total_wins`
   already do). If a key's value shape ever changes, write under a new key rather
   than reinterpreting the old one.
-- **`deleteUserData` gap:** it clears profile + friendships but **not**
-  `PlayerInfoCache`; sign-out leaves stale player identities. Fix in follow-up #3.
+- **`deleteUserData` deliberately does not clear `PlayerInfoCache`.** Player
+  identity is public data, so it survives sign-out by design; the per-provider
+  `destroyKey` is its only invalidation lever (riverpod_sqflite exposes no
+  public prefix-delete). On a shared device a new user could briefly see cached
+  opponent names/avatars — accepted for now.
 
-## Surface 5 — client↔server version negotiation (Android now, iOS/web-ready)
+## Surface 5 — client↔server version negotiation (DESIGN ONLY — deferred)
+
+> **Not built.** While Android-only, Play in-app-update handles forced updates
+> (see Implementation status #4). This section is the blueprint for when the
+> gate is reintroduced (iOS/web, or backend-authoritative contraction).
+
 
 To *contract* old shapes you must know which client versions are still live and
 be able to force the floor up. Today the backend knows neither.
@@ -205,8 +229,10 @@ Unchanged from [`versioning.md`](versioning.md), applied here to game changes:
    keep working.
 2. **Ship** — the new app creates games at the new `schema`; old apps keep
    creating/reading the old one against the same DB.
-3. **Contract** — remove the old `schema` branch / column only after the drain
-   query is zero **and** the force-update floor has retired the old apps.
+3. **Contract** — retire old code per the two-path rule above: the **write
+   path** once the drain query is zero **and** the force-update floor has retired
+   old apps; the **read/projection/render path** only when you stop supporting
+   replay for that schema (it outlives draining — see "Retiring an old version").
 
 Per-app: vendor with `dart run eigen_engine:sync_supabase`, apply per Supabase
 project; migrations are append-only/forward-only (fix forward, never roll back).
@@ -228,33 +254,57 @@ old clients ignore it, new clients default it.
 roll out via expand/contract.
 
 **4. Breaking schema change** (e.g. board shape changes, action format changes).
-Bump `games.config.schema`; add the new branch to the hooks and the engine; new
-games use it; existing games finish on their old branch; remove the old branch
-after drain + floor.
+Bump `GameModule.schemaVersion` (→ `games.schema_version`); add the new branch
+to the hooks and the engine; new
+games use it; existing games finish on their old branch. Retire the old branch
+per the two-path rule: the **write** path after drain + floor, the
+**read/projection** path only when you drop replay support for that schema.
 
-## Follow-up implementation tasks (not built yet)
+## Implementation status (built)
 
-This doc is the design; these are the changes it implies, each to be planned and
-**tested** separately:
+Three of the four foundations are implemented (dev-phase, in-place); the version
+gate (Surface 5) is **designed but deliberately not built** — see below.
 
-1. **Game schema version** — `schema` in `games.config` + the module
-   `defaultConfig`/`game_initial_state` stamping; `CASE`/`switch` scaffolding in
-   `game_apply_action` and `BaseEngine.parseObservation`.
-2. **Decode tolerance** — retrofit `@Default` / `@JsonKey(unknownEnumValue:)`
-   across shipped + persisted models; add an analyzer or test guard so new
-   models can't regress it.
-3. **Cache discipline** — per-provider `destroyKey` convention, decode-failure =
-   cache-miss fallback, and `deleteUserData` also clearing `PlayerInfoCache`.
-4. **Version gate** — `X-Client-Version` header, `min_supported_version` /
-   `soft_min_version` in `app_config`, the `get_client_requirements` RPC, and
-   startup enforcement (Android wired to `UpdateNotifier`; iOS/web stubs).
+1. **Game schema version** — `games.schema_version` column; `create_game` stores
+   it from the client's `GameModule.schemaVersion`; threaded to all four game
+   hooks as `p_schema_version`; surfaced on `Game`/`BaseEngine.schemaVersion`.
+2. **Decode tolerance** — `unknown` sentinel + `@JsonKey(unknownEnumValue:)` on
+   the wire enums (`GameStatus`, `GameAccess`, `OutcomeResult`,
+   `RelationshipStatus`, `ParticipantType`). `Game.schemaVersion` is `required`
+   (dev-phase: the `NOT NULL` column always provides it; no Dart default).
+   Guarded by `test/core/decode_tolerance_test.dart`.
+3. **Cache discipline** — each `@JsonPersist` provider documents its
+   per-provider `destroyKey` bump rule; decode-failure is already a safe
+   cache-miss (riverpod core); `PlayerInfoCache` intentionally survives sign-out.
+4. **Version gate (Surface 5) — DEFERRED, not built.** While targeting
+   **Android only**, forced updates are handled by **Play in-app-update**
+   (immediate priority) via the existing `UpdateNotifier`; the OS flow is a
+   sufficient hard block, so a server-side gate would guard nothing yet. The
+   gate's real value — a backend-authoritative, deterministic answer to "which
+   client versions are still live?" (needed to *contract* old SQL/schema with
+   confidence) and coverage for platforms with no store-forced-update API — only
+   materialises later. The design above is kept as the blueprint.
+
+   **Re-introduce the gate when any of:** (a) iOS or web ships (no Play
+   in-app-update equivalent — the App Store has no forced-update API); (b) you
+   need backend-authoritative enforcement / deterministic "who's live" before a
+   risky contraction, rather than trusting Play Console adoption stats; (c) you
+   want telemetry of live client versions. It would add back: an
+   `X-Client-Version` header on `Supabase.initialize`, `min_supported_build` /
+   `soft_min_build` in `app_config`, a `get_client_requirements` RPC (anon +
+   authenticated), and a startup gate.
+
+Remaining/known limitations: the **force-update floor on Android is
+Play-driven**, not a server gate (see #4 above) — so "is it safe to contract
+old SQL/schema?" is judged from Play Console adoption rather than backend
+telemetry until the gate is reintroduced.
 
 ## Quick checklist — "I want to change the game"
 
 - Does the change alter the **observation/action/config shape**, or make
-  in-flight games inconsistent? → **breaking**: bump `games.config.schema`, add
-  new server + client branches, drain old games, raise the force-update floor
-  before contracting.
+  in-flight games inconsistent? → **breaking**: bump `GameModule.schemaVersion`
+  (→ `games.schema_version`), add new server + client branches, drain old games,
+  raise the force-update floor before contracting.
 - Purely additive (new optional field/feature)? → nullable/`@Default`, **no
   bump**.
 - Server-only rule logic, same shapes, in-flight games stay consistent? → change

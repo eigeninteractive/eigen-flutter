@@ -84,6 +84,26 @@ abstract class GameModule {
   /// interacts with [buildCreationConfig].
   GameCreationSpec get creationSpec;
 
+  /// The latest game-type schema version this build supports.
+  ///
+  /// This is both the version **new** games are created at (stamped onto
+  /// `games.schema_version`) **and** the highest a *loaded* game may have. Older
+  /// games stay supported via the engine's per-version branches; a game whose
+  /// `schema_version` is *higher* was created by a newer build and cannot be
+  /// rendered here — the user must update (see [supportsSchema]).
+  ///
+  /// Bump when shipping a breaking rules/schema change, keeping the old code
+  /// paths until those games drain (write) / stop being replayable (read). See
+  /// `docs/backward-compatibility.md`.
+  ///
+  /// Abstract — the version is game-specific, so the engine assumes no default.
+  /// Each game declares its own (a brand-new game starts at `1`).
+  int get schemaVersion;
+
+  /// Whether this build can load a game created at [version] — i.e. it is not
+  /// newer than [schemaVersion].
+  bool supportsSchema(int version) => version <= schemaVersion;
+
   /// Returns the `(minPlayers, maxPlayers)` pair for the given game config.
   ///
   /// Override when valid player counts depend on a config choice made at
@@ -109,7 +129,9 @@ abstract class GameModule {
   /// Creates (and configures) the engine from raw config JSON.
   ///
   /// Called once per config change by [gameEngineProvider], not per frame.
-  BaseEngine createEngine(Map<String, dynamic> configJson);
+  /// [schemaVersion] is the game's `games.schema_version`; pass it to the engine
+  /// so it can branch [BaseEngine.parseObservation] across schema versions.
+  BaseEngine createEngine(Map<String, dynamic> configJson, int schemaVersion);
 
   /// Renders the in-game content.
   ///
@@ -131,4 +153,25 @@ abstract class GameModule {
   /// About page provides the scroll container, padding and app-level chrome.
   /// Free to be interactive (animated board examples) and to read [Theme.of].
   Widget buildRules(BuildContext context);
+}
+
+/// Thrown when a game's `games.schema_version` exceeds the running build's
+/// [GameModule.schemaVersion] — it was created by a newer app version and can't
+/// be loaded until the user updates. See `docs/backward-compatibility.md`.
+class UnsupportedGameSchemaException implements Exception {
+  const UnsupportedGameSchemaException({
+    required this.gameSchema,
+    required this.supportedSchema,
+  });
+
+  /// The game's `schema_version` (from the server).
+  final int gameSchema;
+
+  /// The highest schema this build supports ([GameModule.schemaVersion]).
+  final int supportedSchema;
+
+  @override
+  String toString() =>
+      'UnsupportedGameSchemaException: game schema $gameSchema exceeds the '
+      'supported $supportedSchema — the app must be updated.';
 }

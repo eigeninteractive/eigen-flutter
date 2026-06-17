@@ -481,7 +481,10 @@ class _GameBody extends StatelessWidget {
           ],
         );
 
+      // An unrecognised status (newer server value) is treated as aborted —
+      // the client can't safely render a state it doesn't understand.
       case GameStatus.aborted:
+      case GameStatus.unknown:
         return const CustomScrollView(
           physics: AlwaysScrollableScrollPhysics(),
           slivers: [
@@ -799,6 +802,56 @@ class _AbortedContent extends StatelessWidget {
   }
 }
 
+/// Shown when a game's schema version exceeds what this build supports — it was
+/// created by a newer app version, so the user must update to view it.
+class _UnsupportedSchemaContent extends StatelessWidget {
+  const _UnsupportedSchemaContent();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.system_update,
+              size: 72,
+              color: colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Update Required',
+              style: textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'This game was created with a newer version of the app. '
+              'Please update to view it.',
+              style: textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 32),
+            OutlinedButton.icon(
+              onPressed: () => context.go('/home'),
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('Back to Home'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// The active/finished game board and status.
 ///
 /// Uses [currentGameModuleProvider] to render game-specific content, keeping
@@ -823,7 +876,15 @@ class _ActiveGameContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final engine = ref.watch(gameEngineProvider(gameId: game.id)).value;
+    // gameEngineProvider (engine/data layer) is the single authority on whether
+    // this build can load the game; here we only render its verdict. A game from
+    // a newer build surfaces as UnsupportedGameSchemaException.
+    final engineAsync = ref.watch(gameEngineProvider(gameId: game.id));
+    if (engineAsync.error is UnsupportedGameSchemaException) {
+      return const _UnsupportedSchemaContent();
+    }
+
+    final engine = engineAsync.value;
     final frame = ref.watch(gameFrameProvider(gameId: game.id));
     final gamePlayersAsync = ref.watch(gamePlayersProvider(gameId: game.id));
 

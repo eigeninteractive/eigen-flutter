@@ -30,7 +30,14 @@ GameModule currentGameModule(Ref ref) => throw UnimplementedError(
 Future<BaseEngine> gameEngine(Ref ref, {required String gameId}) async {
   final module = ref.watch(currentGameModuleProvider);
   final game = await ref.read(gameStreamProvider(gameId: gameId).future);
-  return module.createEngine(game.config);
+  if (!module.supportsSchema(game.schemaVersion)) {
+    // Created by a newer build — refuse rather than mis-parse with old code.
+    throw UnsupportedGameSchemaException(
+      gameSchema: game.schemaVersion,
+      supportedSchema: module.schemaVersion,
+    );
+  }
+  return module.createEngine(game.config, game.schemaVersion);
 }
 
 /// Memoizes [BaseEngine.parseObservation] so it only runs when the raw

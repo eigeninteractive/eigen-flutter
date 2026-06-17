@@ -249,8 +249,9 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
             incrementSeconds: incrementSeconds,
             minPlayers: _minPlayers,
             maxPlayers: _maxPlayers,
-            config: _gameConfig.isEmpty ? null : _gameConfig,
+            config: _gameConfig,
             ratedPreference: _rated,
+            schemaVersion: ref.read(currentGameModuleProvider).schemaVersion,
           );
       ref
           .read(analyticsServiceProvider)

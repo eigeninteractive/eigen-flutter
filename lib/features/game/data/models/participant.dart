@@ -15,6 +15,7 @@ abstract class Participant with _$Participant {
     String? userId,
     String? botId,
     required int playerIndex,
+    @JsonKey(unknownEnumValue: ParticipantType.unknown)
     required ParticipantType type,
     required DateTime createdAt,
   }) = _Participant;

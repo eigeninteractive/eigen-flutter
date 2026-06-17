@@ -11,6 +11,7 @@ extension GameStatusUI on GameStatus {
     GameStatus.active => colorScheme.primary,
     GameStatus.finished => colorScheme.outline,
     GameStatus.aborted => colorScheme.error,
+    GameStatus.unknown => colorScheme.outline,
   };
 
   /// Returns the icon associated with this status.
@@ -20,6 +21,7 @@ extension GameStatusUI on GameStatus {
     GameStatus.active => Icons.sports_esports,
     GameStatus.finished => Icons.emoji_events,
     GameStatus.aborted => Icons.cancel_outlined,
+    GameStatus.unknown => Icons.help_outline,
   };
 }
 
@@ -34,6 +36,7 @@ extension OutcomeResultUI on OutcomeResult? {
     OutcomeResult.loss => Icons.close,
     OutcomeResult.draw => Icons.handshake_outlined,
     OutcomeResult.eliminated => Icons.remove_circle_outline,
+    OutcomeResult.unknown => Icons.help_outline,
     null => Icons.cancel_outlined,
   };
 
@@ -43,6 +46,7 @@ extension OutcomeResultUI on OutcomeResult? {
     OutcomeResult.loss => colorScheme.error,
     OutcomeResult.draw => colorScheme.tertiary,
     OutcomeResult.eliminated => colorScheme.error,
+    OutcomeResult.unknown => colorScheme.outline,
     null => colorScheme.outline,
   };
 
@@ -52,6 +56,7 @@ extension OutcomeResultUI on OutcomeResult? {
     OutcomeResult.loss => 'Lost',
     OutcomeResult.draw => 'Draw',
     OutcomeResult.eliminated => 'Eliminated',
+    OutcomeResult.unknown => 'Unknown',
     null => 'Aborted',
   };
 }

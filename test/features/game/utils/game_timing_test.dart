@@ -16,6 +16,7 @@ Game _game({int? turnSeconds, int? budgetSeconds, int? incrementSeconds}) =>
       minPlayers: 2,
       maxPlayers: 2,
       config: const {},
+      schemaVersion: 1,
       rated: false,
       createdAt: DateTime.utc(2026),
       updatedAt: DateTime.utc(2026),

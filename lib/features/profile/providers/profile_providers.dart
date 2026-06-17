@@ -51,6 +51,11 @@ class CurrentUserProfile extends _$CurrentUserProfile {
       key: profileCacheKey(user.id),
       options: const StorageOptions(
         cacheTime: StorageCacheTime.unsafe_forever,
+        // Cache-schema version for the persisted UserProfile. Bump when this
+        // model's JSON shape changes breakingly — stale rows are then discarded
+        // on next launch (a decode failure is already a safe cache-miss). It is
+        // per-provider, so bumping it doesn't disturb other caches. See
+        // docs/backward-compatibility.md.
         destroyKey: '1',
       ),
     );

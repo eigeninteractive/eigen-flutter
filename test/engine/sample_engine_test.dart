@@ -58,4 +58,16 @@ void main() {
     });
     check(obs.board).deepEquals([0, null, 1]);
   });
+
+  group('GameModule.supportsSchema', () {
+    const module = SampleModule(); // schemaVersion == 1
+
+    test('accepts its own and older schema versions', () {
+      check(module.supportsSchema(1)).isTrue();
+    });
+
+    test('rejects a newer schema version (created by a newer build)', () {
+      check(module.supportsSchema(2)).isFalse();
+    });
+  });
 }

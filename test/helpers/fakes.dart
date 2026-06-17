@@ -32,7 +32,7 @@ class SampleConfig {
 /// action-legality logic that a game package can unit-test in isolation.
 class SampleEngine
     extends BaseEngine<SampleObservation, SampleAction, SampleConfig> {
-  SampleEngine([super.config = const SampleConfig()]);
+  SampleEngine({super.schemaVersion = 1}) : super(const SampleConfig());
 
   @override
   SampleObservation parseObservation(Map<String, dynamic> json) =>
@@ -56,6 +56,9 @@ class SampleModule extends GameModule {
   const SampleModule();
 
   @override
+  int get schemaVersion => 1;
+
+  @override
   GameCreationSpec get creationSpec =>
       const GameCreationSpec(minPlayers: 2, maxPlayers: 2);
 
@@ -65,7 +68,8 @@ class SampleModule extends GameModule {
   }) => null;
 
   @override
-  BaseEngine createEngine(Map<String, dynamic> configJson) => SampleEngine();
+  BaseEngine createEngine(Map<String, dynamic> configJson, int schemaVersion) =>
+      SampleEngine();
 
   @override
   Widget buildContent(GameContentContext context) => const SizedBox.shrink();

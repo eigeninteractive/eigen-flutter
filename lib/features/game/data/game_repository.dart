@@ -35,8 +35,9 @@ class GameRepository {
     int? incrementSeconds,
     required int minPlayers,
     required int maxPlayers,
-    Map<String, dynamic>? config,
+    Map<String, dynamic> config = const {},
     bool ratedPreference = true,
+    required int schemaVersion,
   }) async {
     final result = await _client.rpc(
       'create_game',
@@ -49,6 +50,7 @@ class GameRepository {
         'p_max_players': maxPlayers,
         'p_config': config,
         'p_rated_preference': ratedPreference,
+        'p_schema_version': schemaVersion,
       },
     );
     return result as String;

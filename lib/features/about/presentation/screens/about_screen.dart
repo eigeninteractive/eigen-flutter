@@ -26,10 +26,7 @@ class AboutScreen extends ConsumerWidget {
         const _SectionHeader(title: 'How to Play'),
         Card(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: rules,
-          ),
+          child: Padding(padding: const EdgeInsets.all(16), child: rules),
         ),
         const SizedBox(height: 16),
         const _SectionHeader(title: 'About'),
