@@ -58,22 +58,43 @@ class GameRepository {
 
   /// Joins a game via RPC.
   ///
+  /// [clientSchemaVersion] is the running build's highest supported game schema
+  /// ([GameModule.schemaVersion]); the server refuses to seat the caller in a
+  /// game whose `schema_version` exceeds it, so the client never becomes a
+  /// participant in a game it cannot render.
+  ///
   /// Returns the participant ID.
-  Future<String> joinGame(String gameId) async {
+  Future<String> joinGame(
+    String gameId, {
+    required int clientSchemaVersion,
+  }) async {
     final result = await _client.rpc(
       'join_game',
-      params: {'p_game_id': gameId},
+      params: {
+        'p_game_id': gameId,
+        'p_client_schema_version': clientSchemaVersion,
+      },
     );
     return result as String;
   }
 
   /// Joins a game by short code via RPC.
   ///
+  /// [clientSchemaVersion] gates the join exactly as in [joinGame] — the
+  /// by-code and deep-link paths cannot inspect the game before joining, so the
+  /// server enforces the schema check before seating the caller.
+  ///
   /// Returns the game ID.
-  Future<String> joinGameByCode(String code) async {
+  Future<String> joinGameByCode(
+    String code, {
+    required int clientSchemaVersion,
+  }) async {
     final result = await _client.rpc(
       'join_game_by_code',
-      params: {'p_code': code},
+      params: {
+        'p_code': code,
+        'p_client_schema_version': clientSchemaVersion,
+      },
     );
     return result as String;
   }

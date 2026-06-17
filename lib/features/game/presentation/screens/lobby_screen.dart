@@ -234,6 +234,12 @@ class _GameCardState extends ConsumerState<_GameCard> {
     final currentUser = ref.watch(currentUserProvider);
     final isOwner = widget.game.createdBy == currentUser?.id;
     final canNavigate = isOwner || widget.isParticipant;
+    // A game created by a newer build cannot be rendered by this client; refuse
+    // to join (and thus seat) it. The server enforces the same check, but
+    // disabling the button gives immediate feedback instead of a failed tap.
+    final supported = ref
+        .watch(currentGameModuleProvider)
+        .supportsSchema(widget.game.schemaVersion);
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
     final playerCount = widget.participants.length;
@@ -317,7 +323,12 @@ class _GameCardState extends ConsumerState<_GameCard> {
                 ),
                 child: const Text('View'),
               )
-            : FilledButton(onPressed: _joinGame, child: const Text('Join')),
+            : supported
+            ? FilledButton(onPressed: _joinGame, child: const Text('Join'))
+            : const FilledButton(
+                onPressed: null,
+                child: Text('Update to join'),
+              ),
       ),
     );
   }
@@ -325,7 +336,14 @@ class _GameCardState extends ConsumerState<_GameCard> {
   Future<void> _joinGame() async {
     setState(() => _isLoading = true);
     try {
-      await ref.read(gameRepositoryProvider).joinGame(widget.game.id);
+      await ref
+          .read(gameRepositoryProvider)
+          .joinGame(
+            widget.game.id,
+            clientSchemaVersion: ref
+                .read(currentGameModuleProvider)
+                .schemaVersion,
+          );
       if (!mounted) return;
       setState(() => _isLoading = false);
       await context.pushNamed(

@@ -131,7 +131,8 @@ abstract class GameConfigData with _$GameConfigData {
 > fields nullable or `@Default(...)` and give enums
 > `@JsonKey(unknownEnumValue: …)`; a change that alters a field's meaning or the
 > board/action shape is breaking and needs a `schema` bump on the game type, not
-> an in-place edit. See [`backward-compatibility.md`](backward-compatibility.md).
+> an in-place edit. See [`engine_architecture.md`](engine_architecture.md) §24
+(Backward Compatibility).
 
 ---
 

@@ -54,8 +54,7 @@ class CurrentUserProfile extends _$CurrentUserProfile {
         // Cache-schema version for the persisted UserProfile. Bump when this
         // model's JSON shape changes breakingly — stale rows are then discarded
         // on next launch (a decode failure is already a safe cache-miss). It is
-        // per-provider, so bumping it doesn't disturb other caches. See
-        // docs/backward-compatibility.md.
+        // per-provider, so bumping it doesn't disturb other caches.
         destroyKey: '1',
       ),
     );

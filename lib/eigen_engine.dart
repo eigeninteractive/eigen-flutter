@@ -18,5 +18,5 @@ export 'core/game/game_player.dart';
 export 'core/game/game_status.dart';
 export 'core/game/players_context.dart';
 export 'core/game/timing_context.dart';
-export 'features/game/providers/game_frame_provider.dart'
+export 'features/game/providers/game_providers.dart'
     show currentGameModuleProvider;

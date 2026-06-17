@@ -4,7 +4,7 @@ part 'friendship.freezed.dart';
 part 'friendship.g.dart';
 
 /// [unknown] is a forward-compatibility sentinel for values a newer server may
-/// introduce. See `docs/backward-compatibility.md`.
+/// introduce.
 enum RelationshipStatus { pending, accepted, blocked, unknown }
 
 /// A relationship record from `friends_view`.

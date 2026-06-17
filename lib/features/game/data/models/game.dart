@@ -7,7 +7,7 @@ part 'game.g.dart';
 /// Access level for a game.
 ///
 /// [unknown] is a forward-compatibility sentinel for values a newer server may
-/// introduce. See `docs/backward-compatibility.md`.
+/// introduce.
 enum GameAccess { public, private, friends, unknown }
 
 /// Game metadata from the games table.
@@ -41,7 +41,7 @@ abstract class Game with _$Game {
 
     /// Game-type schema version this game was created under
     /// (`games.schema_version`, a `NOT NULL` column the server always
-    /// provides). See `docs/backward-compatibility.md`.
+    /// provides).
     required int schemaVersion,
     String? shortCode,
 

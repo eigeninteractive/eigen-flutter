@@ -6,7 +6,7 @@ part 'game_outcome.g.dart';
 /// Result for one participant in a completed game.
 ///
 /// [unknown] is a forward-compatibility sentinel for values a newer server may
-/// introduce. See `docs/backward-compatibility.md`.
+/// introduce.
 enum OutcomeResult { win, loss, draw, eliminated, unknown }
 
 /// One participant's outcome from the [game_outcomes] table.

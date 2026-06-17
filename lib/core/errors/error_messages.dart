@@ -25,6 +25,9 @@ String humanize(Object e) {
   if (s.contains('Game not found')) {
     return 'Game not found. Check the code and try again.';
   }
+  if (s.contains('Unsupported game schema')) {
+    return 'Update your app to join this game.';
+  }
   if (s.contains('Game is not active')) return 'This game has already ended.';
   if (s.contains('Not a participant')) return "You're not in this game.";
   if (s.contains('Username already taken')) {

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:eigen_engine/core/config/app_config.dart';
 import 'package:eigen_engine/core/utils/package_info_provider.dart';
-import 'package:eigen_engine/features/game/providers/game_frame_provider.dart';
+import 'package:eigen_engine/features/game/providers/game_providers.dart';
 
 /// About page: app identity, the active game's rules, and version/credit.
 ///

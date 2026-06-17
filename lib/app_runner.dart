@@ -13,7 +13,7 @@ import 'package:eigen_engine/core/navigation/providers/navigation_providers.dart
 import 'package:eigen_engine/core/startup/app_startup.dart';
 import 'package:eigen_engine/core/theme/app_theme.dart';
 import 'package:eigen_engine/core/theme/theme_provider.dart';
-import 'package:eigen_engine/features/game/providers/game_frame_provider.dart';
+import 'package:eigen_engine/features/game/providers/game_providers.dart';
 
 /// Boots a whitelabel game app on the engine.
 ///

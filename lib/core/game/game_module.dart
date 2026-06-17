@@ -93,8 +93,7 @@ abstract class GameModule {
   /// rendered here — the user must update (see [supportsSchema]).
   ///
   /// Bump when shipping a breaking rules/schema change, keeping the old code
-  /// paths until those games drain (write) / stop being replayable (read). See
-  /// `docs/backward-compatibility.md`.
+  /// paths until those games drain (write) / stop being replayable (read).
   ///
   /// Abstract — the version is game-specific, so the engine assumes no default.
   /// Each game declares its own (a brand-new game starts at `1`).
@@ -157,7 +156,7 @@ abstract class GameModule {
 
 /// Thrown when a game's `games.schema_version` exceeds the running build's
 /// [GameModule.schemaVersion] — it was created by a newer app version and can't
-/// be loaded until the user updates. See `docs/backward-compatibility.md`.
+/// be loaded until the user updates.
 class UnsupportedGameSchemaException implements Exception {
   const UnsupportedGameSchemaException({
     required this.gameSchema,

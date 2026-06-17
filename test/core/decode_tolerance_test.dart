@@ -9,8 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// Forward-compatibility: a build must tolerate JSON from a newer backend —
 /// unknown enum values decode to a sentinel, unknown fields are ignored, and
-/// newly-added fields fall back to their `@Default`. See
-/// docs/backward-compatibility.md.
+/// newly-added fields fall back to their `@Default`.
 void main() {
   const iso = '2026-06-15T10:30:00.000Z';
 

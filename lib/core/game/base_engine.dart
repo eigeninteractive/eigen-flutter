@@ -21,7 +21,7 @@ abstract class BaseEngine<TObservationData, TActionData, TConfigData> {
   ///
   /// Branch on this in [parseObservation] (and rendering) when the observation
   /// shape changes across versions, so a game started under an older schema
-  /// keeps parsing correctly. See `docs/backward-compatibility.md`.
+  /// keeps parsing correctly.
   final int schemaVersion;
 
   /// Parses a raw observation JSON map into the game-specific type.

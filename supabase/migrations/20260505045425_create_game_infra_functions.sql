@@ -421,7 +421,19 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 -- RPC: join_game
 -- Adds participant; transitions to 'ready' when player count is met.
 -- ============================================
-CREATE OR REPLACE FUNCTION public.join_game(p_game_id UUID)
+-- p_client_schema_version: the joining client's highest supported game schema
+-- (GameModule.schemaVersion). Required, not defaulted: the server refuses to seat
+-- a player in a game whose schema_version exceeds it, so a client never becomes a
+-- participant in a game it cannot render. Omitting it fails function resolution
+-- rather than silently skipping the gate — there is no caller that joins without a
+-- known schema (every app build ships exactly one GameModule, and bots are seated
+-- directly elsewhere, not via join_game). This is the only schema gate covering
+-- all join paths (lobby, friends, by-code, deep link) atomically, since it runs
+-- under the same FOR UPDATE lock as the seat INSERT.
+CREATE OR REPLACE FUNCTION public.join_game(
+  p_game_id               UUID,
+  p_client_schema_version INT
+)
 RETURNS UUID AS $$
 DECLARE
   v_participant_id    UUID;
@@ -431,6 +443,7 @@ DECLARE
   v_created_by        UUID;
   v_min_players       INT;
   v_max_players       INT;
+  v_schema_version    INT;
   v_participant_count INT;
 BEGIN
   v_user_id := private.require_auth();
@@ -439,13 +452,19 @@ BEGIN
   -- Without FOR UPDATE a concurrent start_game could commit (status='active')
   -- between this read and the participant INSERT, leaving a participant with
   -- no observation row.
-  SELECT status, access, created_by, min_players, max_players
-  INTO v_game_status, v_access, v_created_by, v_min_players, v_max_players
+  SELECT status, access, created_by, min_players, max_players, schema_version
+  INTO v_game_status, v_access, v_created_by, v_min_players, v_max_players,
+       v_schema_version
   FROM public.games WHERE id = p_game_id
   FOR UPDATE;
 
   IF v_game_status IS NULL THEN
     RAISE EXCEPTION 'Game not found';
+  END IF;
+
+  IF v_schema_version > p_client_schema_version THEN
+    RAISE EXCEPTION 'Unsupported game schema: game requires schema %, client supports up to %',
+      v_schema_version, p_client_schema_version;
   END IF;
 
   IF v_game_status NOT IN ('waiting', 'ready') THEN
@@ -991,6 +1010,7 @@ RETURNS TABLE(
   min_players       INT,
   max_players       INT,
   config            JSONB,
+  schema_version    INT,
   rated             BOOLEAN,
   rating_pool       TEXT,
   created_at        TIMESTAMPTZ,
@@ -1010,6 +1030,7 @@ RETURNS TABLE(
     g.min_players,
     g.max_players,
     g.config,
+    g.schema_version,
     g.rated,
     g.rating_pool,
     g.created_at,
@@ -1415,7 +1436,10 @@ $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '';
 -- Game joining / discovery extensions
 -- ============================================
 
-CREATE OR REPLACE FUNCTION public.join_game_by_code(p_code VARCHAR)
+CREATE OR REPLACE FUNCTION public.join_game_by_code(
+  p_code                  VARCHAR,
+  p_client_schema_version INT
+)
 RETURNS UUID AS $$
 DECLARE
   v_game_id UUID;
@@ -1425,9 +1449,10 @@ BEGIN
   IF v_game_id IS NULL THEN
     RAISE EXCEPTION 'Game not found';
   END IF;
-  
-  -- Delegate to standard join_game
-  RETURN public.join_game(v_game_id);
+
+  -- Delegate to standard join_game, forwarding the schema gate so a by-code or
+  -- deep-link join is rejected before seating just like a lobby join.
+  RETURN public.join_game(v_game_id, p_client_schema_version);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
@@ -1446,6 +1471,7 @@ RETURNS TABLE(
   min_players       INT,
   max_players       INT,
   config            JSONB,
+  schema_version    INT,
   rated             BOOLEAN,
   rating_pool       TEXT,
   created_at        TIMESTAMPTZ,
@@ -1470,6 +1496,7 @@ BEGIN
     g.min_players,
     g.max_players,
     g.config,
+    g.schema_version,
     g.rated,
     g.rating_pool,
     g.created_at,
@@ -1519,8 +1546,8 @@ $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '';
 REVOKE EXECUTE ON FUNCTION public.create_game(integer, integer, integer, public.game_access, integer, integer, integer, jsonb, boolean) FROM PUBLIC, anon;
 GRANT  EXECUTE ON FUNCTION public.create_game(integer, integer, integer, public.game_access, integer, integer, integer, jsonb, boolean) TO authenticated;
 
-REVOKE EXECUTE ON FUNCTION public.join_game(uuid) FROM PUBLIC, anon;
-GRANT  EXECUTE ON FUNCTION public.join_game(uuid) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.join_game(uuid, integer) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.join_game(uuid, integer) TO authenticated;
 
 REVOKE EXECUTE ON FUNCTION public.start_game(uuid) FROM PUBLIC, anon;
 GRANT  EXECUTE ON FUNCTION public.start_game(uuid) TO authenticated;
@@ -1561,5 +1588,5 @@ GRANT  EXECUTE ON FUNCTION public.remove_friend(uuid) TO authenticated;
 REVOKE EXECUTE ON FUNCTION public.search_users(text) FROM PUBLIC, anon;
 GRANT  EXECUTE ON FUNCTION public.search_users(text) TO authenticated;
 
-REVOKE EXECUTE ON FUNCTION public.join_game_by_code(varchar) FROM PUBLIC, anon;
-GRANT  EXECUTE ON FUNCTION public.join_game_by_code(varchar) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.join_game_by_code(varchar, integer) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.join_game_by_code(varchar, integer) TO authenticated;

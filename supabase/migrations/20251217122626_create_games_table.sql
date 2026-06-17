@@ -42,7 +42,7 @@ CREATE TABLE public.games (
   -- GameModule.schemaVersion; immutable per game. The game hooks branch on it so a
   -- breaking rules/state change ships as a new version while existing games keep
   -- running under the version they were created with. Game-specific — no default;
-  -- create_game requires it. See docs/backward-compatibility.md.
+  -- create_game requires it. See docs/engine_architecture.md §24 (Backward Compatibility).
   schema_version INT NOT NULL,
   short_code VARCHAR(6) UNIQUE NOT NULL,
   -- Whether this game counts toward player skill ratings.

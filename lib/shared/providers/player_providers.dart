@@ -37,8 +37,7 @@ class PlayerInfoCache extends _$PlayerInfoCache {
         // Cache-schema version for the persisted PlayerInfo. Bump when the
         // model's JSON shape changes breakingly. This cache is intentionally
         // NOT cleared on sign-out (player identity is public data), so the
-        // destroyKey bump is the only invalidation lever. See
-        // docs/backward-compatibility.md.
+        // destroyKey bump is the only invalidation lever.
         destroyKey: '1',
       ),
     );

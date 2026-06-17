@@ -35,8 +35,7 @@ class Friendships extends _$Friendships {
       options: const StorageOptions(
         cacheTime: StorageCacheTime.unsafe_forever,
         // Cache-schema version for the persisted Friendship list. Bump when the
-        // model's JSON shape changes breakingly. Per-provider; see
-        // docs/backward-compatibility.md.
+        // model's JSON shape changes breakingly. Per-provider
         destroyKey: '1',
       ),
     );

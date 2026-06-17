@@ -6,7 +6,6 @@ import 'package:eigen_engine/core/errors/error_messages.dart';
 import 'package:eigen_engine/core/game/game_creation_spec.dart';
 import 'package:eigen_engine/features/game/data/models/game.dart';
 import 'package:eigen_engine/features/game/providers/game_providers.dart';
-import 'package:eigen_engine/features/game/providers/game_frame_provider.dart';
 
 /// Dialog for creating a new game.
 ///

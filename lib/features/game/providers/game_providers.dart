@@ -1,5 +1,6 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import 'package:eigen_engine/core/game/game_module.dart';
 import 'package:eigen_engine/core/game/game_player.dart';
 import 'package:eigen_engine/core/game/game_outcome.dart';
 import 'package:eigen_engine/core/game/players_context.dart';
@@ -18,6 +19,19 @@ GameRepository gameRepository(Ref ref) {
   final supabase = ref.watch(supabaseClientProvider);
   return GameRepository(supabase);
 }
+
+/// The active [GameModule].
+///
+/// Override in [ProviderScope] via:
+/// ```dart
+/// currentGameModuleProvider.overrideWithValue(const TicTacToeModule())
+/// ```
+/// Throws [UnimplementedError] at startup if no override is provided.
+@Riverpod(keepAlive: true)
+GameModule currentGameModule(Ref ref) => throw UnimplementedError(
+  'No GameModule registered. '
+  'Add currentGameModuleProvider.overrideWithValue(...) to ProviderScope.',
+);
 
 /// Provider for the current user's active games with the structural data
 /// needed to derive turn info in the UI.
@@ -154,7 +168,10 @@ PlayerInfo _deletedPlayerInfo(String gameId, int playerIndex) => PlayerInfo(
 /// directly, so navigation happens exactly once.
 @riverpod
 Future<String> joinByCode(Ref ref, {required String code}) =>
-    ref.read(gameRepositoryProvider).joinGameByCode(code);
+    ref.read(gameRepositoryProvider).joinGameByCode(
+      code,
+      clientSchemaVersion: ref.read(currentGameModuleProvider).schemaVersion,
+    );
 
 /// One-time fetch of game outcomes for a finished game.
 ///

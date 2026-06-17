@@ -6,7 +6,7 @@ import 'package:eigen_engine/core/config/app_config.dart';
 import 'package:eigen_engine/core/game/game_module.dart';
 import 'package:eigen_engine/core/utils/package_info_provider.dart';
 import 'package:eigen_engine/features/about/presentation/screens/about_screen.dart';
-import 'package:eigen_engine/features/game/providers/game_frame_provider.dart';
+import 'package:eigen_engine/features/game/providers/game_providers.dart';
 
 import '../../helpers/fakes.dart';
 

@@ -422,8 +422,8 @@ Called once per participant by `update_all_observations` and `start_game`. Also 
 | RPC | Caller | Purpose |
 |-----|--------|---------|
 | `create_game(access, turn_seconds, budget_seconds, increment_seconds, min_players, max_players, config, rated_preference)` | Client | Creates the `games` row with a unique `short_code` (retry loop on collision) and adds the creator as participant 0. Validates timing exclusivity and player count range. Calls `private.game_rating_pool()` to derive `rated` and `rating_pool` server-side; `rated_preference` is overridden to false if the hook returns `NULL`. |
-| `join_game(game_id)` | Client | Adds a participant; rejects if already at `max_players`; transitions to `ready` when count ≥ `min_players`. For `friends` access games, validates that the caller is an accepted friend of the game creator via `relationships`. |
-| `join_game_by_code(code)` | Client | Looks up a game by `short_code`, then delegates to `join_game`. Returns the game ID. Raises if not found. |
+| `join_game(game_id, client_schema_version)` | Client | Adds a participant; rejects if already at `max_players`; transitions to `ready` when count ≥ `min_players`. For `friends` access games, validates that the caller is an accepted friend of the game creator via `relationships`. Refuses to seat the caller when `games.schema_version` exceeds the client's `client_schema_version` (the build's `GameModule.schemaVersion`), under the same `FOR UPDATE` lock — so a client never becomes a participant in a game it cannot render. The parameter is required (not defaulted): omitting it fails rather than silently skipping the gate. See §24. |
+| `join_game_by_code(code, client_schema_version)` | Client | Looks up a game by `short_code`, then delegates to `join_game` (forwarding the schema gate, since the by-code/deep-link paths cannot inspect the game client-side before joining). Returns the game ID. Raises if not found. |
 | `leave_game(game_id)` | Client (non-creator) | Removes the calling participant from a `waiting` or `ready` game. Transitions game back to `waiting` if count drops below `min_players`. Creator cannot leave — they must cancel instead. |
 | `start_game(game_id)` | Client (host) | Calls `game_initial_state`, creates `game_states` and per-player `observations` rows (via `game_compute_observation`), initialises `player_times` if budget mode, sets `turn_started_at`, marks game `active`. |
 | `cancel_game(game_id)` | Client (host) | Aborts a `waiting` or `ready` game. Sets `games.status = 'aborted'`. |
@@ -2470,3 +2470,219 @@ dependencies:
 ```
 
 `riverpod_sqflite` provides `JsonSqFliteStorage`. `sqflite` and `path` are direct dependencies because `storage_provider.dart` imports them directly (`depend_on_referenced_packages` lint).
+
+---
+
+## 24. Backward Compatibility — evolving the game without breaking shipped apps
+
+This is the companion to [`versioning.md`](versioning.md). That doc covers the
+**engine Dart API** and **engine SQL** contracts (semver, expand/contract, the
+release/rollout flow). This section covers what bites once a *game* is in real
+users' hands and you want to change a rule or add a feature: the **game JSONB
+payloads** (config / state / observation / action), the **client caches**, and
+the **client↔server version negotiation** that bounds how long old clients must
+be supported.
+
+The guiding fact: once an app ships, client and server **no longer move
+together**. Mobile update lag means a `v(n)` binary keeps calling a newer backend
+for weeks, and a `Daily`-timed game can outlive several app releases. Every change
+must answer: *"what does an old client, and an in-flight game started under the
+old rules, do when they meet the new code?"*
+
+### Three version axes (keep independent)
+
+| Axis | Granularity | Where it lives | Who reads it |
+|------|-------------|----------------|--------------|
+| **Engine semver** | per engine release | git tag `vX.Y.Z`, `pubspec.yaml` | build/release |
+| **Game schema version** | per game *type* revision | `games.schema_version` column (threaded to the SQL hooks as `p_schema_version`; on `Game`/`BaseEngine` client-side) | `game_apply_action` (SQL) + `BaseEngine.parseObservation` (Dart) |
+| **Cache schema version** | per persisted model | each provider's `destroyKey` | `riverpod_sqflite` on cold start |
+
+An engine release may touch none, one, or several of these.
+
+### The five compatibility surfaces
+
+| # | Surface | Breaks when | Mechanism |
+|---|---------|-------------|-----------|
+| 1 | **Engine Dart API** (barrel, `runEngineApp`, `GameModule`/`BaseEngine`) | compile time | engine semver — [`versioning.md`](versioning.md) |
+| 2 | **Engine SQL** (infra migrations + the app-owned hooks) | runtime, vs live DBs + installed binaries | expand/contract — [`versioning.md`](versioning.md) |
+| 3 | **Game JSONB** (`games.config`, `game_states.state`, `observations.data`, action `p_data`) | in-flight games | **game schema version** (below) |
+| 4 | **Client caches** (`riverpod.db`, SharedPreferences, image cache) | cold-start decode of stale rows | **`destroyKey` discipline + tolerant decode** (below) |
+| 5 | **Client↔server version** | old client meets new backend | **client-version header + `min_supported_version` gate** (designed; **deferred** — Android uses Play in-app-update) |
+
+**Authority note.** The client `BaseEngine.isValidAction` is **UX-only** (it greys
+out illegal taps); the authoritative rule check is the server hook
+`game_apply_action`. This is what lets many rule changes ship **server-side
+only** (see the decision checklist).
+
+### Surface 3 — game schema version (version the game *type*)
+
+A breaking rules/schema change does **not** mutate existing games in place.
+Instead each game is **stamped with the schema version it was created under**, and
+that version is honored for the game's whole life.
+
+**Where it lives.** A first-class **`games.schema_version` column**
+(`INT NOT NULL DEFAULT 1`) — set once at creation (from the client's
+`GameModule.schemaVersion`, written by `create_game`) and immutable. It is kept
+**out of** the opaque `config`/`state`/observation JSONB so those payloads stay
+game-owned and the drain query is a plain column scan. The engine threads it to
+all game SQL hooks as an explicit `p_schema_version` parameter, and surfaces it on
+the `Game` model (`required int schemaVersion` — the `NOT NULL` column always
+provides it) and on `BaseEngine.schemaVersion`.
+
+**Client gating.** `gameEngineProvider` reads the game's `schemaVersion` and calls
+`GameModule.supportsSchema(version)` (`version <= schemaVersion`). A game created
+by a *newer* build raises `UnsupportedGameSchemaException` rather than mis-parsing
+with old code; otherwise it builds the engine stamped at the game's version.
+
+**How both sides branch.**
+
+```sql
+-- server: game_apply_action(..., p_config, p_schema_version)
+CASE p_schema_version
+  WHEN 1 THEN /* original rules (kept until v1 games drain) */
+  WHEN 2 THEN /* new rules */
+END
+```
+
+```dart
+// client: BaseEngine.parseObservation, branching on this.schemaVersion
+ObservationData parseObservation(Map<String, dynamic> json) =>
+    switch (schemaVersion) {
+      1 => ObservationDataV1.fromJson(json),
+      _ => ObservationData.fromJson(json),
+    };
+```
+
+**Retiring an old version — two paths, two lifetimes.** Old code splits in two:
+
+- **Write path** (`game_apply_action`, `game_handle_system_action` — anything that
+  *advances* state) can be retired once **both**: (1) the **drain query** returns
+  zero — `SELECT count(*) FROM games WHERE status='active' AND schema_version < N;`
+  — and (2) the **force-update floor** has passed the last app version that could
+  *create* that schema. Active games are the only callers of the write path, so
+  once they drain it is dead.
+- **Read / projection / render path** (`game_compute_observation` on the server,
+  `BaseEngine.parseObservation` + rendering on the client) must survive **as long
+  as you want to replay games created under that schema** — *not* bounded by
+  draining. `get_replay` re-projects every historical `game_states` row through
+  `game_compute_observation` at the game's own `schema_version`, so replays of an
+  old finished game stay requestable long after the last active old-schema game
+  ended. Retire this path only when you drop replay support for that schema.
+
+In short: **draining gates the write path; replay gates the read path, and replay
+outlives draining.** Additive, non-breaking changes do **not** bump the schema —
+Surface 3b's decode tolerance absorbs them.
+
+### Surface 3b — decode-tolerance rules (the load-bearing client convention)
+
+Within a single schema version, evolution must be **forward- and
+backward-tolerant**: an old client may receive new-shaped JSON, and a new client
+may read old-shaped JSON (and old cached rows).
+
+- **New fields must be nullable or `@Default(...)`.** Never add a `required` field
+  within an existing schema version.
+- **Enums must use `@JsonKey(unknownEnumValue: …)`** (or a sentinel) so an unknown
+  value degrades gracefully instead of throwing. Applies to engine models too
+  (`GameStatus`, `GameAccess`, `OutcomeResult`, `RelationshipStatus`,
+  `ParticipantType` already carry an `unknown` sentinel).
+- **Changing a field's type or meaning, or removing it, is breaking** → bump the
+  game schema version; do not edit in place.
+- These rules apply **identically** to server-response models *and* `@JsonPersist`
+  cached models, because cached rows are re-decoded through the same `fromJson` on
+  cold start.
+
+### Surface 4 — client caches
+
+On-device state lives in three places: **`riverpod.db`** (the three `@JsonPersist`
+providers — `CurrentUserProfile`, `Friendships`, `PlayerInfoCache`; see §23),
+**SharedPreferences** (`theme_mode`, `total_wins`, …), and the
+**`cached_network_image`** disk cache (avatars bust with `?v=timestamp`).
+Discipline:
+
+- **`destroyKey` == the persisted model's schema version, per provider.** Bump the
+  *individual* provider's `destroyKey` when its model's persisted shape changes
+  breakingly — do not share one global key, so a profile change does not wipe the
+  friendships cache.
+- **A cached-row decode failure must be a cache miss** (drop the row, re-fetch),
+  never a crash — the safety net when an old row predates a schema bump.
+- **SharedPreferences reads must default safely.** If a key's value shape ever
+  changes, write under a new key rather than reinterpreting the old one.
+- **`deleteUserData` deliberately does not clear `PlayerInfoCache`** — player
+  identity is public and survives sign-out by design; the per-provider `destroyKey`
+  is its only invalidation lever.
+
+### Surface 5 — client↔server version negotiation (DESIGN ONLY — deferred)
+
+> **Not built.** While Android-only, Play in-app-update handles forced updates (see
+> Implementation status #4). This is the blueprint for when the gate is
+> reintroduced (iOS/web, or backend-authoritative contraction).
+
+To *contract* old shapes you must know which client versions are still live and be
+able to force the floor up. The design: send `X-Client-Version` (+ platform) as a
+global PostgREST header at init; add `min_supported_version` / `soft_min_version`
+(per platform) to `private.app_config`, exposed via a `SECURITY DEFINER`
+`get_client_requirements(p_platform)` RPC; at startup, block below the hard floor
+(Android drives `UpdateNotifier`; iOS/web show a store link / reload) and nudge
+between soft and hard. Keeping the gate platform-agnostic means iOS/web reuse it
+unchanged. The floor is what bounds the support window in Surfaces 2–4: once it
+passes the last app version that knew an old SQL shape or game schema, you may
+*contract*.
+
+### Deploy playbook (expand → ship → contract)
+
+Same as [`versioning.md`](versioning.md), applied to game changes:
+
+1. **Expand** — ship the additive DB change (new column / `_v2` RPC / new schema
+   branch in the hooks) **before or with** the app release; old shapes keep working.
+2. **Ship** — the new app creates games at the new schema; old apps keep
+   creating/reading the old one against the same DB.
+3. **Contract** — retire old code per the two-path rule: the **write path** once
+   the drain query is zero **and** the force-update floor has retired old apps; the
+   **read/projection/render path** only when you stop supporting replay for that
+   schema.
+
+Per-app: vendor with `dart run eigen_engine:sync_supabase`, apply per Supabase
+project; migrations are append-only/forward-only (fix forward, never roll back).
+
+### Quick checklist — "I want to change the game"
+
+- Alters the **observation/action/config shape**, or makes in-flight games
+  inconsistent/unfair? → **breaking**: bump `GameModule.schemaVersion`
+  (→ `games.schema_version`), add new server + client branches, drain old games,
+  raise the force-update floor before contracting.
+- Purely additive (new optional field/feature)? → nullable / `@Default`, **no bump**;
+  old clients ignore it, new clients default it.
+- Server-only rule logic, same shapes, in-flight games stay consistent? → change
+  `game_apply_action` only, **no bump**.
+- New enum value? → ensure `unknownEnumValue` tolerance is already shipped, then
+  expand/contract.
+- Touching a persisted model's shape? → bump **that provider's** `destroyKey`.
+
+### Implementation status (built)
+
+Three of the four foundations are implemented (dev-phase, in-place); the version
+gate (Surface 5) is **designed but deliberately not built**.
+
+1. **Game schema version** — `games.schema_version` column; `create_game` stores it
+   from `GameModule.schemaVersion`; threaded to all game hooks as `p_schema_version`;
+   surfaced on `Game`/`BaseEngine.schemaVersion` and gated by
+   `GameModule.supportsSchema` in `gameEngineProvider` (render path). **Join is
+   gated too:** `join_game`/`join_game_by_code` take the client's max supported
+   schema and refuse to seat the caller in a newer-schema game, so every join path
+   (lobby, friends, by-code, deep link) is blocked *before* a participant row is
+   created — not only when the game screen later tries to render. The lobby also
+   disables the Join button for unsupported games as immediate feedback.
+2. **Decode tolerance** — `unknown` sentinel + `@JsonKey(unknownEnumValue:)` on the
+   wire enums (`GameStatus`, `GameAccess`, `OutcomeResult`, `RelationshipStatus`,
+   `ParticipantType`). Guarded by `test/core/decode_tolerance_test.dart`.
+3. **Cache discipline** — each `@JsonPersist` provider documents its per-provider
+   `destroyKey` bump rule; decode-failure is a safe cache-miss (riverpod core);
+   `PlayerInfoCache` intentionally survives sign-out.
+4. **Version gate (Surface 5) — DEFERRED.** While Android-only, forced updates are
+   handled by Play in-app-update (immediate priority) via the existing
+   `UpdateNotifier`, so a server-side gate would guard nothing yet. **Re-introduce
+   when any of:** (a) iOS or web ships (no Play in-app-update equivalent); (b) you
+   need backend-authoritative "who's live?" before a risky contraction; (c) you want
+   telemetry of live client versions. Until then, the force-update floor on Android
+   is Play-driven, not a server gate — "is it safe to contract?" is judged from Play
+   Console adoption rather than backend telemetry.

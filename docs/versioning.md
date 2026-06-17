@@ -20,8 +20,9 @@ Three contracts can break across versions, each at a different layer:
 
 For the deep-dive on contract 3 — plus client caches and the client↔server
 version gate that bounds how long old clients must be supported — see
-[`backward-compatibility.md`](backward-compatibility.md). This doc is the
-high-level policy; that one is the game-evolution architecture.
+[`engine_architecture.md`](engine_architecture.md) §24 (Backward Compatibility).
+This doc is the high-level policy; that section is the game-evolution
+architecture.
 
 ## Versioning scheme (semver, via `cider`)
 
@@ -99,10 +100,12 @@ can span days and survive an app/engine upgrade mid-game. Therefore:
 
 - `ObservationData` / state `fromJson` must **tolerate older shapes** — default
   any newly added fields so a game created under `vN` still parses under `vN+1`.
-- For larger changes, **version the game type** (a `schema` field in
-  `games.config`, mirrored into state) and branch on it on both server and
-  client. See [`backward-compatibility.md`](backward-compatibility.md) for the
-  full scheme, including the drain-query + force-update-floor retirement gate.
+- For larger changes, **version the game type** (the first-class
+  `games.schema_version` column, threaded to the hooks as `p_schema_version` and
+  surfaced on `Game`/`BaseEngine`) and branch on it on both server and client. See
+  [`engine_architecture.md`](engine_architecture.md) §24 (Backward Compatibility)
+  for the full scheme, including the drain-query + force-update-floor retirement
+  gate.
 - `game_states` is append-only, so an in-flight game's earlier rows were written
   under the old shape; the `apply_action` hook must handle every shape a still-
   running game could have been started under, until those games finish.

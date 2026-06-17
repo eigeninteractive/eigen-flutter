@@ -8,19 +8,6 @@ import 'package:eigen_engine/features/game/providers/game_providers.dart';
 
 part 'game_frame_provider.g.dart';
 
-/// The active [GameModule].
-///
-/// Override in [ProviderScope] via:
-/// ```dart
-/// currentGameModuleProvider.overrideWithValue(const TicTacToeModule())
-/// ```
-/// Throws [UnimplementedError] at startup if no override is provided.
-@Riverpod(keepAlive: true)
-GameModule currentGameModule(Ref ref) => throw UnimplementedError(
-  'No GameModule registered. '
-  'Add currentGameModuleProvider.overrideWithValue(...) to ProviderScope.',
-);
-
 /// The engine for a specific game, created once from its immutable config.
 ///
 /// Config is set at game creation and never mutated, so [ref.read] fetches
