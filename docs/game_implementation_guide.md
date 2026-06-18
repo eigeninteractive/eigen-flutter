@@ -721,11 +721,14 @@ but each app owns its Supabase **project config**:
    - `[db.seed] sql_paths = ["./seed.sql"]`
    - `[auth] signing_keys_path = "./signing_keys.json"` and
      `[auth.external.google]` (`client_id`/`secret` from env)
-   - For guest auth (see `engine_architecture.md` §25): `[auth]
-     enable_anonymous_sign_ins = true`, `enable_manual_linking = true` (required
-     for the guest→Google upgrade), and your OAuth callback scheme added to
-     `additional_redirect_urls`. Enable the same two auth settings in the
-     production Supabase dashboard.
+   - For guest auth (see `engine_architecture.md` §25): set `[auth]
+     enable_anonymous_sign_ins = true` and `enable_manual_linking = true` (the
+     latter is required for the guest→Google upgrade). Enable the **same two
+     settings in the production Supabase dashboard** (Authentication → Sign In /
+     Providers → "Allow anonymous sign-ins", and → "Manual linking"). No
+     deep-link or `additional_redirect_urls` change is needed — the upgrade uses
+     native Google ID-token linking (`linkIdentityWithIdToken`), which reuses the
+     app's existing native Google Sign-In and never opens a browser redirect.
    - `[edge_runtime]` + `[functions.update-ratings]` / `[functions.refresh-fcm-token]`
      (`verify_jwt = false`, `import_map` / `entrypoint` pointing at each function)
 2. **Vendor the backend:** `dart run eigen_engine:sync_supabase` (migrations +
@@ -1456,6 +1459,8 @@ Your upload keystore SHA is optional — only needed if you test a locally-signe
 - [ ] OAuth consent screen configured in Google Cloud Console
 - [ ] Web OAuth 2.0 client created with Supabase redirect URI (`https://<ref>.supabase.co/auth/v1/callback`)
 - [ ] Supabase Auth → Providers → Google enabled with Web Client ID and Client Secret
+- [ ] Supabase Auth → Sign In / Providers → **Allow anonymous sign-ins** enabled (guest play — see `engine_architecture.md §25`)
+- [ ] Supabase Auth → Sign In / Providers → **Manual linking** enabled (required for the guest→Google upgrade; no redirect URL needed — native ID-token linking)
 - [ ] Supabase Auth → URL Configuration → Redirect URLs includes the app's deep link scheme
 - [ ] APNs key created in Apple Developer Console and uploaded to Firebase Console → Cloud Messaging (iOS)
 

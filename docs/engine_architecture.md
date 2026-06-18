@@ -2774,7 +2774,8 @@ subtransaction so one failing game can't block the rest of the batch.
 
 ### Configuration
 
-`config.toml` requires `enable_anonymous_sign_ins = true`,
-`enable_manual_linking = true`, and the OAuth callback added to
-`additional_redirect_urls`. The same two auth settings must be enabled in the
-production Supabase dashboard.
+`config.toml` requires `enable_anonymous_sign_ins = true` and
+`enable_manual_linking = true`; the same two settings must be enabled in the
+production Supabase dashboard. No `additional_redirect_urls` / deep-link change
+is needed — `linkIdentityWithIdToken` uses the native Google sheet, not a
+browser redirect.
