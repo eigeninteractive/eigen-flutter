@@ -47,6 +47,7 @@ class ShellScaffold extends ConsumerWidget {
       }
     });
     final isOffline = ref.watch(isOfflineProvider);
+    final isGuest = ref.watch(isAnonymousProvider);
     final colorScheme = Theme.of(context).colorScheme;
     final index = navigationShell.currentIndex;
     final branch = _ShellBranch.values[index];
@@ -66,39 +67,44 @@ class ShellScaffold extends ConsumerWidget {
           Navigator.of(context).pop();
           navigationShell.goBranch(i, initialLocation: i == index);
         },
-        children: const [
-          _DrawerHeader(),
-          NavigationDrawerDestination(
+        children: [
+          const _DrawerHeader(),
+          const NavigationDrawerDestination(
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home_rounded),
             label: Text('Home'),
           ),
-          NavigationDrawerDestination(
+          const NavigationDrawerDestination(
             icon: Icon(Icons.groups_outlined),
             selectedIcon: Icon(Icons.groups_rounded),
             label: Text('Lobby'),
           ),
-          NavigationDrawerDestination(
+          const NavigationDrawerDestination(
             icon: Icon(Icons.history_outlined),
             selectedIcon: Icon(Icons.history_rounded),
             label: Text('History'),
           ),
+          // Social is registered-only. For guests the destination stays visible
+          // but disabled (greyed, non-tappable) — the same visible-but-disabled
+          // treatment rated games get in the lobby. enabled:false also keeps the
+          // tap from firing onDestinationSelected, so branch indices stay 1:1.
           NavigationDrawerDestination(
-            icon: _SocialDrawerIcon(selected: false),
-            selectedIcon: _SocialDrawerIcon(selected: true),
-            label: Text('Social'),
+            enabled: !isGuest,
+            icon: const _SocialDrawerIcon(selected: false),
+            selectedIcon: const _SocialDrawerIcon(selected: true),
+            label: const Text('Social'),
           ),
-          NavigationDrawerDestination(
+          const NavigationDrawerDestination(
             icon: Icon(Icons.info_outline),
             selectedIcon: Icon(Icons.info_rounded),
             label: Text('About'),
           ),
-          NavigationDrawerDestination(
+          const NavigationDrawerDestination(
             icon: Icon(Icons.settings_outlined),
             selectedIcon: Icon(Icons.settings_rounded),
             label: Text('Settings'),
           ),
-          _SignOutButton(),
+          const _SignOutButton(),
         ],
       ),
       floatingActionButton: index == 0

@@ -30,3 +30,14 @@ SELECT cron.schedule(
     SELECT private.cleanup_idle_games();
   $cron$
 );
+
+SELECT cron.unschedule('cleanup-stale-anon-users')
+WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'cleanup-stale-anon-users');
+
+SELECT cron.schedule(
+  'cleanup-stale-anon-users',
+  '30 3 * * *',   -- daily at 03:30 UTC, after idle-game cleanup
+  $cron$
+    SELECT private.cleanup_stale_anonymous_users();
+  $cron$
+);

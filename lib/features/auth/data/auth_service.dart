@@ -19,27 +19,34 @@ class AuthService {
   /// Stream of authentication state changes
   Stream<AuthState> get authStateChanges => _supabase.auth.onAuthStateChange;
 
+  /// Runs the native Google Sign-In flow and returns the resulting tokens.
+  ///
+  /// Shared by [signInWithGoogle] and [upgradeWithGoogle] so both use the same
+  /// native account picker rather than a browser redirect.
+  Future<({String idToken, String? accessToken})> _googleTokens() async {
+    final GoogleSignIn signIn = GoogleSignIn.instance;
+    await signIn.initialize(serverClientId: googleWebClientId);
+
+    final googleAccount = await signIn.authenticate();
+    final googleAuthorization = await googleAccount.authorizationClient
+        .authorizationForScopes(['email', 'profile']);
+    final idToken = googleAccount.authentication.idToken;
+
+    if (idToken == null) {
+      throw Exception('No ID Token found.');
+    }
+    return (idToken: idToken, accessToken: googleAuthorization?.accessToken);
+  }
+
   /// Sign in with Google
   Future<AuthResponse> signInWithGoogle() async {
     try {
-      final GoogleSignIn signIn = GoogleSignIn.instance;
-      await signIn.initialize(serverClientId: googleWebClientId);
-
-      final googleAccount = await signIn.authenticate();
-      final googleAuthorization = await googleAccount.authorizationClient
-          .authorizationForScopes(['email', 'profile']);
-      final googleAuthentication = googleAccount.authentication;
-      final idToken = googleAuthentication.idToken;
-      final accessToken = googleAuthorization?.accessToken;
-
-      if (idToken == null) {
-        throw Exception('No ID Token found.');
-      }
+      final tokens = await _googleTokens();
 
       final authResponse = await _supabase.auth.signInWithIdToken(
         provider: OAuthProvider.google,
-        idToken: idToken,
-        accessToken: accessToken,
+        idToken: tokens.idToken,
+        accessToken: tokens.accessToken,
       );
 
       developer.log(
@@ -51,6 +58,56 @@ class AuthService {
     } catch (e, stackTrace) {
       developer.log(
         'Failed to sign in with Google',
+        name: 'auth.service',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
+  }
+
+  /// Starts an anonymous (guest) session so a visitor can try the app without
+  /// signing up. Provisions a real `authenticated` user with a generated
+  /// `player_NNNNN` handle; convert later via [upgradeWithGoogle].
+  Future<AuthResponse> signInAnonymously() async {
+    try {
+      final authResponse = await _supabase.auth.signInAnonymously();
+      developer.log('Anonymous (guest) session started', name: 'auth.service');
+      return authResponse;
+    } catch (e, stackTrace) {
+      developer.log(
+        'Failed to start anonymous session',
+        name: 'auth.service',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
+  }
+
+  /// Upgrades the current guest session to a permanent Google account, linking
+  /// the Google identity to the existing user id so all their games, ratings,
+  /// and friends carry over. The `on_auth_user_converted` DB trigger backfills
+  /// the email, display name, and avatar.
+  ///
+  /// Throws [AccountExistsException] when the chosen Google account already
+  /// belongs to a registered user — the caller switches into that account
+  /// instead (guest data is abandoned).
+  Future<void> upgradeWithGoogle() async {
+    try {
+      final tokens = await _googleTokens();
+      await _supabase.auth.linkIdentityWithIdToken(
+        provider: OAuthProvider.google,
+        idToken: tokens.idToken,
+        accessToken: tokens.accessToken,
+      );
+      developer.log('Guest upgraded to Google', name: 'auth.service');
+    } on AuthException catch (e, stackTrace) {
+      if (e.code == 'identity_already_exists') {
+        throw const AccountExistsException();
+      }
+      developer.log(
+        'Failed to upgrade guest account',
         name: 'auth.service',
         error: e,
         stackTrace: stackTrace,
@@ -107,6 +164,10 @@ class AuthService {
     }
   }
 
+  /// Signs the user into a Google account that already exists in the app,
+  /// switching away from (and abandoning) the current guest session.
+  Future<AuthResponse> switchToExistingGoogleAccount() => signInWithGoogle();
+
   /// Sign out the current user
   Future<void> signOut() async {
     try {
@@ -122,4 +183,13 @@ class AuthService {
       rethrow;
     }
   }
+}
+
+/// Thrown by [AuthService.upgradeWithGoogle] when the selected Google account is
+/// already registered, so the guest identity cannot be linked to it.
+class AccountExistsException implements Exception {
+  const AccountExistsException();
+
+  @override
+  String toString() => 'AccountExistsException: Google account already in use';
 }

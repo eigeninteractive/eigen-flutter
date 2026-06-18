@@ -27,6 +27,7 @@ class SettingsScreen extends ConsumerWidget {
       children: [
         // Profile Section
         const _SectionHeader(title: 'Account'),
+        if (ref.watch(isAnonymousProvider)) const _UpgradeAccountCard(),
         Card(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: ListTile(
@@ -372,6 +373,62 @@ class _ThemeSelector extends ConsumerWidget {
 }
 
 /// Destructive tile that triggers account deletion after confirmation.
+/// Prominent call-to-action shown to guests, prompting them to link a Google
+/// account so their games, ratings, and friends are saved permanently.
+class _UpgradeAccountCard extends ConsumerWidget {
+  const _UpgradeAccountCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    ref.listen(authControllerProvider, (_, next) {
+      next.whenOrNull(
+        error: (error, _) => ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not create account: $error'),
+            backgroundColor: colorScheme.error,
+          ),
+        ),
+      );
+    });
+
+    final isLoading = ref.watch(
+      authControllerProvider.select((state) => state.isLoading),
+    );
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      color: colorScheme.primaryContainer,
+      child: ListTile(
+        leading: Icon(Icons.account_circle, color: colorScheme.onPrimaryContainer),
+        title: Text(
+          'Save your progress',
+          style: TextStyle(color: colorScheme.onPrimaryContainer),
+        ),
+        subtitle: Text(
+          'You\'re playing as a guest. Create an account to keep your games, '
+          'ratings, and friends, and to unlock rated games and social features.',
+          style: TextStyle(color: colorScheme.onPrimaryContainer),
+        ),
+        trailing: isLoading
+            ? SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: colorScheme.onPrimaryContainer,
+                ),
+              )
+            : Icon(Icons.chevron_right, color: colorScheme.onPrimaryContainer),
+        onTap: isLoading
+            ? null
+            : () => ref.read(authControllerProvider.notifier).upgradeToGoogle(),
+      ),
+    );
+  }
+}
+
 class _DeleteAccountTile extends StatelessWidget {
   const _DeleteAccountTile();
 

@@ -719,9 +719,13 @@ but each app owns its Supabase **project config**:
    **engine's `supabase/config.toml`** (it's the reference) and set your own
    `project_id`. Ensure the engine-required settings are present:
    - `[db.seed] sql_paths = ["./seed.sql"]`
-   - `[auth] signing_keys_path = "./signing_keys.json"`,
-     `[auth.external.google]` (`client_id`/`secret` from env), and
-     `enable_anonymous_sign_ins` as desired
+   - `[auth] signing_keys_path = "./signing_keys.json"` and
+     `[auth.external.google]` (`client_id`/`secret` from env)
+   - For guest auth (see `engine_architecture.md` §25): `[auth]
+     enable_anonymous_sign_ins = true`, `enable_manual_linking = true` (required
+     for the guest→Google upgrade), and your OAuth callback scheme added to
+     `additional_redirect_urls`. Enable the same two auth settings in the
+     production Supabase dashboard.
    - `[edge_runtime]` + `[functions.update-ratings]` / `[functions.refresh-fcm-token]`
      (`verify_jwt = false`, `import_map` / `entrypoint` pointing at each function)
 2. **Vendor the backend:** `dart run eigen_engine:sync_supabase` (migrations +

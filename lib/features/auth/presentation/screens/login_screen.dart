@@ -68,6 +68,8 @@ class LoginScreen extends ConsumerWidget {
 
                         // Google Sign-In Button
                         const GoogleSignInButton(),
+                        const SizedBox(height: 12),
+                        const PlayAsGuestButton(),
                       ],
                     ),
                   ),
@@ -124,6 +126,26 @@ class GoogleSignInButton extends ConsumerWidget {
               icon: const Icon(Icons.login),
               label: const Text('Sign in with Google'),
             ),
+    );
+  }
+}
+
+/// Lets a visitor try the app without an account by starting an anonymous
+/// (guest) session. Disabled while any auth operation is in flight.
+class PlayAsGuestButton extends ConsumerWidget {
+  const PlayAsGuestButton({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isLoading = ref.watch(
+      authControllerProvider.select((state) => state.isLoading),
+    );
+
+    return TextButton(
+      onPressed: isLoading
+          ? null
+          : () => ref.read(authControllerProvider.notifier).signInAnonymously(),
+      child: const Text('Play as guest'),
     );
   }
 }

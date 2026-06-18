@@ -17,10 +17,16 @@ The goal is to build a **reusable "whitelabel" game engine**. Each app instance 
 
 #### `users` (System/Immutable)
 - `id` (uuid, PK, references auth.users)
-- `username` (text, unique)
-- `email` (text)
+- `username` (text, unique) — for guests, a generated `player_NNNNN` handle
+- `email` (text, unique, **nullable**) — null for anonymous (guest) users until
+  they convert to a permanent account; backfilled by the conversion trigger
 - `payment_tier` (text, default 'free')
 - `created_at`, `updated_at`
+
+The `handle_new_user` trigger provisions this row on signup: from the email
+prefix for a normal signup, or a generated `player_NNNNN` handle when the new
+`auth.users` row has no email (an anonymous guest). See §25 for the guest-auth
+lifecycle.
 
 #### `user_profiles` (User Editable)
 - `id` (uuid, PK, fk to users)
@@ -457,6 +463,8 @@ the player re-act against the state the Realtime stream has by then delivered.
 
 | RPC | Caller | Purpose |
 |-----|--------|---------|
+All social RPCs are **registered-only** — they call `private.require_permanent_user()` and raise for anonymous guests (see §25).
+
 | `send_friend_request(target_user_id)` | Client | Creates a `pending` relationship. If the target already has a pending request to the caller, auto-accepts it (mutual add). Self-requests raise. `ON CONFLICT DO NOTHING` prevents duplicates. |
 | `accept_friend_request(target_user_id)` | Client | Transitions a `pending` relationship to `accepted`. Only the recipient (non-initiator) can accept. |
 | `remove_friend(target_user_id)` | Client | Deletes the relationship row entirely — works for both accepted friendships and pending requests. |
@@ -2686,3 +2694,87 @@ gate (Surface 5) is **designed but deliberately not built**.
    telemetry of live client versions. Until then, the force-update floor on Android
    is Play-driven, not a server gate — "is it safe to contract?" is judged from Play
    Console adoption rather than backend telemetry.
+
+---
+
+## 25. Anonymous (Guest) Auth
+
+To reduce the friction of trying the app, a visitor can tap **Play as guest** on
+the login screen and start playing immediately on a real Supabase **anonymous**
+session — no Google account required. Anonymous users are full
+`authenticated`-role JWTs, so existing RLS policies and RPC grants apply to them
+unchanged; the only differences are provisioning, a capped capability set, and a
+later upgrade path.
+
+### Provisioning
+
+`signInAnonymously()` creates an `auth.users` row with a **null email** and the
+`is_anonymous` claim set. The `handle_new_user` trigger detects the null email
+and assigns a generated `player_NNNNN` handle (rather than deriving from the
+email); `handle_new_user_profile` defaults the profile `display_name` to that
+handle with no avatar. `users.email` is nullable specifically to allow this.
+
+### Capability scope — play only
+
+Guests can play (including creating **public, unrated** games) but cannot use
+rated games or social features. Because anonymous users share the
+`authenticated` Postgres role, this cannot be enforced with `GRANT`/`REVOKE` — it
+is a **runtime check on the `is_anonymous` JWT claim**:
+
+- `private.is_anonymous()` → reads `auth.jwt()->>'is_anonymous'`.
+- `private.require_permanent_user()` → raises for guests. Called by
+  `send_friend_request`, `accept_friend_request`, `remove_friend`, `search_users`.
+- `create_game` forces `rated = false` for guests
+  (`... AND NOT private.is_anonymous()`).
+- `join_game` raises if the target game is rated and the caller is a guest
+  (also covers `join_game_by_code`, which delegates to it) — otherwise a guest
+  would gain a `player_ratings` row and skew opponents' ratings.
+
+Client-side, the `isAnonymousProvider` (derived from the auth stream) drives UI
+gating: the Social drawer destination stays visible but is **disabled**
+(`NavigationDrawerDestination.enabled = false`) for guests — and `/social` is
+still redirected home in the router as a deep-link backstop — the rated toggle
+is hidden in the New Game dialog, and Settings shows a "Save your progress"
+upgrade card. Rated games also still appear in the lobby for guests with a
+disabled join button ("Sign up to play rated"). This visible-but-disabled
+treatment mirrors what the lobby already does for schema-unsupported games.
+These are UX only — the server checks above are the authoritative boundary.
+
+### Upgrade (guest → permanent Google account)
+
+`AuthController.upgradeToGoogle()` runs the native Google sheet and calls
+`linkIdentityWithIdToken` (requires manual linking enabled in Supabase). On
+success the **`auth.users.id` is preserved**, so all of the guest's games,
+ratings, and friendships carry over with no data migration. Conversion is an
+*UPDATE* to `auth.users` (not an insert), so the insert-only `handle_new_user`
+trigger never fires — instead `on_auth_user_converted` (an `AFTER UPDATE`
+trigger gated on `is_anonymous` flipping true→false) runs `handle_user_conversion`
+to backfill `users.email` and **overwrite** `user_profiles.display_name` /
+`avatar_url` from the Google OAuth metadata. The username is kept as the stable
+handle. The client then invalidates `currentUserProfileProvider` and
+`playerInfoCacheProvider(id)` so the new identity surfaces immediately.
+
+If the chosen Google account already belongs to a registered user, the link
+fails with `identity_already_exists`; the service throws `AccountExistsException`
+and the controller **switches into the existing account** instead — clearing the
+abandoned guest's local data and FCM token (mirroring `signOut`) and signing in
+normally. The guest's orphaned anonymous row is reclaimed by the cleanup job.
+
+### Cleanup
+
+`private.cleanup_stale_anonymous_users()` (daily pg_cron, `cleanup-stale-anon-users`)
+deletes anonymous accounts older than 90 days with no game action in the last 90
+days. Each is torn down through `private.purge_user` — the **same** path
+`delete_account` uses (cancel created lobbies, leave joined lobbies, forfeit
+active games, then delete the `auth.users` row, cascading as in §22). Because the
+teardown is shared, a guest's lingering games are resolved gracefully rather than
+orphaned, so a delete never leaves a null creator or ghost participant — no
+separate live-game guard is needed. Each guest's purge runs in its own
+subtransaction so one failing game can't block the rest of the batch.
+
+### Configuration
+
+`config.toml` requires `enable_anonymous_sign_ins = true`,
+`enable_manual_linking = true`, and the OAuth callback added to
+`additional_redirect_urls`. The same two auth settings must be enabled in the
+production Supabase dashboard.

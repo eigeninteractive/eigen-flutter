@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:eigen_engine/core/analytics/analytics_provider.dart';
 import 'package:eigen_engine/core/errors/error_messages.dart';
 import 'package:eigen_engine/core/game/game_creation_spec.dart';
+import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
 import 'package:eigen_engine/features/game/data/models/game.dart';
 import 'package:eigen_engine/features/game/providers/game_providers.dart';
 
@@ -173,15 +174,19 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
               ],
 
               // ── Rated toggle ──────────────────────────────────────────
-              // Always shown; server silently overrides to unrated if the game
-              // type doesn't support rating for this configuration.
-              const SizedBox(height: 8),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Rated'),
-                value: _rated,
-                onChanged: (v) => setState(() => _rated = v),
-              ),
+              // Hidden for guests (they play unrated; the server enforces it
+              // regardless). Otherwise always shown; the server silently
+              // overrides to unrated if the game type doesn't support rating
+              // for this configuration.
+              if (!ref.watch(isAnonymousProvider)) ...[
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Rated'),
+                  value: _rated,
+                  onChanged: (v) => setState(() => _rated = v),
+                ),
+              ],
 
               const SizedBox(height: 24),
 

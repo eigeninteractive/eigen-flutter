@@ -381,7 +381,9 @@ BEGIN
                p_access, p_turn_seconds, p_budget_seconds, p_increment_seconds,
                p_min_players, p_max_players, COALESCE(p_config, '{}'::jsonb)
              );
-  v_rated := p_rated_preference AND v_pool IS NOT NULL;
+  -- Guests (anonymous users) play unrated regardless of preference or pool.
+  v_rated := p_rated_preference AND v_pool IS NOT NULL
+             AND NOT private.is_anonymous();
 
   <<loop_label>>
   LOOP
@@ -444,6 +446,7 @@ DECLARE
   v_min_players       INT;
   v_max_players       INT;
   v_schema_version    INT;
+  v_rated             BOOLEAN;
   v_participant_count INT;
 BEGIN
   v_user_id := private.require_auth();
@@ -452,9 +455,10 @@ BEGIN
   -- Without FOR UPDATE a concurrent start_game could commit (status='active')
   -- between this read and the participant INSERT, leaving a participant with
   -- no observation row.
-  SELECT status, access, created_by, min_players, max_players, schema_version
+  SELECT status, access, created_by, min_players, max_players, schema_version,
+         rated
   INTO v_game_status, v_access, v_created_by, v_min_players, v_max_players,
-       v_schema_version
+       v_schema_version, v_rated
   FROM public.games WHERE id = p_game_id
   FOR UPDATE;
 
@@ -469,6 +473,13 @@ BEGIN
 
   IF v_game_status NOT IN ('waiting', 'ready') THEN
     RAISE EXCEPTION 'Game is not accepting players';
+  END IF;
+
+  -- Guests play unrated only — they cannot create rated games (see create_game)
+  -- nor join one, which would create a player_ratings row and skew opponents'
+  -- ratings against a throwaway account.
+  IF v_rated AND private.is_anonymous() THEN
+    RAISE EXCEPTION 'Rated games require a registered account';
   END IF;
 
   IF v_access = 'friends' AND v_user_id != v_created_by THEN
@@ -673,22 +684,22 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 -- RPC: cancel_game
 -- Aborts a waiting or ready game (creator only).
 -- ============================================
-CREATE OR REPLACE FUNCTION public.cancel_game(p_game_id UUID)
+-- Core cancel logic, parameterised by the acting user. Shared by the public
+-- cancel_game RPC (caller = auth.uid()) and private.purge_user (acting on
+-- another user during account deletion / stale-guest cleanup).
+CREATE OR REPLACE FUNCTION private.do_cancel_game(p_game_id UUID, p_user_id UUID)
 RETURNS VOID AS $$
 DECLARE
-  v_user_id    UUID;
   v_created_by UUID;
   v_status     public.game_status;
 BEGIN
-  v_user_id := private.require_auth();
-
   SELECT created_by, status INTO v_created_by, v_status
   FROM public.games WHERE id = p_game_id;
 
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Game not found';
   END IF;
-  IF v_created_by IS NULL OR v_created_by != v_user_id THEN
+  IF v_created_by IS NULL OR v_created_by != p_user_id THEN
     RAISE EXCEPTION 'Only the game creator can cancel the game';
   END IF;
   IF v_status NOT IN ('waiting', 'ready') THEN
@@ -701,6 +712,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
+CREATE OR REPLACE FUNCTION public.cancel_game(p_game_id UUID)
+RETURNS VOID AS $$
+BEGIN
+  PERFORM private.do_cancel_game(p_game_id, private.require_auth());
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
 -- ============================================
 -- RPC: leave_game
 -- Non-creator participant leaves a waiting or ready game.
@@ -708,18 +726,17 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 -- Transitions ready → waiting if the count drops below min_players.
 -- The creator cannot leave — use cancel_game instead.
 -- ============================================
-CREATE OR REPLACE FUNCTION public.leave_game(p_game_id UUID)
+-- Core leave logic, parameterised by the acting user. Shared by the public
+-- leave_game RPC and private.purge_user.
+CREATE OR REPLACE FUNCTION private.do_leave_game(p_game_id UUID, p_user_id UUID)
 RETURNS VOID AS $$
 DECLARE
-  v_user_id     UUID;
   v_created_by  UUID;
   v_status      public.game_status;
   v_min_players INT;
   v_participant RECORD;
   v_new_count   INT;
 BEGIN
-  v_user_id := private.require_auth();
-
   -- Lock the game row to serialise concurrent leave operations on the same game.
   -- Without this, two simultaneous leaves can produce stale player_index reads,
   -- causing compaction to leave gaps that break subsequent joins.
@@ -731,17 +748,17 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Game not found';
   END IF;
-  IF v_created_by = v_user_id THEN
+  IF v_created_by = p_user_id THEN
     RAISE EXCEPTION 'Creator cannot leave — use cancel_game instead';
   END IF;
   IF v_status NOT IN ('waiting', 'ready') THEN
     RAISE EXCEPTION 'Can only leave a game that has not started';
   END IF;
 
-  SELECT * INTO v_participant FROM private.require_participant(p_game_id, v_user_id);
+  SELECT * INTO v_participant FROM private.require_participant(p_game_id, p_user_id);
 
   DELETE FROM public.participants
-  WHERE game_id = p_game_id AND user_id = v_user_id;
+  WHERE game_id = p_game_id AND user_id = p_user_id;
 
   -- Compact: shift down all participants with a higher index so seats stay
   -- contiguous (0..n-1) after a mid-lobby leave.
@@ -758,6 +775,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
+CREATE OR REPLACE FUNCTION public.leave_game(p_game_id UUID)
+RETURNS VOID AS $$
+BEGIN
+  PERFORM private.do_leave_game(p_game_id, private.require_auth());
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
 -- ============================================
 -- RPC: forfeit_game
 -- Player voluntarily forfeits an active game.
@@ -768,10 +792,12 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 -- so replays remain complete and ordered.
 -- Records a 'system' action with the forfeiting user_id populated.
 -- ============================================
-CREATE OR REPLACE FUNCTION public.forfeit_game(p_game_id UUID)
+-- Core forfeit logic, parameterised by the acting user. Shared by the public
+-- forfeit_game RPC and private.purge_user (which forfeits a departing user's
+-- active games so outcomes, observations, and rating triggers fire normally).
+CREATE OR REPLACE FUNCTION private.do_forfeit_game(p_game_id UUID, p_user_id UUID)
 RETURNS VOID AS $$
 DECLARE
-  v_user_id              UUID;
   v_participant          RECORD;
   v_status               public.game_status;
   v_config               JSONB;
@@ -791,8 +817,7 @@ DECLARE
   v_outcome              JSONB;
   v_action_data          JSONB;
 BEGIN
-  v_user_id := private.require_auth();
-  SELECT * INTO v_participant FROM private.require_participant(p_game_id, v_user_id);
+  SELECT * INTO v_participant FROM private.require_participant(p_game_id, p_user_id);
 
   -- Acquire lock and check status atomically — no TOCTOU window between
   -- the active check and the lock.
@@ -839,7 +864,7 @@ BEGIN
 
   PERFORM private.commit_action(
     p_game_id,
-    v_user_id,
+    p_user_id,
     NULL,  -- bot_id: forfeit is always a human action
     'system',
     v_action_data,
@@ -856,6 +881,62 @@ BEGIN
     v_turn_seconds,
     v_participant.player_index
   );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
+CREATE OR REPLACE FUNCTION public.forfeit_game(p_game_id UUID)
+RETURNS VOID AS $$
+BEGIN
+  PERFORM private.do_forfeit_game(p_game_id, private.require_auth());
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
+-- ============================================
+-- INTERNAL: purge_user
+-- Tears down a user's in-flight games then deletes their auth.users row
+-- (cascading to public.users and SET-NULLing preserved game-history columns).
+-- Shared by delete_account (caller deletes themselves) and
+-- cleanup_stale_anonymous_users (cron deletes stale guests). Mirrors the
+-- graceful teardown so games never end up with a null creator or ghost seat:
+-- cancel created lobbies, leave joined lobbies, forfeit active games.
+-- ============================================
+CREATE OR REPLACE FUNCTION private.purge_user(p_user_id UUID)
+RETURNS VOID AS $$
+DECLARE
+  v_game RECORD;
+BEGIN
+  -- Cancel all waiting/ready games this user created. Lock first so
+  -- do_cancel_game's read sees a consistent row.
+  FOR v_game IN
+    SELECT id FROM public.games
+    WHERE created_by = p_user_id AND status IN ('waiting', 'ready')
+    FOR UPDATE
+  LOOP
+    PERFORM private.do_cancel_game(v_game.id, p_user_id);
+  END LOOP;
+
+  -- Leave all waiting/ready games this user joined but did not create.
+  FOR v_game IN
+    SELECT g.id FROM public.games g
+    JOIN public.participants p ON p.game_id = g.id AND p.user_id = p_user_id
+    WHERE g.status IN ('waiting', 'ready')
+      AND g.created_by != p_user_id
+    FOR UPDATE OF g
+  LOOP
+    PERFORM private.do_leave_game(v_game.id, p_user_id);
+  END LOOP;
+
+  -- Forfeit all active games so outcomes, observations, and rating triggers
+  -- fire normally (do_forfeit_game takes its own FOR UPDATE lock).
+  FOR v_game IN
+    SELECT g.id FROM public.games g
+    JOIN public.participants p ON p.game_id = g.id AND p.user_id = p_user_id
+    WHERE g.status = 'active'
+  LOOP
+    PERFORM private.do_forfeit_game(v_game.id, p_user_id);
+  END LOOP;
+
+  DELETE FROM auth.users WHERE id = p_user_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
@@ -1252,6 +1333,35 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
+-- Delete stale anonymous (guest) accounts: anonymous, older than 90 days, with
+-- no game action in the last 90 days. Each is torn down via private.purge_user
+-- (cancel/leave/forfeit then delete) — the same path delete_account uses — so a
+-- guest's lingering games are resolved gracefully rather than orphaned. Each
+-- purge runs in its own subtransaction so one bad game can't block the rest.
+CREATE OR REPLACE FUNCTION private.cleanup_stale_anonymous_users()
+RETURNS VOID AS $$
+DECLARE
+  v_user_id UUID;
+BEGIN
+  FOR v_user_id IN
+    SELECT au.id FROM auth.users au
+    WHERE au.is_anonymous = true
+      AND au.created_at < NOW() - INTERVAL '90 days'
+      AND NOT EXISTS (
+        SELECT 1 FROM public.actions a
+        WHERE a.user_id = au.id
+          AND a.created_at >= NOW() - INTERVAL '90 days'
+      )
+  LOOP
+    BEGIN
+      PERFORM private.purge_user(v_user_id);
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'Failed to purge stale anonymous user %: %', v_user_id, SQLERRM;
+    END;
+  END LOOP;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
 -- ============================================
 -- RPC: get_replay
 -- Returns the caller's observation slice at every historical state version.
@@ -1344,6 +1454,7 @@ DECLARE
   v_u2 UUID;
 BEGIN
   v_user_id := private.require_auth();
+  PERFORM private.require_permanent_user();
   IF v_user_id = p_target_user_id THEN
     RAISE EXCEPTION 'Cannot send friend request to yourself';
   END IF;
@@ -1376,9 +1487,10 @@ DECLARE
   v_u2 UUID;
 BEGIN
   v_user_id := private.require_auth();
+  PERFORM private.require_permanent_user();
   v_u1 := LEAST(v_user_id, p_target_user_id);
   v_u2 := GREATEST(v_user_id, p_target_user_id);
-  
+
   UPDATE public.relationships
   SET status = 'accepted', updated_at = NOW()
   WHERE user_id_1 = v_u1 AND user_id_2 = v_u2 AND status = 'pending' AND initiated_by = p_target_user_id;
@@ -1393,9 +1505,10 @@ DECLARE
   v_u2 UUID;
 BEGIN
   v_user_id := private.require_auth();
+  PERFORM private.require_permanent_user();
   v_u1 := LEAST(v_user_id, p_target_user_id);
   v_u2 := GREATEST(v_user_id, p_target_user_id);
-  
+
   DELETE FROM public.relationships
   WHERE user_id_1 = v_u1 AND user_id_2 = v_u2;
 END;
@@ -1412,6 +1525,7 @@ DECLARE
   v_pattern TEXT;
 BEGIN
   PERFORM private.require_auth();
+  PERFORM private.require_permanent_user();
   -- Strip % (the only ILIKE wildcard that causes unbounded matching).
   -- Display names have no character restriction so we must not strip Unicode.
   -- _ is kept: it's valid in usernames and its single-char wildcard is harmless.

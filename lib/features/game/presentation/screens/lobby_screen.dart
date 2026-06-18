@@ -240,6 +240,11 @@ class _GameCardState extends ConsumerState<_GameCard> {
     final supported = ref
         .watch(currentGameModuleProvider)
         .supportsSchema(widget.game.schemaVersion);
+    // Guests play unrated only. The server rejects a guest joining a rated game;
+    // disabling the button (rather than hiding the game) gives immediate
+    // feedback and nudges them to sign up, mirroring the unsupported case.
+    final ratedBlockedForGuest =
+        widget.game.rated && ref.watch(isAnonymousProvider);
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
     final playerCount = widget.participants.length;
@@ -323,12 +328,17 @@ class _GameCardState extends ConsumerState<_GameCard> {
                 ),
                 child: const Text('View'),
               )
-            : supported
-            ? FilledButton(onPressed: _joinGame, child: const Text('Join'))
-            : const FilledButton(
+            : !supported
+            ? const FilledButton(
                 onPressed: null,
                 child: Text('Update to join'),
-              ),
+              )
+            : ratedBlockedForGuest
+            ? const FilledButton(
+                onPressed: null,
+                child: Text('Sign up to play rated'),
+              )
+            : FilledButton(onPressed: _joinGame, child: const Text('Join')),
       ),
     );
   }

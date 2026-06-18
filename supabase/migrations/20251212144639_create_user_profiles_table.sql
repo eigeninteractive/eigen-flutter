@@ -47,6 +47,50 @@ CREATE TRIGGER on_user_created
 -- Trigger-only: never callable directly via the REST API.
 REVOKE EXECUTE ON FUNCTION public.handle_new_user_profile() FROM PUBLIC, anon, authenticated;
 
+-- ============================================
+-- Anonymous → permanent conversion sync
+-- ============================================
+-- When a guest links a permanent identity (e.g. Google), Supabase UPDATEs the
+-- existing auth.users row in place (same id) and flips is_anonymous false. The
+-- on_auth_user_created trigger only fires on INSERT, so it never runs on
+-- conversion — this trigger backfills the app-side identity from the now-present
+-- email and OAuth metadata. The auth id is unchanged, so all of the guest's
+-- games, ratings, and friendships carry over untouched.
+--
+-- Per product decision, the Google display name and avatar OVERWRITE whatever
+-- the guest had; the username is kept as the user's stable handle.
+CREATE OR REPLACE FUNCTION public.handle_user_conversion()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_name   TEXT;
+  v_avatar TEXT;
+BEGIN
+  v_name   := COALESCE(NEW.raw_user_meta_data->>'full_name',
+                       NEW.raw_user_meta_data->>'name');
+  v_avatar := COALESCE(NEW.raw_user_meta_data->>'avatar_url',
+                       NEW.raw_user_meta_data->>'picture');
+
+  UPDATE public.users SET email = NEW.email WHERE id = NEW.id;
+
+  -- NULLIF guards the display_name length CHECK (>= 2) against an empty name.
+  UPDATE public.user_profiles
+     SET display_name = COALESCE(NULLIF(trim(v_name), ''), display_name),
+         avatar_url   = v_avatar
+   WHERE id = NEW.id;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
+CREATE TRIGGER on_auth_user_converted
+  AFTER UPDATE ON auth.users
+  FOR EACH ROW
+  WHEN (OLD.is_anonymous = true AND NEW.is_anonymous = false)
+  EXECUTE FUNCTION public.handle_user_conversion();
+
+-- Trigger-only: never callable directly via the REST API.
+REVOKE EXECUTE ON FUNCTION public.handle_user_conversion() FROM PUBLIC, anon, authenticated;
+
 -- Trigger to auto-update updated_at on user_profiles table
 CREATE TRIGGER update_user_profiles_updated_at
   BEFORE UPDATE ON public.user_profiles

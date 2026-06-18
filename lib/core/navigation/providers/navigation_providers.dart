@@ -47,6 +47,13 @@ GoRouter goRouter(Ref ref) {
         return '/home';
       }
 
+      // Social is registered-only. Bounce guests reaching it (deep link or
+      // post-sign-out race) back home; the upgrade nudge lives in settings.
+      final isGuest = authService.currentUser?.isAnonymous ?? false;
+      if (isGuest && state.matchedLocation.startsWith('/social')) {
+        return '/home';
+      }
+
       return null;
     },
     onException: (context, state, router) {

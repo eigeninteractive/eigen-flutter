@@ -17,7 +17,9 @@ CREATE TYPE participant_type AS ENUM ('human', 'bot');
 CREATE TABLE public.users (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   username TEXT UNIQUE NOT NULL,
-  email TEXT UNIQUE NOT NULL,
+  -- Nullable: anonymous (guest) users have no email until they convert to a
+  -- permanent account. UNIQUE still holds — Postgres allows multiple NULLs.
+  email TEXT UNIQUE,
   payment_tier TEXT NOT NULL DEFAULT 'free',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -60,27 +62,57 @@ CREATE POLICY "users_select_self" ON public.users
   TO authenticated
   USING ((SELECT auth.uid()) = id);
 
--- Function to handle new user signup. Derives the username from the email
--- prefix, sanitised to the same charset/length rules update_username enforces
--- (^[a-zA-Z0-9_.]{3,20}$). On collision, retries with a random 4-digit
--- suffix — a plain unique violation here would roll back the entire signup.
+-- Returns true when the calling user's JWT carries the anonymous claim.
+-- Anonymous (guest) users are role `authenticated` like everyone else, so this
+-- claim — not the Postgres role — is the only way to scope guest capabilities.
+CREATE OR REPLACE FUNCTION private.is_anonymous()
+RETURNS BOOLEAN
+LANGUAGE sql STABLE SET search_path = '' AS $$
+  SELECT COALESCE((auth.jwt()->>'is_anonymous')::boolean, false);
+$$;
+
+-- Raises when the caller is an anonymous guest. Gate registered-only actions
+-- (friends, search) on this; play actions stay open to guests.
+CREATE OR REPLACE FUNCTION private.require_permanent_user()
+RETURNS VOID
+LANGUAGE plpgsql STABLE SET search_path = '' AS $$
+BEGIN
+  IF private.is_anonymous() THEN
+    RAISE EXCEPTION 'This action requires a registered account';
+  END IF;
+END;
+$$;
+
+-- Function to handle new user signup. For a normal signup, derives the username
+-- from the email prefix, sanitised to the same charset/length rules
+-- update_username enforces (^[a-zA-Z0-9_.]{3,20}$). Anonymous (guest) users have
+-- no email, so they get a generated `player_NNNNN` handle instead. On collision,
+-- retries with a random suffix — a plain unique violation here would roll back
+-- the entire signup.
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
   v_base     TEXT;
   v_username TEXT;
 BEGIN
-  v_base := lower(
-    regexp_replace(split_part(NEW.email, '@', 1), '[^a-zA-Z0-9_.]', '', 'g')
-  );
-  v_base := left(v_base, 20);
-  IF v_base = '' THEN
-    v_base := 'player';
-  ELSIF length(v_base) < 3 THEN
-    v_base := rpad(v_base, 3, '0');
+  IF NEW.email IS NULL THEN
+    -- Guest: no email to derive from. Start with a random handle and let the
+    -- retry loop resolve any collision.
+    v_base     := 'player';
+    v_username := 'player_' || lpad(floor(random() * 100000)::INT::TEXT, 5, '0');
+  ELSE
+    v_base := lower(
+      regexp_replace(split_part(NEW.email, '@', 1), '[^a-zA-Z0-9_.]', '', 'g')
+    );
+    v_base := left(v_base, 20);
+    IF v_base = '' THEN
+      v_base := 'player';
+    ELSIF length(v_base) < 3 THEN
+      v_base := rpad(v_base, 3, '0');
+    END IF;
+    v_username := v_base;
   END IF;
 
-  v_username := v_base;
   FOR i IN 1..10 LOOP
     BEGIN
       INSERT INTO public.users (id, username, email)
@@ -181,6 +213,10 @@ CREATE INDEX IF NOT EXISTS users_username_trgm_idx ON public.users USING gist (u
 -- Avatar file in the storage bucket is deleted client-side before this RPC
 -- is called. If the client fails mid-flow the file becomes orphaned (no
 -- user_profiles row will reference it, so it is invisible to other users).
+--
+-- The graceful teardown (cancel created lobbies, leave joined lobbies, forfeit
+-- active games) then the final delete lives in private.purge_user (defined in
+-- the game-infra migration), shared with cleanup_stale_anonymous_users.
 CREATE OR REPLACE FUNCTION public.delete_account()
 RETURNS void
 LANGUAGE plpgsql
@@ -189,51 +225,13 @@ SET search_path = ''
 AS $$
 DECLARE
   v_user_id UUID;
-  v_game    RECORD;
 BEGIN
   v_user_id := auth.uid();
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
 
-  -- Cancel all waiting/ready games this user created.
-  -- Lock first so cancel_game's FOR UPDATE on the same row is a no-op.
-  FOR v_game IN
-    SELECT id FROM public.games
-    WHERE created_by = v_user_id
-      AND status IN ('waiting', 'ready')
-    FOR UPDATE
-  LOOP
-    PERFORM public.cancel_game(v_game.id);
-  END LOOP;
-
-  -- Leave all waiting/ready games this user joined but did not create.
-  -- leave_game compacts player_index values and transitions ready→waiting
-  -- if the count drops below min_players — plain SET NULL skips that logic.
-  FOR v_game IN
-    SELECT g.id FROM public.games g
-    JOIN public.participants p ON p.game_id = g.id AND p.user_id = v_user_id
-    WHERE g.status IN ('waiting', 'ready')
-      AND g.created_by != v_user_id
-    FOR UPDATE OF g
-  LOOP
-    PERFORM public.leave_game(v_game.id);
-  END LOOP;
-
-  -- Forfeit all active games through the existing forfeit infrastructure so
-  -- outcomes, observations, and rating triggers fire normally. forfeit_game
-  -- acquires its own FOR UPDATE lock on the games row.
-  FOR v_game IN
-    SELECT g.id
-    FROM public.games g
-    JOIN public.participants p
-      ON p.game_id = g.id AND p.user_id = v_user_id
-    WHERE g.status = 'active'
-  LOOP
-    PERFORM public.forfeit_game(v_game.id);
-  END LOOP;
-
-  DELETE FROM auth.users WHERE id = v_user_id;
+  PERFORM private.purge_user(v_user_id);
 END;
 $$;
 
