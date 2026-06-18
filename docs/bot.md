@@ -40,6 +40,16 @@ There is **no on-device "warm server"** — a turn is an event the client alread
 receives, so local bots compute inline; "keep playing while the app is closed" is
 by definition a server-side bot.
 
+> **Non-goal: offline play.** "Local bot" means *where the move is computed*, not
+> *offline*. The engine is **server-authoritative** — every state transition runs
+> server-side (`game_apply_action`), observations are computed server-side, and
+> identity/outcomes/ratings live in the DB. A local-bot game still needs the server
+> for *every move* (the bot picks its move on-device; the server validates, applies,
+> and fans out). True offline solo would require reimplementing the authoritative
+> rules in Dart on-device (today they live only in the SQL hooks), making the
+> device authoritative, plus local persistence (Drift) and reconnect reconciliation
+> — a separate "Offline mode" feature, explicitly **out of scope** here.
+
 ## Authorization invariants (engine-enforced, not per-game)
 
 A local bot's move is **computed and submitted by a human's client**, and for
@@ -141,8 +151,8 @@ The bot deployment is configured with its **private** key. `get_bots(p_game_type
 exposes the safe display columns for the "Play vs AI" picker. The `bot_type` string
 is the stable handle joining the row to its code (local) or deployment
 (server-side); clients never hardcode UUIDs. A **local bot** is a row with no
-`webhook_url`/`public_key` whose `bot_type` matches a `GameModule.localBot`; a
-**server-side bot** is a row with both. The all-powerful service role never leaves
+`webhook_url`/`public_key` whose `bot_type` matches a `GameModule.localBots` entry;
+a **server-side bot** is a row with both. The all-powerful service role never leaves
 the `bot-gateway`.
 
 ### Observation rows for bots
@@ -163,6 +173,9 @@ mix of local + server:
 - Validates each bot: `game_type` match, schema-compatible, and **if the caller is
   anonymous, every bot must be local** (`webhook_url IS NULL`) — server bots cost
   real per-move compute and are an abuse surface, so they are off-limits to guests.
+- **If any seated bot is a server bot, the game must be timed** (so `expire_turn`
+  can backstop a dead server bot). An *all-local* solo game may be untimed —
+  nothing acts unless the foreground client drives it.
 - Seats the human + all bots, then runs `start_game` internally → the game is
   **full and active in one shot**. Because it is never in a joinable state, **no
   second human can ever join** (invariant 1 holds with no extra guard). Local seats
@@ -285,7 +298,11 @@ a bot in the same game, and **every other participant is a bot** (the caller is 
 sole human). It refuses if a second human is present — that is the *only* place the
 engine ever reveals a bot's hidden view to a client.
 
-### Dart / engine contract (local bots)
+### Dart / engine contract (local bots) — `localBots` is the *whole* surface
+
+The implementor's only bot declaration is the **local bot logic they wrote**.
+Everything else (server-bot availability, whether "Play vs AI" is offered, opponent
+counts, difficulties, local/server mix) is **derived** — see below.
 
 ```dart
 abstract class GameBot {
@@ -296,39 +313,68 @@ abstract class GameBot {
 }
 ```
 
-`GameModule` gains safe-default opt-ins so existing games are unaffected:
-`GameBot? localBot(String botType) => null;` (the local bot logic) and
-`SoloPlaySpec? get soloPlay => null;` (below).
-
-The **local-bot driver** is simple under the invariants — it only ever runs in a
-solo game: on each observation event, for every pending **local** bot seat (one
-whose `bot_type` has a `localBot` impl *and* whose row has no `webhook_url`) →
-`get_local_bot_observation` → `chooseAction` → `submit_local_bot_action` (heavy
-search via `compute()`; idempotent — server re-checks pending + version).
-Server-bot seats in the same solo game are ignored by the driver (their webhook
-drives them). Setup phases (e.g. Stratego piece placement) are ordinary in-game
-actions handled by the same loop. Server-side bots run no Dart in the engine;
-their contract is the gateway's HTTP/JSON shape.
-
-### Solo play UX (`SoloPlaySpec`)
-
-"Play vs AI" is a first-class, one-tap entry — **not** "create a game, then add a
-bot in the waiting room". The `GameModule` declares it:
-
 ```dart
-/// Null → no "Play vs AI" for this game (implementor's choice, e.g. a game with
-/// no good bot). Otherwise drives the practice picker.
-SoloPlaySpec? get soloPlay => null;
+// On GameModule — the entire bot contract surface. Default empty ⇒ no local bots,
+// no boilerplate, nothing to declare. Adding bots is never required.
+List<GameBot> get localBots => const [];
 ```
 
-`SoloPlaySpec` declares the opponent-count options (1 bot for Chess/Stratego/RPS;
-"1 human + N bots" for multiplayer games like Poker / Exploding Kittens) and the
-available bots/difficulties (resolved against `get_bots(game_type)`). The app shows
-a **"Play vs AI"** entry next to "New Game"/"Join" *only when* `soloPlay != null`;
-tapping it shows a small difficulty/opponent-count picker, then calls
-`create_solo_game(...)` and drops the player **straight into the game** (it started
-atomically — no waiting room). Multiplayer games are free to offer it (1 human + N
-bots) or not.
+We deliberately do **not** expose a "supports local/server bots" flag or a
+`SoloPlaySpec`:
+- *Local-bot support* = simply *whether `localBots` is non-empty*. Presence is the
+  declaration.
+- *Server-bot support* is **not a module concern at all** — server bots are
+  deployment data (rows + live endpoints) that come and go without an app release,
+  discovered at runtime via `get_bots`. A module flag would lie in both directions.
+- *Solo-play* (offering, counts, difficulties) is derivable, so a `SoloPlaySpec`
+  would only duplicate other sources of truth and drift from them.
+
+**Local logic lives in the game package, not the engine** — a TicTacToe minimax is
+meaningless to Poker. The engine owns only the `GameBot` *contract* + the wiring
+(driver, RPCs, picker); the game's `lib/game/` provides the implementations,
+exactly parallel to `GameModule` / `BaseEngine`.
+
+The **local-bot driver** only ever runs in a solo game: on each observation event,
+for every pending **local** bot seat (one whose `bot_type` matches a `localBots`
+entry *and* whose row has no `webhook_url`) → `get_local_bot_observation` →
+`chooseAction` → `submit_local_bot_action` (heavy search via `compute()`;
+idempotent — server re-checks pending + version). Server-bot seats in the same solo
+game are ignored by the driver (their webhook drives them). Setup phases (e.g.
+Stratego piece placement) are ordinary in-game actions handled by the same loop.
+
+### Versioning bot logic
+
+Both kinds reuse the **schema gate**, just from different "highest supported schema"
+sources — no separate bot-versioning machinery:
+- **Local**: the logic ships *in the app build*, so it is versioned with the app /
+  the module's `schemaVersion`. A build may drive a local bot iff
+  `module.schemaVersion >= game.schema_version` **and** `localBots` contains that
+  `bot_type`. An old build (missing the impl or too old for the schema) simply
+  doesn't offer it — graceful, same mechanism as the human join gate.
+- **Server**: the logic lives in the operator's deployment, versioned
+  independently; the `bots.schema_version` *row* gates which game schemas it may be
+  seated into.
+
+### Solo play UX — derived, not declared
+
+"Play vs AI" is a first-class, one-tap entry — **not** "create a game, then add a
+bot in the waiting room" — and it is derived entirely from data:
+
+- **Shown** iff at least one *usable* bot exists for the `game_type`: a `localBots`
+  entry with a matching schema-compatible `bots` row, **or** a registered
+  schema-compatible server bot (from `get_bots`).
+- **Opponent counts** come from the game's existing `creationSpec` /
+  `playersForConfig` (1 bot for a 2-player game; "1 human + N bots" across the
+  game's valid counts) — the solo picker reuses the same player-count selection the
+  create dialog already has.
+- **Difficulties / labels** are the usable bots' `display_name` (optional
+  `bots.sort_order` only if deterministic ordering is wanted).
+
+A generic engine picker fills the (count − 1) bot seats from the usable list
+(default-fill + per-seat override), then calls `create_solo_game(bot_ids[])` and
+drops the player **straight into the game** (it started atomically — no waiting
+room). The array is an arbitrary mix of local + server bots in any difficulty
+combination, so multiplayer practice ("1 human + 5 bots") needs no special-casing.
 
 The other touchpoint is the **host's waiting-room "Add bot"** affordance for a
 *multiplayer human* game (e.g. a 6-player poker with 4 humans): the creator picks a
@@ -367,10 +413,11 @@ the rule in Dart.
   against `bots.public_key`) + `config.toml`; the host's waiting-room **"Add bot"**
   UI (it's only useful once a seated server bot can actually move).
 - **PR-3 — Local bots.** `submit_local_bot_action` + `get_local_bot_observation`
-  (sole-human gate); the `GameBot` contract + `GameModule.localBot`/`soloPlay`
-  opt-ins + barrel export; repository RPC wrappers + providers; the local-bot driver
-  in `game_screen.dart`; the `preview_game_rating` badge + the `SoloPlaySpec`-driven
-  "Play vs AI" entry in the UI.
+  (sole-human gate); the `GameBot` contract (engine) + `GameModule.localBots`
+  (game package) + barrel export; repository RPC wrappers + providers; the
+  local-bot driver in `game_screen.dart`; the `preview_game_rating` badge + the
+  **derived** "Play vs AI" entry (shown when a usable bot exists; counts from
+  `playersForConfig`; opponents from `get_bots`) in the UI.
 
 Files (engine, dev-phase edit-in-place SQL): `bots` in
 `supabase/migrations/20251212144609_create_users_table.sql`; `observations` in

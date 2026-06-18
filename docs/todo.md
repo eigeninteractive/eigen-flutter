@@ -4,6 +4,7 @@
 - [ ] Implement Strategy
 - [ ] Implement Bravado
 - [ ] Bot Support
+- [ ] Offline App Support with Bot Play
 - [ ] Replay Support
 - [ ] Spectating Support
 - [ ] Persisting game history, games, etc. using Drift
