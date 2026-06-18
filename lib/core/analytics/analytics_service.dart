@@ -9,7 +9,16 @@ abstract class AnalyticsService {
   /// Clears the current identity (call on sign-out).
   Future<void> reset();
 
+  /// Tags the current user as a guest (anonymous) or registered account, so
+  /// every other metric can be segmented by account type. Call whenever the
+  /// session's account type is established or changes.
+  Future<void> setAccountType({required bool isGuest});
+
   // ── Events ─────────────────────────────────────────────────────────────────
+
+  /// A guest converted their anonymous session into a permanent account. The
+  /// key conversion-funnel metric for guest auth.
+  Future<void> guestUpgraded();
 
   Future<void> gameCreated({
     required String gameId,

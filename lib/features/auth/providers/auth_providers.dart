@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:eigen_engine/core/analytics/analytics_provider.dart';
 import 'package:eigen_engine/core/config/app_config.dart';
 import 'package:eigen_engine/core/notifications/notification_provider.dart';
 import 'package:eigen_engine/core/storage/storage_provider.dart';
@@ -8,6 +11,17 @@ import 'package:eigen_engine/features/profile/providers/profile_providers.dart';
 import 'package:eigen_engine/shared/providers/player_providers.dart';
 
 part 'auth_providers.g.dart';
+
+/// Result of [AuthController.upgradeToGoogle], so the UI can tailor feedback.
+enum UpgradeOutcome {
+  /// The Google identity was linked to the existing guest account; all games,
+  /// ratings, and friends are preserved.
+  linked,
+
+  /// The Google account already existed, so the session switched into it and
+  /// the guest's data was abandoned.
+  switchedToExisting,
+}
 
 /// Provider for Supabase client instance
 @Riverpod(keepAlive: true)
@@ -101,25 +115,40 @@ class AuthController extends _$AuthController {
   /// identity so the new values surface immediately. If the Google account
   /// already exists, we switch into it instead — clearing the abandoned guest's
   /// local data and FCM token first, matching [signOut]'s teardown.
-  Future<void> upgradeToGoogle() async {
+  ///
+  /// Returns which path ran so the caller can tailor its confirmation; throws
+  /// on failure (e.g. the user cancels the Google sheet).
+  Future<UpgradeOutcome> upgradeToGoogle() async {
     state = const AsyncLoading();
 
-    state = await AsyncValue.guard(() async {
-      final authService = ref.read(authServiceProvider);
-      final guestId = ref.read(currentUserProvider)?.id;
+    final authService = ref.read(authServiceProvider);
+    final analytics = ref.read(analyticsServiceProvider);
+    final guestId = ref.read(currentUserProvider)?.id;
+    try {
       try {
         await authService.upgradeWithGoogle();
         if (guestId != null) {
           ref.invalidate(currentUserProfileProvider);
           ref.invalidate(playerInfoCacheProvider(id: guestId));
         }
+        unawaited(analytics.guestUpgraded());
+        unawaited(analytics.setAccountType(isGuest: false));
+        state = const AsyncData(null);
+        return UpgradeOutcome.linked;
       } on AccountExistsException {
-        // Abandon the guest session and switch into the existing account.
+        // Abandon the guest session and switch into the existing account. The
+        // resulting signedIn event re-identifies and re-tags account_type via
+        // app_startup; no guestUpgraded event — the guest's data was not kept.
         if (guestId != null) await deleteUserData(ref, guestId);
         await ref.read(notificationServiceProvider).deleteCurrentToken();
         await authService.switchToExistingGoogleAccount();
+        state = const AsyncData(null);
+        return UpgradeOutcome.switchedToExisting;
       }
-    });
+    } catch (e, stackTrace) {
+      state = AsyncError(e, stackTrace);
+      rethrow;
+    }
   }
 
   /// Permanently deletes the current user's account.

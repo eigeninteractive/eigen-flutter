@@ -83,6 +83,18 @@ BEGIN
 END;
 $$;
 
+-- True when the given user is an anonymous guest. Used to keep guests out of
+-- social features as a *target* (search results, friend requests) — the JWT
+-- claim only identifies the caller, so this reads the flag from auth.users.
+CREATE OR REPLACE FUNCTION private.is_anonymous_user(p_user_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT COALESCE(
+    (SELECT is_anonymous FROM auth.users WHERE id = p_user_id),
+    false
+  );
+$$;
+
 -- Function to handle new user signup. For a normal signup, derives the username
 -- from the email prefix, sanitised to the same charset/length rules
 -- update_username enforces (^[a-zA-Z0-9_.]{3,20}$). Anonymous (guest) users have

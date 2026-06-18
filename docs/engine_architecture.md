@@ -2724,6 +2724,10 @@ is a **runtime check on the `is_anonymous` JWT claim**:
 - `private.is_anonymous()` → reads `auth.jwt()->>'is_anonymous'`.
 - `private.require_permanent_user()` → raises for guests. Called by
   `send_friend_request`, `accept_friend_request`, `remove_friend`, `search_users`.
+  Guests are also blocked as a social *target* (not just caller) via
+  `private.is_anonymous_user(uuid)`: `search_users` excludes anonymous accounts
+  from results, and `send_friend_request` rejects an anonymous target — so a
+  throwaway guest never appears in or receives friend activity.
 - `create_game` forces `rated = false` for guests
   (`... AND NOT private.is_anonymous()`).
 - `join_game` raises if the target game is rated and the caller is a guest

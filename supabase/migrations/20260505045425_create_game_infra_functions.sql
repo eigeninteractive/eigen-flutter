@@ -1458,7 +1458,10 @@ BEGIN
   IF v_user_id = p_target_user_id THEN
     RAISE EXCEPTION 'Cannot send friend request to yourself';
   END IF;
-  
+  IF private.is_anonymous_user(p_target_user_id) THEN
+    RAISE EXCEPTION 'Cannot send a friend request to a guest';
+  END IF;
+
   v_u1 := LEAST(v_user_id, p_target_user_id);
   v_u2 := GREATEST(v_user_id, p_target_user_id);
   
@@ -1534,6 +1537,8 @@ BEGIN
   SELECT u.id, u.username, up.display_name, up.avatar_url
   FROM public.users u
   JOIN public.user_profiles up ON up.id = u.id
+  -- Exclude anonymous guests: they are throwaway accounts and cannot be friended.
+  JOIN auth.users au ON au.id = u.id AND NOT au.is_anonymous
   WHERE u.username    ILIKE v_pattern
      OR up.display_name ILIKE v_pattern
   -- Best trigram match first, so exact and near-exact names beat

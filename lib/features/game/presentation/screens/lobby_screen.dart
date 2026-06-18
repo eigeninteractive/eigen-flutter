@@ -329,10 +329,7 @@ class _GameCardState extends ConsumerState<_GameCard> {
                 child: const Text('View'),
               )
             : !supported
-            ? const FilledButton(
-                onPressed: null,
-                child: Text('Update to join'),
-              )
+            ? const FilledButton(onPressed: null, child: Text('Update to join'))
             : ratedBlockedForGuest
             ? const FilledButton(
                 onPressed: null,

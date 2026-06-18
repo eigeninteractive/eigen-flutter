@@ -1,6 +1,5 @@
 # P0
 
-- [ ] Supabase Anonymous Auth
 - [ ] Add thorough docs
 - [ ] Implement Strategy
 - [ ] Implement Bravado

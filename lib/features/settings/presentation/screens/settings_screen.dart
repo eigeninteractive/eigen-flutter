@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:eigen_engine/core/config/app_config.dart';
+import 'package:eigen_engine/core/errors/error_messages.dart';
 import 'package:eigen_engine/core/notifications/notification_provider.dart';
 import 'package:eigen_engine/core/theme/theme_provider.dart';
 import 'package:eigen_engine/core/utils/deep_links.dart';
@@ -381,17 +382,8 @@ class _UpgradeAccountCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
-
-    ref.listen(authControllerProvider, (_, next) {
-      next.whenOrNull(
-        error: (error, _) => ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not create account: $error'),
-            backgroundColor: colorScheme.error,
-          ),
-        ),
-      );
-    });
+    final textTheme = Theme.of(context).textTheme;
+    final onContainer = colorScheme.onPrimaryContainer;
 
     final isLoading = ref.watch(
       authControllerProvider.select((state) => state.isLoading),
@@ -400,32 +392,79 @@ class _UpgradeAccountCard extends ConsumerWidget {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       color: colorScheme.primaryContainer,
-      child: ListTile(
-        leading: Icon(Icons.account_circle, color: colorScheme.onPrimaryContainer),
-        title: Text(
-          'Save your progress',
-          style: TextStyle(color: colorScheme.onPrimaryContainer),
-        ),
-        subtitle: Text(
-          'You\'re playing as a guest. Create an account to keep your games, '
-          'ratings, and friends, and to unlock rated games and social features.',
-          style: TextStyle(color: colorScheme.onPrimaryContainer),
-        ),
-        trailing: isLoading
-            ? SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: colorScheme.onPrimaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.account_circle, color: onContainer),
+                const SizedBox(width: 12),
+                Text(
+                  'Save your progress',
+                  style: textTheme.titleMedium?.copyWith(color: onContainer),
                 ),
-              )
-            : Icon(Icons.chevron_right, color: colorScheme.onPrimaryContainer),
-        onTap: isLoading
-            ? null
-            : () => ref.read(authControllerProvider.notifier).upgradeToGoogle(),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "You're playing as a guest. Create an account to keep your games, "
+              'ratings, and friends, and to unlock rated games and social '
+              'features.',
+              style: textTheme.bodyMedium?.copyWith(color: onContainer),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(
+                onPressed: isLoading ? null : () => _upgrade(context, ref),
+                child: isLoading
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: colorScheme.onPrimary,
+                        ),
+                      )
+                    : const Text('Create account'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  Future<void> _upgrade(BuildContext context, WidgetRef ref) async {
+    // Capture before the await — on success this card is removed from the tree
+    // (isAnonymous flips false), but the messenger ancestor survives.
+    final messenger = ScaffoldMessenger.of(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    try {
+      final outcome = await ref
+          .read(authControllerProvider.notifier)
+          .upgradeToGoogle();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(switch (outcome) {
+            UpgradeOutcome.linked =>
+              'Account created — your games, ratings, and friends are saved.',
+            UpgradeOutcome.switchedToExisting =>
+              'Signed in to your existing account. Guest progress wasn\'t '
+                  'transferred.',
+          }),
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Could not create account: ${humanize(e)}'),
+          backgroundColor: colorScheme.error,
+        ),
+      );
+    }
   }
 }
 

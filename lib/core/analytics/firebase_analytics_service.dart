@@ -14,6 +14,16 @@ class FirebaseAnalyticsService implements AnalyticsService {
   Future<void> reset() => _analytics.setUserId(id: null);
 
   @override
+  Future<void> setAccountType({required bool isGuest}) =>
+      _analytics.setUserProperty(
+        name: 'account_type',
+        value: isGuest ? 'guest' : 'registered',
+      );
+
+  @override
+  Future<void> guestUpgraded() => _analytics.logEvent(name: 'guest_upgraded');
+
+  @override
   Future<void> gameCreated({
     required String gameId,
     required String access,

@@ -105,8 +105,11 @@ class _AppStartupState extends ConsumerState<AppStartup> {
         switch (authState.event) {
           case AuthChangeEvent.initialSession:
           case AuthChangeEvent.signedIn:
-            if (authState.session?.user.id case final id?) {
-              unawaited(analytics.identify(id));
+            if (authState.session?.user case final user?) {
+              unawaited(analytics.identify(user.id));
+              // Segment all metrics by guest vs registered. Conversion later
+              // re-tags to registered from AuthController.upgradeToGoogle.
+              unawaited(analytics.setAccountType(isGuest: user.isAnonymous));
               // Fire-and-forget: starts the SQLite cache restore + network
               // fetch before any screen renders. keepAlive ensures the result
               // is reused by all subsequent watchers.
