@@ -10,7 +10,3 @@
 - Set Card Game
 - RPS
 - Exploding Kittens
-
-# Assumption
-
-- We are assuming that we are only allowing Google Sign In in several places (eg: username split from email provider email)
