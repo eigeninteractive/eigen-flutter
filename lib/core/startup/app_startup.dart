@@ -11,6 +11,7 @@ import 'package:eigen_engine/core/navigation/router/app_router.dart';
 import 'package:eigen_engine/core/notifications/notification_provider.dart';
 import 'package:eigen_engine/core/updates/update_notifier.dart';
 import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
+import 'package:eigen_engine/features/game/providers/game_providers.dart';
 import 'package:eigen_engine/features/profile/providers/profile_providers.dart';
 import 'package:eigen_engine/features/social/providers/social_providers.dart';
 
@@ -114,6 +115,11 @@ class _AppStartupState extends ConsumerState<AppStartup> {
               // fetch before any screen renders. keepAlive ensures the result
               // is reused by all subsequent watchers.
               ref.read(currentUserProfileProvider.future).ignore();
+              // Warm the bot catalog the same way. The shell only watches it
+              // when the build ships local bots (localBots.isNotEmpty short-
+              // circuit), so this is what readies it for the server-bots-only
+              // path (the waiting-room "Add bot" picker) before it is opened.
+              ref.read(availableBotsProvider.future).ignore();
             }
           case AuthChangeEvent.signedOut:
             unawaited(analytics.reset());

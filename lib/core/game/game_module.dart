@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:eigen_engine/core/game/base_engine.dart';
+import 'package:eigen_engine/core/game/local_bot.dart';
 import 'package:eigen_engine/core/game/game_creation_spec.dart';
 import 'package:eigen_engine/core/game/game_frame.dart';
 import 'package:eigen_engine/core/game/game_outcome.dart';
@@ -152,6 +153,16 @@ abstract class GameModule {
   /// About page provides the scroll container, padding and app-level chrome.
   /// Free to be interactive (animated board examples) and to read [Theme.of].
   Widget buildRules(BuildContext context);
+
+  /// Local bots this build ships, keyed by [LocalBot.username].
+  ///
+  /// This is the *entire* bot contract surface: a non-empty list is what
+  /// "supports local bots" means. Empty by default — adding bots is never
+  /// required. Server bots need nothing here (they are deployment data,
+  /// discovered at runtime via `get_bots`). Whether solo play is offered, and
+  /// with which opponents, is **derived** from this plus the registered bots —
+  /// never declared separately.
+  List<LocalBot> get localBots => const [];
 }
 
 /// Thrown when a game's `games.schema_version` exceeds the running build's

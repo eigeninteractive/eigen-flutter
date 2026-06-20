@@ -32,24 +32,89 @@ CREATE TABLE public.users (
 -- keyed by bot_id rather than user_id.
 CREATE TABLE public.bots (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  -- Unique handle, e.g. 'easy_ai'. Used like a username for identity lookups.
+  -- Unique handle, e.g. 'easy_ai'. Identity lookup key, and the key the in-app
+  -- driver uses to pick the matching GameModule.localBots implementation for a
+  -- local bot (GameBot.username).
   username TEXT UNIQUE NOT NULL,
   -- Human-readable display name, e.g. 'Easy AI'.
   display_name TEXT NOT NULL,
   -- Optional avatar image URL.
   avatar_url TEXT,
-  -- Machine-readable type identifier used by game engines, e.g. 'easy_ai'.
-  bot_type TEXT NOT NULL,
-  -- Game type this bot belongs to (NULL = game-agnostic).
-  game_type TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  -- Highest game schema this bot supports (mirrors GameModule.schemaVersion).
+  -- Seating refuses to place a bot into a game whose schema_version exceeds this,
+  -- exactly like the human join gate. No default — the operator must state the
+  -- schema the bot was written against when inserting the row.
+  schema_version INT NOT NULL,
+  -- Authoritative locality. true ⇒ driven by the sole human's own client (never
+  -- woken, no server transport); false ⇒ a server-side bot with its own endpoint.
+  -- This is the source of truth — locality is never inferred from webhook_url or
+  -- public_key, so the server-bot auth scheme can evolve without changing what
+  -- "local" means. The bot_transport_consistent CHECK keeps the transport columns
+  -- in step with it.
+  is_local BOOLEAN NOT NULL,
+  -- Where to wake a server-side bot when it is its turn. NULL for local bots.
+  webhook_url TEXT,
+  -- A server-side bot's Ed25519/ECDSA *public* key (PEM/JWK). The bot-gateway
+  -- verifies the bot's signed action against this. NULL for local bots. Public
+  -- keys are not secret; no private material is ever stored server-side.
+  public_key TEXT,
+  -- Whether this bot may participate in rated games. A non-eligible bot can never
+  -- be seated into a rated game (see seat_server_bot). Defaults false so
+  -- human-vs-bot games are unrated unless a bot is explicitly ranked.
+  rated_eligible BOOLEAN NOT NULL DEFAULT false,
+  -- Opaque per-bot parameters, chosen by the operator. Lets one implementation /
+  -- deployment back many named personas (N:1) without code changes: distinct rows
+  -- share code (a local GameBot class, or a server webhook_url) but differ by
+  -- config. Local bot config travels to the client via get_participants (only for
+  -- local bots) and is handed to GameBot.chooseAction; server bot config travels
+  -- to the bot's endpoint in the wake payload. Empty by default — most bots are
+  -- parameterized in code (a local GameBot's constructor) and ignore this.
+  config JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- A local bot has neither endpoint nor key; a server bot has both. Keyed off the
+  -- authoritative is_local flag, not the reverse.
+  CONSTRAINT bot_transport_consistent CHECK (
+    (is_local AND webhook_url IS NULL AND public_key IS NULL) OR
+    (NOT is_local AND webhook_url IS NOT NULL AND public_key IS NOT NULL)
+  )
 );
 
 ALTER TABLE public.bots ENABLE ROW LEVEL SECURITY;
 
--- All authenticated users can read bot definitions (needed for game displays).
-CREATE POLICY "bots_select" ON public.bots
-  FOR SELECT TO authenticated USING (true);
+-- No direct table SELECT for clients: webhook_url is operational and public_key
+-- need not be exposed. In-game identity resolves through get_players()
+-- (SECURITY DEFINER, bypasses RLS); the "Play vs AI" / "Add bot" pickers use the
+-- get_bots() RPC (safe columns only). Service role bypasses RLS for the gateway.
+
+-- Bot discovery for the "Play vs AI" / "Add bot" pickers. Returns only display-
+-- safe columns (never webhook_url / public_key). This is a single-game-per-
+-- deployment engine, so the whole catalog belongs to this game. is_local lets the
+-- client decide whether it can drive the bot itself (local) or must rely on the
+-- server wake (server); for a local bot, username keys the GameBot implementation.
+CREATE OR REPLACE FUNCTION public.get_bots()
+RETURNS TABLE(
+  id             UUID,
+  username       TEXT,
+  display_name   TEXT,
+  avatar_url     TEXT,
+  schema_version INT,
+  is_local       BOOLEAN,
+  rated_eligible BOOLEAN,
+  config         JSONB
+)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT b.id, b.username, b.display_name, b.avatar_url,
+         b.schema_version,
+         b.is_local,
+         b.rated_eligible,
+         -- Local bot config only; a server bot's config stays server-side (it
+         -- travels only in the wake to the bot's own endpoint, never to clients).
+         CASE WHEN b.is_local THEN b.config ELSE NULL END
+  FROM public.bots b;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_bots() FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.get_bots() TO authenticated;
 
 -- Enable RLS
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;

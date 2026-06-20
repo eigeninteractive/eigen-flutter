@@ -35,6 +35,20 @@ abstract class BaseEngine<TObservationData, TActionData, TConfigData> {
   /// ```
   TObservationData parseObservation(Map<String, dynamic> json);
 
+  /// Serialises a typed action into the JSON map submitted to the server.
+  ///
+  /// The output mirror of [parseObservation]: infra holds an erased
+  /// [BaseEngine] and cannot call a concrete `toJson`, so the engine owns this
+  /// codec step. The returned map is the action `data` the `game_apply_action`
+  /// hook consumes — identical whether the move came from a human tap, a local
+  /// bot, or a server bot, because every producer routes through this one seam.
+  /// Implement by delegating to the Freezed `toJson`:
+  /// ```dart
+  /// @override
+  /// Map<String, dynamic> serializeAction(ActionData action) => action.toJson();
+  /// ```
+  Map<String, dynamic> serializeAction(TActionData action);
+
   /// Validates local legality of an action for client-side UX feedback.
   ///
   /// The authoritative check runs server-side in `game_apply_action`; this is

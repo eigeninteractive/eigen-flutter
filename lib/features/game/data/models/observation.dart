@@ -5,16 +5,27 @@ part 'observation.g.dart';
 
 /// A player's observation of a game state.
 ///
-/// Infra-level row. [data] is the opaque game-specific payload.
+/// Infra-level row, one per participant (human or bot), keyed by
+/// `(gameId, playerIndex)`. [data] is the opaque game-specific payload.
 /// [pendingPlayers] mirrors the server's canonical set of indices allowed
-/// to act. Callers derive "is my turn" as
-/// `pendingPlayers.contains(myPlayerIndex)` — participant index is known
-/// in the caller's context and doesn't need to be denormalized here.
+/// to act; callers derive "is my turn" as `pendingPlayers.contains(playerIndex)`.
+///
+/// Exactly one of [userId] / [botId] is set: a human's own row carries [userId]
+/// (and RLS hides everyone else's), while a bot seat's row carries [botId] and is
+/// returned only via `get_local_bot_observation` for the sole human of a solo game.
 @freezed
 abstract class Observation with _$Observation {
   const factory Observation({
     required String gameId,
-    required String userId,
+
+    /// The seat this observation belongs to.
+    required int playerIndex,
+
+    /// Set for a human's row; null for a bot seat's row.
+    String? userId,
+
+    /// Set for a bot seat's row; null for a human's row.
+    String? botId,
     required Map<String, dynamic> data,
     required List<int> pendingPlayers,
     required int version,

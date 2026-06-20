@@ -1,11 +1,16 @@
+import 'package:flutter_riverpod/experimental/persist.dart';
+import 'package:riverpod_annotation/experimental/json_persist.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import 'package:eigen_engine/core/game/game_creation_spec.dart';
 import 'package:eigen_engine/core/game/game_module.dart';
 import 'package:eigen_engine/core/game/game_player.dart';
 import 'package:eigen_engine/core/game/game_outcome.dart';
 import 'package:eigen_engine/core/game/players_context.dart';
+import 'package:eigen_engine/core/storage/storage_provider.dart';
 import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
 import 'package:eigen_engine/features/game/data/game_repository.dart';
+import 'package:eigen_engine/features/game/data/models/bot_info.dart';
 import 'package:eigen_engine/features/game/data/models/game.dart';
 import 'package:eigen_engine/features/game/data/models/observation.dart';
 import 'package:eigen_engine/shared/data/models/player_info.dart';
@@ -18,6 +23,76 @@ part 'game_providers.g.dart';
 GameRepository gameRepository(Ref ref) {
   final supabase = ref.watch(supabaseClientProvider);
   return GameRepository(supabase);
+}
+
+/// The bot catalog for this deployment — the bot *capability* layer (is_local,
+/// config, schema, rated-eligibility), used by the solo / "Add bot"
+/// pickers and by the local-bot driver to resolve a seat's config.
+///
+/// `keepAlive`: the catalog is static reference data that changes rarely (bots are
+/// added by hand in the dashboard), so it is fetched once and reused across the
+/// session rather than re-fetched per screen. Invalidate to force a refresh.
+///
+/// `@JsonPersist()` caches it to SQLite so the pickers and the local-bot driver
+/// resolve from cache (~5 ms) on cold start, before the network refresh lands
+/// (stale-while-revalidate). The catalog is deployment-global public reference
+/// data — like [PlayerInfoCache] it is **not** user-scoped and **not** cleared on
+/// sign-out, so the auto-derived (no `key:`) global storage key is correct. Bump
+/// [StorageOptions.destroyKey] if [BotInfo]'s persisted JSON shape changes.
+@Riverpod(keepAlive: true)
+@JsonPersist()
+class AvailableBots extends _$AvailableBots {
+  @override
+  Future<List<BotInfo>> build() async {
+    persist(
+      ref.watch(storageProvider.future),
+      options: const StorageOptions(
+        cacheTime: StorageCacheTime.unsafe_forever,
+        destroyKey: '1',
+      ),
+    );
+
+    return ref.watch(gameRepositoryProvider).getBots();
+  }
+}
+
+/// The bot catalog indexed by bot id, for O(1) capability lookups (e.g. the
+/// local-bot driver resolving a seat's `config`). Derived from [availableBots].
+@Riverpod(keepAlive: true)
+Future<Map<String, BotInfo>> botCatalogById(Ref ref) async {
+  final bots = await ref.watch(availableBotsProvider.future);
+  return {for (final bot in bots) bot.id: bot};
+}
+
+/// Whether the solo-play entry should be offered for this deployment.
+///
+/// Solo play is available iff there is a playable (timing, bot-class) combination,
+/// mirroring the `create_solo_game` partition (local ⇒ untimed, server ⇒ timed):
+/// an **untimed** mode with a usable **local** bot, or a **timed** mode with a
+/// usable **server** bot (servers are off-limits to guests). Gating the FAB on
+/// this — not just "a local bot exists" — keeps a timed-only game from showing a
+/// solo-play entry that would open a dead-end picker.
+@riverpod
+bool soloPlayAvailable(Ref ref) {
+  final module = ref.watch(currentGameModuleProvider);
+  final bots = ref.watch(availableBotsProvider).value ?? const [];
+  final isGuest = ref.watch(isAnonymousProvider);
+
+  final timing = module.creationSpec.timingConfigs.values;
+  final hasUntimed = timing.any((c) => c is UntimedConfig);
+  final hasTimed = timing.any((c) => c is! UntimedConfig);
+
+  final hasUsableLocal = bots.any(
+    (b) =>
+        b.isLocal &&
+        b.schemaVersion <= module.schemaVersion &&
+        module.localBots.any((l) => l.username == b.username),
+  );
+  final hasUsableServer =
+      !isGuest &&
+      bots.any((b) => !b.isLocal && b.schemaVersion <= module.schemaVersion);
+
+  return (hasUntimed && hasUsableLocal) || (hasTimed && hasUsableServer);
 }
 
 /// The active [GameModule].

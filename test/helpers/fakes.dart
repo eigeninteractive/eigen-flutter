@@ -19,6 +19,8 @@ class SampleAction {
   const SampleAction(this.cell);
 
   final int cell;
+
+  Map<String, dynamic> toJson() => {'cell': cell};
 }
 
 /// No per-instance configuration for the sample game.
@@ -37,6 +39,9 @@ class SampleEngine
   @override
   SampleObservation parseObservation(Map<String, dynamic> json) =>
       SampleObservation.fromJson(json);
+
+  @override
+  Map<String, dynamic> serializeAction(SampleAction action) => action.toJson();
 
   @override
   bool isValidAction(

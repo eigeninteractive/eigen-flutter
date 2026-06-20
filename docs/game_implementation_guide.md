@@ -595,6 +595,215 @@ The game screen only calls `buildContent()` after `gamePlayersProvider(gameId)` 
 
 ---
 
+## Adding Bots
+
+Bots are **optional** — a game with no bots needs nothing here. A bot is the same
+pure function the engine already drives for humans (**observation → legal action**),
+so once seated a bot reuses the entire turn/commit/rating spine. There are two
+kinds, and they differ only in *who computes the move* and *how the move is
+authenticated*. `docs/bot.md` is the full design; this is the implementor's how-to.
+
+### Local bots (your code, runs on the player's device)
+
+Use these for **solo play** (one human + bot opponents), including hidden-info
+games — they are safe there because there is no other human to cheat against. Local
+bots run on the present human's client, so a local-bot game is always **untimed**
+(no deadline backstop needed; for a *timed* AI game use a server bot). The contract
+is the only bot surface you implement.
+
+1. **Implement `LocalBot`** in your game package (alongside your `GameModule`, never
+   in the engine):
+
+   ```dart
+   class MinimaxBot extends LocalBot<MyObservation, MyAction, MyConfig> {
+     const MinimaxBot({required this.username, this.depth = 4});
+
+     @override
+     final String username; // must equal a bots.username row
+
+     final int depth;
+
+     @override
+     FutureOr<MyAction> chooseAction({
+       required BaseEngine<MyObservation, MyAction, MyConfig> engine,
+       required MyObservation observation,   // already typed — no cast
+       required int botSeatIndex,
+       required Map<String, dynamic> config, // bots.config, may be empty
+     }) {
+       // ...pick a legal move (use `engine` for validation/legal moves)...
+       return MyAction(cell: bestCell); // your typed action model
+     }
+   }
+   ```
+
+   `LocalBot` is generic over the same `<observation, action, config>` triple as
+   your engine, so you write it exactly like the engine and get a fully typed
+   `observation` in and a typed action out — **no casts, no hand-rolled JSON**. The
+   infra driver serialises your returned action via `engine.serializeAction`, the
+   same seam the human path uses, so the two can never drift.
+
+   `observation` is `engine.parseObservation(rawData)` for the bot's seat — cast it
+   exactly as you do in `buildContent`. Heavy search? Run it in a `compute()`
+   isolate; the driver is idempotent (the server re-checks the seat + version).
+
+   **Keep the implementation stateless.** `localBots` entries are `const` and the
+   *same instance* is reused across turns, across the several seats one identity may
+   hold, and across games. Derive everything from the `chooseAction` arguments;
+   never cache per-game or per-seat state on a field, or it will bleed between seats.
+   Immutable constructor config (like `depth`) is fine.
+
+   **What `chooseAction` returns is just an action** — the same
+   `Map<String, dynamic>` a human move produces (see *Designing action data* below).
+   You design the shape; the server validates it in `game_apply_action`.
+
+2. **Register instances** in your module — this presence *is* the local-bot support
+   flag (empty default ⇒ no bot UI):
+
+   ```dart
+   @override
+   List<LocalBot> get localBots => const [
+     MinimaxBot(username: 'easy_ai', depth: 2),
+     MinimaxBot(username: 'hard_ai', depth: 6),
+   ];
+   ```
+
+   One class can back several personas via constructor args **or** the DB
+   `bots.config` handed to `chooseAction` (N:1). The engine's driver matches a
+   pending bot seat to the `localBots` entry whose `username` equals the seat's
+   `bots.username`, calls `chooseAction`, and submits — you write no wake/submit
+   plumbing.
+
+3. **Insert a matching `bots` row** per persona (see SQL below) with
+   `is_local = true`.
+
+### Server bots (a remote endpoint you run, any language)
+
+Use these for **multiplayer fill**, **rated** games, or "keep playing while the app
+is closed". They also work in **solo solo play**, but only when the game is
+**timed** — the server requires a deadline backstop for an unreachable bot, so the
+Play-vs-AI picker offers server bots only once a timed mode is chosen (and never to
+guests). They run outside this repo — the engine only talks to them over HTTPS, so
+they implement no Dart contract. `docs/bot.md` has a ~40-line Node reference server
+(verify wake → compute → sign → submit); the flow:
+
+- On the bot's turn the engine `POST`s a **wake** to the row's `webhook_url`,
+  carrying the observation: `{ game_id, bot_id, player_index, username, config,
+  observation, version, pending_players, turn_deadline }`.
+- The bot computes a move and `POST`s it to the `bot-gateway` edge function as
+  `{ payload, signature }`, where `payload` is the signed JSON `{ game_id, bot_id,
+  player_index, version, data, iat }`.
+
+**Authentication** (handled for you; you only provision keys):
+
+- **Wake (us → bot):** signed with a **per-bot HMAC**. The engine sends
+  `x-wake-signature` = base64 HMAC-SHA256 of the exact request body using the bot's
+  wake secret; your bot recomputes it over the raw body and rejects on mismatch.
+- **Action (bot → us):** signed with the bot's **Ed25519 private key**; `bot-gateway`
+  verifies against `bots.public_key`. This is the real security boundary — the wake
+  never authorizes a move (the server re-validates every action under lock), so a
+  forged wake can at most waste the bot's compute.
+
+So the bot deployment holds **two secrets**: its Ed25519 private key (to sign
+actions) and a copy of its wake secret (to verify wakes). Server-bot games must be
+**timed** (the turn deadline is the liveness backstop for an unreachable bot).
+
+### Inserting bot rows (Supabase dashboard — by hand, one-time)
+
+There is no provisioning RPC; you `INSERT` directly. A `CHECK` enforces local ⇒ no
+key/webhook, server ⇒ both.
+
+```sql
+-- local bot: no key, no webhook — driven by the human's client
+insert into bots (username, display_name, schema_version, is_local)
+values ('easy_ai', 'Easy AI', 1, true);
+
+-- server bot: webhook + public key required, plus a Vault wake secret keyed by id
+insert into bots (username, display_name, schema_version,
+                  is_local, webhook_url, rated_eligible, public_key)
+values ('hard_ai', 'Hard AI', 1,
+        false, 'https://my-bot.example/wake', false, '<bot public key>')
+returning id;  -- → <bot_id>
+
+select vault.create_secret('<random wake secret>', 'bot_wake_secret_<bot_id>');
+```
+
+`schema_version` is the highest game schema the bot supports (mirrors the human
+join gate — seating refuses a bot below the game's `schema_version`).
+`rated_eligible = true` is required for a bot to enter a rated game. Set `config`
+(jsonb) to parameterize a persona; for a server bot it travels only in the wake,
+never to clients.
+
+### In-game, treat bots as players
+
+Inside `buildContent` a bot seat is just a `GamePlayer` with `type ==
+ParticipantType.bot` — `info.username`/`displayName`/`avatarUrl` resolve through the
+same `PlayersContext`. Don't branch on player type to *render* identity; use
+`GamePlayer.type` only when a rule needs it. The `get_bots()` RPC (via
+`availableBotsProvider`) is for the **bot pickers** (solo, waiting-room "Add
+bot") — not for in-game identity.
+
+### Designing action data
+
+"Action data" is **not** a bot concept — it is the move payload every player
+already sends, and bots reuse it unchanged. The engine deliberately defines **no**
+game-specific action type (mirroring observations: `parseObservation` produces your
+own type, the engine never sees it). You own the shape, in three places that must
+agree:
+
+1. **Producer (human)** — your content widget builds the typed `ActionData` on a tap
+   and submits it through the engine seam:
+   `content.onAction(engine.serializeAction(action))`.
+2. **Producer (local bot)** — `LocalBot.chooseAction` returns that **same typed
+   `ActionData`**; the infra driver serialises it through the very same
+   `engine.serializeAction`. A human tap and a bot decision are interchangeable.
+3. **Consumer (server)** — your `game_apply_action` hook receives the resulting JSON
+   as `p_data` (jsonb) and is the **only authority**: it validates legality and
+   applies it. Never trust the client to have sent a legal move — a local bot's move
+   has exactly the same untrusted provenance as a human's.
+
+The action payload is a plain JSON object whose keys are yours to choose; keep it
+minimal — it is **only** "what the move is". Infra supplies the seat
+(`p_player_index`), version, RNG seed, config, and schema version to
+`game_apply_action` as **separate parameters**, so never put them in the payload.
+It is passed straight through as the hook's `p_data` with no infra envelope; for the
+placeholder TicTacToe game that is literally `{"position": 0–8}`
+(`(p_data->>'position')::INT`).
+
+The engine gives you a **fully typed action seam**, the output mirror of
+`parseObservation`: `BaseEngine` is generic over `TActionData`, your game defines a
+Freezed `ActionData` (`fromJson`/`toJson`) alongside `ObservationData`, and the
+engine's `serializeAction` is the **single** place a typed action becomes JSON. Both
+Dart producers stay typed end to end and route through it, so they cannot drift:
+
+```dart
+// the one action model
+@freezed
+abstract class ActionData with _$ActionData {
+  const factory ActionData({required int position}) = _ActionData;
+  factory ActionData.fromJson(Map<String, dynamic> json) =>
+      _$ActionDataFromJson(json);
+}
+
+// engine — the only typed action → JSON step
+@override
+Map<String, dynamic> serializeAction(ActionData action) => action.toJson();
+
+// human (content widget):  content.onAction(engine.serializeAction(action));
+// local bot (chooseAction): return ActionData(position: best);  // engine serialises
+// server bot (any language): emits the same JSON shape, e.g. {"position": best}
+```
+
+The seam stays typed inside Dart, but the **wire boundary** (what crosses to
+`p_data`) is `Map<String, dynamic>` — that is exactly what reaches the hook. A
+**server bot runs in another language, so it cannot share the Dart type**; its
+uniformity is guaranteed at the JSON-shape level only. That makes `game_apply_action`
+(the single consumer) plus the `ActionData` schema the **one source of truth** that
+the Dart `ActionData` model and the server bot both mirror. Version the shape via
+`p_schema_version` if it ever changes. See Hook 2 (`game_apply_action`) for the
+consumer contract.
+
+---
+
 ## Timing Widgets
 
 By default the game screen shows an infra-owned timing header above your content widget:

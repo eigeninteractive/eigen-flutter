@@ -9,7 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// unrecognised falls back to a generic message.
 String humanize(Object e) {
   final s = e is PostgrestException ? e.message : e.toString();
-  if (s.contains('Stale state')) return 'Board updated — try again.';
+  if (s.contains('Stale state')) return 'The game updated — try again.';
   if (s.contains('Not your turn')) return "It's not your turn.";
   if (s.contains('Turn has expired')) return 'Time ran out for this turn.';
   if (s.contains('Game is full')) return 'This game is already full.';

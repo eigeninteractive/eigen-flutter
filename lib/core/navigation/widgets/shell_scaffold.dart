@@ -7,6 +7,8 @@ import 'package:eigen_engine/shared/widgets/status_banner.dart';
 import 'package:eigen_engine/core/updates/update_notifier.dart';
 import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
 import 'package:eigen_engine/features/game/presentation/widgets/new_game_dialog.dart';
+import 'package:eigen_engine/features/game/presentation/widgets/play_vs_bot_dialog.dart';
+import 'package:eigen_engine/features/game/providers/game_providers.dart';
 import 'package:eigen_engine/features/social/providers/social_providers.dart';
 
 enum _ShellBranch {
@@ -48,6 +50,12 @@ class ShellScaffold extends ConsumerWidget {
     });
     final isOffline = ref.watch(isOfflineProvider);
     final isGuest = ref.watch(isAnonymousProvider);
+    // Offer solo play only when a playable combination exists — an untimed mode
+    // with a usable local bot, or a timed mode with a usable server bot (so the
+    // name is "solo", not "local bots": both classes can fill the seats). See
+    // [soloPlayAvailableProvider]. Most deployments with no bots get an empty
+    // catalog → no extra FAB.
+    final canPlaySolo = ref.watch(soloPlayAvailableProvider);
     final colorScheme = Theme.of(context).colorScheme;
     final index = navigationShell.currentIndex;
     final branch = _ShellBranch.values[index];
@@ -108,14 +116,34 @@ class ShellScaffold extends ConsumerWidget {
         ],
       ),
       floatingActionButton: index == 0
-          ? FloatingActionButton.extended(
-              onPressed: () => showDialog(
-                context: context,
-                useSafeArea: true,
-                builder: (_) => const NewGameDialog(),
-              ),
-              icon: const Icon(Icons.add),
-              label: const Text('New Game'),
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (canPlaySolo) ...[
+                  FloatingActionButton.extended(
+                    heroTag: 'newSoloGame',
+                    onPressed: () => showDialog(
+                      context: context,
+                      useSafeArea: true,
+                      builder: (_) => const PlayVsBotDialog(),
+                    ),
+                    icon: const Icon(Icons.smart_toy_outlined),
+                    label: const Text('New Solo Game'),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                FloatingActionButton.extended(
+                  heroTag: 'newGame',
+                  onPressed: () => showDialog(
+                    context: context,
+                    useSafeArea: true,
+                    builder: (_) => const NewGameDialog(),
+                  ),
+                  icon: const Icon(Icons.add),
+                  label: const Text('New Game'),
+                ),
+              ],
             )
           : null,
       body: Column(

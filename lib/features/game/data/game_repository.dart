@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:eigen_engine/core/game/game_outcome.dart';
+import 'package:eigen_engine/features/game/data/models/bot_info.dart';
 import 'package:eigen_engine/features/game/data/models/game.dart';
 import 'package:eigen_engine/features/game/data/models/observation.dart';
 import 'package:eigen_engine/features/game/data/models/participant.dart';
@@ -108,7 +109,7 @@ class GameRepository {
   /// to confirm the state change.
   ///
   /// On an optimistic-lock conflict the server raises a `Stale state` error,
-  /// which the UI surfaces as a humanized "board updated — try again" message.
+  /// which the UI surfaces as a humanized "the game updated — try again" message.
   Future<void> submitAction({
     required String gameId,
     required Map<String, dynamic> actionData,
@@ -289,15 +290,147 @@ class GameRepository {
     }).toList();
   }
 
-  /// Gets participants for a game.
+  // ── Bots ───────────────────────────────────────────────────────────────────
+
+  /// Server-side preview of whether a prospective game would be rated, so the
+  /// create dialog can show a live "Rated / Casual" badge. Backed by the same
+  /// `derive_rated` used at creation, so the rule is never duplicated client-side.
+  ///
+  /// `derive_rated` is a pure derivation that always emits exactly one row, so
+  /// this reads it with [single]: a non-`single` result (zero or many rows) can
+  /// only mean that contract was broken, and erroring is better than crashing on
+  /// an empty `.first` or silently taking an arbitrary row.
+  Future<({bool rated, String? pool})> previewGameRating({
+    GameAccess access = GameAccess.public,
+    int? turnSeconds,
+    int? budgetSeconds,
+    int? incrementSeconds,
+    int minPlayers = 2,
+    int maxPlayers = 2,
+    Map<String, dynamic> config = const {},
+    bool ratedPreference = true,
+  }) async {
+    final response = await _client
+        .rpc(
+          'preview_game_rating',
+          params: {
+            'p_access': access.name,
+            'p_turn_seconds': ?turnSeconds,
+            'p_budget_seconds': ?budgetSeconds,
+            'p_increment_seconds': ?incrementSeconds,
+            'p_min_players': minPlayers,
+            'p_max_players': maxPlayers,
+            'p_config': config,
+            'p_rated_preference': ratedPreference,
+          },
+        )
+        .single();
+    return (
+      rated: response['rated'] as bool,
+      pool: response['pool'] as String?,
+    );
+  }
+
+  /// Bots available for this deployment (display-safe columns), for the
+  /// solo play and "Add bot" pickers.
+  Future<List<BotInfo>> getBots() async {
+    final result = await _client.rpc('get_bots');
+    return (result as List)
+        .cast<Map<String, dynamic>>()
+        .map(BotInfo.fromJson)
+        .toList();
+  }
+
+  /// Creates a solo game: the caller plus [botIds] (local and/or
+  /// server, in seat order), unrated, started atomically. Returns the game ID.
+  Future<String> createSoloGame({
+    required List<String> botIds,
+    required int schemaVersion,
+    int? turnSeconds,
+    int? budgetSeconds,
+    int? incrementSeconds,
+    Map<String, dynamic> config = const {},
+  }) async {
+    final result = await _client.rpc(
+      'create_solo_game',
+      params: {
+        'p_bot_ids': botIds,
+        'p_schema_version': schemaVersion,
+        'p_turn_seconds': ?turnSeconds,
+        'p_budget_seconds': ?budgetSeconds,
+        'p_increment_seconds': ?incrementSeconds,
+        'p_config': config,
+      },
+    );
+    return result as String;
+  }
+
+  /// Adds a server bot to a multiplayer waiting/ready game (creator only).
+  Future<void> addBotToGame({
+    required String gameId,
+    required String botId,
+  }) async {
+    await _client.rpc(
+      'add_bot_to_game',
+      params: {'p_game_id': gameId, 'p_bot_id': botId},
+    );
+  }
+
+  /// Submits a local bot's move on its behalf (client-driven, solo games only).
+  ///
+  /// Keyed by [playerIndex] (the seat), so the same local bot may fill several
+  /// seats in one solo game.
+  Future<void> submitLocalBotAction({
+    required String gameId,
+    required int playerIndex,
+    required Map<String, dynamic> actionData,
+    required int expectedVersion,
+  }) async {
+    await _client.rpc(
+      'submit_local_bot_action',
+      params: {
+        'p_game_id': gameId,
+        'p_player_index': playerIndex,
+        'p_data': actionData,
+        'p_expected_version': expectedVersion,
+      },
+    );
+  }
+
+  /// Fetches a bot seat's [Observation] for local play, server-gated to the sole
+  /// human of a solo game. The RPC returns `SETOF observations` — the same shape
+  /// as a human's own observation — so this reads it with [maybeSingle] exactly
+  /// like [getObservation]: null when no row exists yet. The `(game_id,
+  /// player_index)` PK bounds the set to one row, so [maybeSingle] raising on
+  /// multiple rows can only mean that invariant was violated — a loud failure is
+  /// the right outcome there rather than silently picking an arbitrary seat's
+  /// hidden view.
+  Future<Observation?> getLocalBotObservation({
+    required String gameId,
+    required int playerIndex,
+  }) async {
+    final response = await _client
+        .rpc(
+          'get_local_bot_observation',
+          params: {'p_game_id': gameId, 'p_player_index': playerIndex},
+        )
+        .maybeSingle();
+
+    if (response == null) return null;
+    return Observation.fromJson(response);
+  }
+
+  /// Gets the participants of a game — ephemeral, per-game data (seat + identity
+  /// ids + type). RLS restricts rows to games the caller can see. A bot seat's
+  /// reference data (display via [PlayerInfo], capability/config via the cached
+  /// bot catalog) is resolved separately by id, not joined here.
   Future<List<Participant>> getParticipants(String gameId) async {
     final response = await _client
         .from('participants')
         .select()
         .eq('game_id', gameId)
         .order('player_index');
-
-    return response.map((json) => Participant.fromJson(json)).toList();
+    return response.map(Participant.fromJson).toList();
   }
 
   /// Gets the current user's observation for a game.

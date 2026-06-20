@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +8,7 @@ import 'package:eigen_engine/core/errors/error_messages.dart';
 import 'package:eigen_engine/core/game/game_creation_spec.dart';
 import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
 import 'package:eigen_engine/features/game/data/models/game.dart';
+import 'package:eigen_engine/features/game/presentation/widgets/timing_selector.dart';
 import 'package:eigen_engine/features/game/providers/game_providers.dart';
 
 /// Dialog for creating a new game.
@@ -24,13 +27,9 @@ class NewGameDialog extends ConsumerStatefulWidget {
 class _NewGameDialogState extends ConsumerState<NewGameDialog> {
   GameAccess _access = GameAccess.public;
   late GameCreationSpec _spec;
-  late String _timingKey;
-
-  // Per-action slider value (seconds).
-  double _turnSeconds = kMinTurnSeconds.toDouble();
-  // Budget slider values (seconds).
-  double _budgetSeconds = kMinBudgetSeconds.toDouble();
-  double _incrementSeconds = 0;
+  // Resolved timing from the shared TimingSelector; seeded with its default so
+  // there is no null window before the first interaction.
+  late ResolvedTiming _timing;
 
   // Plain fields — never displayed, only consumed at submit.
   Map<String, dynamic> _gameConfig = {};
@@ -42,12 +41,16 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
   // Rated toggle: on by default
   bool _rated = true;
 
+  // Server-derived preview of whether the current config would be rated, shown
+  // as a live badge. Null until the first preview returns.
+  ({bool rated, String? pool})? _ratingPreview;
+
   @override
   void initState() {
     super.initState();
     final module = ref.read(currentGameModuleProvider);
     _spec = module.creationSpec;
-    _timingKey = _spec.timingConfigs.keys.first;
+    _timing = TimingSelector.initial(_spec.timingConfigs);
     _gameConfig = Map.of(_spec.defaultConfig);
     final (min, max) = module.playersForConfig(_gameConfig);
     _minPlayers = min;
@@ -58,40 +61,46 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
         final (newMin, newMax) = module.playersForConfig(config);
         _minPlayers = newMin;
         _maxPlayers = newMax;
+        _refreshRatingPreview();
       },
     );
-    _setTimingDefaults(_spec.timingConfigs[_timingKey]!);
+    _refreshRatingPreview();
   }
 
-  /// Sets slider fields to sensible defaults for [config].
-  /// Must be called either from [initState] (no setState) or inside setState.
-  void _setTimingDefaults(TimingModeConfig config) {
-    switch (config) {
-      case UntimedConfig():
-        break;
-      case PerActionConfig(:final presets, :final minSeconds):
-        _turnSeconds = (presets.isNotEmpty ? presets.first : minSeconds)
-            .toDouble();
-      case BudgetConfig(
-        :final presets,
-        :final minBudgetSeconds,
-        :final minIncrementSeconds,
-      ):
-        _budgetSeconds = presets.isNotEmpty
-            ? presets.first.budget.toDouble()
-            : minBudgetSeconds.toDouble();
-        _incrementSeconds = presets.isNotEmpty
-            ? presets.first.increment.toDouble()
-            : minIncrementSeconds.toDouble();
-    }
+  /// Refreshes the Rated/Casual preview from the server (single source of truth,
+  /// shared with create_game). Called when a rated-relevant input changes — the
+  /// access mode, timing mode, game config, or the rated toggle. The specific
+  /// slider seconds don't affect eligibility, so slider drags don't trigger it.
+  void _refreshRatingPreview() {
+    unawaited(() async {
+      try {
+        final preview = await ref
+            .read(gameRepositoryProvider)
+            .previewGameRating(
+              access: _access,
+              turnSeconds: _timing.turnSeconds,
+              budgetSeconds: _timing.budgetSeconds,
+              incrementSeconds: _timing.incrementSeconds,
+              minPlayers: _minPlayers,
+              maxPlayers: _maxPlayers,
+              config: _gameConfig,
+              ratedPreference: _rated,
+            );
+        if (mounted) setState(() => _ratingPreview = preview);
+      } catch (_) {
+        // Best-effort; keep the previous badge on a transient error.
+      }
+    }());
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final configs = _spec.timingConfigs;
-    final selectedConfig = configs[_timingKey]!;
+    // Guests cannot have friends and always play unrated, so the Friends access
+    // segment is shown-but-disabled and the Rated toggle is hidden (the server
+    // enforces both regardless).
+    final isAnonymous = ref.watch(isAnonymousProvider);
 
     return Dialog(
       child: ConstrainedBox(
@@ -110,62 +119,44 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
               const SizedBox(height: 8),
               SegmentedButton<GameAccess>(
                 showSelectedIcon: false,
-                segments: const [
-                  ButtonSegment(
+                segments: [
+                  const ButtonSegment(
                     value: GameAccess.public,
                     label: Text('Public'),
                   ),
-                  ButtonSegment(
+                  const ButtonSegment(
                     value: GameAccess.private,
                     label: Text('Private'),
                   ),
+                  // Shown but disabled for guests: they cannot have friends, so
+                  // a friends-access game would be unjoinable (server enforces).
                   ButtonSegment(
                     value: GameAccess.friends,
-                    label: Text('Friends'),
+                    label: const Text('Friends'),
+                    enabled: !isAnonymous,
                   ),
                 ],
                 selected: {_access},
-                onSelectionChanged: (s) => setState(() => _access = s.first),
+                onSelectionChanged: (s) => setState(() {
+                  _access = s.first;
+                  _refreshRatingPreview();
+                }),
               ),
               const SizedBox(height: 16),
 
               // ── Timing ────────────────────────────────────────────────
-              Text('Timing', style: textTheme.labelLarge),
-              const SizedBox(height: 8),
-
-              // Mode selector — only shown when there are multiple options.
-              if (configs.length > 1) ...[
-                SegmentedButton<String>(
-                  showSelectedIcon: false,
-                  segments: configs.keys
-                      .map((k) => ButtonSegment(value: k, label: Text(k)))
-                      .toList(),
-                  selected: {_timingKey},
-                  onSelectionChanged: (s) => setState(() {
-                    _timingKey = s.first;
-                    _setTimingDefaults(configs[_timingKey]!);
-                  }),
-                ),
-                const SizedBox(height: 12),
-              ],
-
-              // Mode-specific controls.
-              switch (selectedConfig) {
-                UntimedConfig() => const SizedBox.shrink(),
-                final PerActionConfig c => _PerActionPanel(
-                  config: c,
-                  value: _turnSeconds,
-                  onChanged: (v) => setState(() => _turnSeconds = v),
-                ),
-                final BudgetConfig c => _BudgetPanel(
-                  config: c,
-                  budgetSeconds: _budgetSeconds,
-                  incrementSeconds: _incrementSeconds,
-                  onBudgetChanged: (v) => setState(() => _budgetSeconds = v),
-                  onIncrementChanged: (v) =>
-                      setState(() => _incrementSeconds = v),
-                ),
-              },
+              TimingSelector(
+                configs: _spec.timingConfigs,
+                enabled: !_isLoading,
+                onChanged: (timing) => setState(() {
+                  // Refresh the rated preview only when the mode changes; the
+                  // specific slider seconds don't affect eligibility, so slider
+                  // drags must not spam the server.
+                  final modeChanged = timing.mode != _timing.mode;
+                  _timing = timing;
+                  if (modeChanged) _refreshRatingPreview();
+                }),
+              ),
 
               // ── Game-specific config ──────────────────────────────────
               if (_creationConfigWidget != null) ...[
@@ -178,13 +169,42 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
               // regardless). Otherwise always shown; the server silently
               // overrides to unrated if the game type doesn't support rating
               // for this configuration.
-              if (!ref.watch(isAnonymousProvider)) ...[
+              if (!isAnonymous) ...[
                 const SizedBox(height: 8),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Rated'),
                   value: _rated,
-                  onChanged: (v) => setState(() => _rated = v),
+                  onChanged: (v) => setState(() {
+                    _rated = v;
+                    _refreshRatingPreview();
+                  }),
+                ),
+              ],
+
+              // Live Rated/Casual badge from the server (the authority on
+              // eligibility — guests, ineligible config, etc.).
+              if (_ratingPreview case final preview?) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(
+                      preview.rated
+                          ? Icons.emoji_events_outlined
+                          : Icons.sports_esports_outlined,
+                      size: 16,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      preview.rated
+                          ? 'Rated${preview.pool != null ? ' · ${preview.pool}' : ''}'
+                          : 'Casual',
+                      style: textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ],
 
@@ -221,36 +241,16 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
     );
   }
 
-  String _timingMode() => switch (_spec.timingConfigs[_timingKey]!) {
-    UntimedConfig() => 'untimed',
-    PerActionConfig() => 'per_action',
-    BudgetConfig() => 'budget',
-  };
-
   Future<void> _createGame() async {
     setState(() => _isLoading = true);
     try {
-      final config = _spec.timingConfigs[_timingKey]!;
-      int? turnSeconds;
-      int? budgetSeconds;
-      int? incrementSeconds;
-      switch (config) {
-        case UntimedConfig():
-          break;
-        case PerActionConfig():
-          turnSeconds = _turnSeconds.round();
-        case BudgetConfig():
-          budgetSeconds = _budgetSeconds.round();
-          incrementSeconds = _incrementSeconds.round();
-      }
-
       final gameId = await ref
           .read(gameRepositoryProvider)
           .createGame(
             access: _access,
-            turnSeconds: turnSeconds,
-            budgetSeconds: budgetSeconds,
-            incrementSeconds: incrementSeconds,
+            turnSeconds: _timing.turnSeconds,
+            budgetSeconds: _timing.budgetSeconds,
+            incrementSeconds: _timing.incrementSeconds,
             minPlayers: _minPlayers,
             maxPlayers: _maxPlayers,
             config: _gameConfig,
@@ -262,7 +262,7 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
           .gameCreated(
             gameId: gameId,
             access: _access.name,
-            timingMode: _timingMode(),
+            timingMode: _timing.mode,
             rated: _rated,
           );
       if (!mounted) return;
@@ -276,193 +276,4 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
       ).showSnackBar(SnackBar(content: Text(humanize(e))));
     }
   }
-}
-
-// ── Per-action timing panel ──────────────────────────────────────────────────
-
-class _PerActionPanel extends StatelessWidget {
-  const _PerActionPanel({
-    required this.config,
-    required this.value,
-    required this.onChanged,
-  });
-
-  final PerActionConfig config;
-  final double value;
-  final ValueChanged<double> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (config.presets.isNotEmpty) ...[
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: config.presets.map((p) {
-              return ChoiceChip(
-                label: Text(_formatDuration(p)),
-                selected: value.round() == p,
-                onSelected: (_) => onChanged(p.toDouble()),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 4),
-        ],
-        Slider(
-          min: config.minSeconds.toDouble(),
-          max: config.maxSeconds.toDouble(),
-          value: value.clamp(
-            config.minSeconds.toDouble(),
-            config.maxSeconds.toDouble(),
-          ),
-          divisions: _sliderDivisions(config.minSeconds, config.maxSeconds),
-          onChanged: onChanged,
-        ),
-        Center(
-          child: Text(
-            '${_formatDuration(value.round())} per turn',
-            style: textTheme.bodySmall,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ── Budget timing panel ──────────────────────────────────────────────────────
-
-class _BudgetPanel extends StatelessWidget {
-  const _BudgetPanel({
-    required this.config,
-    required this.budgetSeconds,
-    required this.incrementSeconds,
-    required this.onBudgetChanged,
-    required this.onIncrementChanged,
-  });
-
-  final BudgetConfig config;
-  final double budgetSeconds;
-  final double incrementSeconds;
-  final ValueChanged<double> onBudgetChanged;
-  final ValueChanged<double> onIncrementChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final hasIncrementRange =
-        config.maxIncrementSeconds > config.minIncrementSeconds;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Preset pairs — each chip sets both sliders.
-        if (config.presets.isNotEmpty) ...[
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: config.presets.map((p) {
-              final label = p.increment > 0
-                  ? '${_formatDuration(p.budget)}+${p.increment}s'
-                  : _formatDuration(p.budget);
-              return ChoiceChip(
-                label: Text(label),
-                selected:
-                    budgetSeconds.round() == p.budget &&
-                    incrementSeconds.round() == p.increment,
-                onSelected: (_) {
-                  onBudgetChanged(p.budget.toDouble());
-                  onIncrementChanged(p.increment.toDouble());
-                },
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 8),
-        ],
-
-        // Bank slider.
-        Text('Bank', style: textTheme.labelMedium),
-        Slider(
-          min: config.minBudgetSeconds.toDouble(),
-          max: config.maxBudgetSeconds.toDouble(),
-          value: budgetSeconds.clamp(
-            config.minBudgetSeconds.toDouble(),
-            config.maxBudgetSeconds.toDouble(),
-          ),
-          divisions: _sliderDivisions(
-            config.minBudgetSeconds,
-            config.maxBudgetSeconds,
-          ),
-          onChanged: onBudgetChanged,
-        ),
-        Center(
-          child: Text(
-            _formatDuration(budgetSeconds.round()),
-            style: textTheme.bodySmall,
-          ),
-        ),
-
-        // Increment slider — only when the range is non-trivial.
-        if (hasIncrementRange) ...[
-          const SizedBox(height: 8),
-          Text('Increment', style: textTheme.labelMedium),
-          Slider(
-            min: config.minIncrementSeconds.toDouble(),
-            max: config.maxIncrementSeconds.toDouble(),
-            value: incrementSeconds.clamp(
-              config.minIncrementSeconds.toDouble(),
-              config.maxIncrementSeconds.toDouble(),
-            ),
-            divisions: config.maxIncrementSeconds - config.minIncrementSeconds,
-            onChanged: onIncrementChanged,
-          ),
-          Center(
-            child: Text(
-              '${incrementSeconds.round()}s per move',
-              style: textTheme.bodySmall,
-            ),
-          ),
-        ] else if (config.minIncrementSeconds > 0) ...[
-          // Fixed increment — show as a label, no slider needed.
-          const SizedBox(height: 4),
-          Center(
-            child: Text(
-              '+ ${config.minIncrementSeconds}s per move',
-              style: textTheme.bodySmall,
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-/// Number of discrete steps for a slider spanning [min]–[max] seconds.
-int _sliderDivisions(int min, int max) {
-  final range = max - min;
-  if (range <= 300) return range ~/ 30;
-  if (range <= 7200) return range ~/ 60;
-  if (range <= 86400) return range ~/ 1800;
-  return range ~/ 3600;
-}
-
-/// Human-readable duration string: "30s", "5m", "2h 30m", "1d".
-String _formatDuration(int seconds) {
-  if (seconds < 60) return '${seconds}s';
-  if (seconds < 3600) {
-    final m = seconds ~/ 60;
-    final s = seconds % 60;
-    return s == 0 ? '${m}m' : '${m}m ${s}s';
-  }
-  if (seconds < 86400) {
-    final h = seconds ~/ 3600;
-    final m = (seconds % 3600) ~/ 60;
-    return m == 0 ? '${h}h' : '${h}h ${m}m';
-  }
-  return '${seconds ~/ 86400}d';
 }

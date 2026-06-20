@@ -4,7 +4,14 @@
 
 CREATE TABLE public.observations (
   game_id UUID NOT NULL REFERENCES public.games(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  -- Exactly one of user_id / bot_id is set (XOR below): a row exists per
+  -- participant, human or bot. Bot rows (user_id NULL) are invisible to the
+  -- authenticated SELECT policy, so humans/Realtime never see them — a feature.
+  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  bot_id  UUID REFERENCES public.bots(id)  ON DELETE CASCADE,
+  -- Seat index this row belongs to. Part of the primary key so the fan-out can
+  -- upsert by seat regardless of human/bot identity.
+  player_index INT NOT NULL,
   -- Player-specific projection of game_states.state.
   data JSONB NOT NULL,
   -- Mirror of game_states.pending_players. Denormalized onto every row so
@@ -27,11 +34,14 @@ CREATE TABLE public.observations (
   turn_started_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  PRIMARY KEY (game_id, user_id)
+  -- Human XOR bot, mirroring participants/actions/outcomes identity rule.
+  CONSTRAINT observation_identity_xor CHECK ((user_id IS NULL) != (bot_id IS NULL)),
+  PRIMARY KEY (game_id, player_index)
 );
 
--- Index for realtime subscriptions
-CREATE INDEX idx_observations_user_id ON public.observations(user_id);
+-- Index for realtime subscriptions (human rows are filtered by user_id).
+CREATE INDEX idx_observations_user_id ON public.observations(user_id)
+  WHERE user_id IS NOT NULL;
 
 -- Enable Realtime for this table
 ALTER PUBLICATION supabase_realtime ADD TABLE public.observations;

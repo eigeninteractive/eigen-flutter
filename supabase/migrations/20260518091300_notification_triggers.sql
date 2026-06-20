@@ -1,6 +1,9 @@
 -- pg_net is required for net.http_post used throughout this file.
 CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
 
+-- pgcrypto provides extensions.hmac(), used to sign server-bot wakes (below).
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
+
 -- FCM push notification triggers.
 --
 -- Three triggers fire push notifications:
@@ -104,11 +107,99 @@ BEGIN
 END;
 $$;
 
+-- ── send_bot_wake ───────────────────────────────────────────────────────────
+-- Wakes a *server* bot when it is its turn, carrying the observation so the bot
+-- needs no callback to fetch state (wake-with-observation). No-op for a local
+-- bot (is_local) — those are driven by the sole human's client.
+--
+-- The wake is authenticated with a *per-bot* HMAC: the body is signed with that
+-- bot's own symmetric wake secret (an asymmetric signature is impractical inside
+-- a Postgres trigger, and the wake is the low-stakes direction — the action the
+-- bot sends back to the bot-gateway is the real security boundary, authenticated
+-- by the bot's Ed25519 signature). The signature is sent in x-wake-signature as
+-- base64 HMAC-SHA256 over the exact JSON body bytes; the bot recomputes it over
+-- the raw request body with its copy of the same secret and compares. A leaked
+-- wake secret only lets someone forge wakes to that one bot (wasted compute), not
+-- move any game.
+--
+-- The secret lives in Vault under the per-bot name 'bot_wake_secret_<bot_id>',
+-- so each bot has its own, set by the operator at insert time. Fire-and-forget
+-- via pg_net.
+
+CREATE OR REPLACE FUNCTION private.send_bot_wake(
+  p_bot_id          uuid,
+  p_game_id         uuid,
+  p_player_index    int,
+  p_data            jsonb,
+  p_version         int,
+  p_pending_players int[],
+  p_turn_deadline   timestamptz
+) RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_is_local    boolean;
+  v_webhook_url text;
+  v_username    text;
+  v_config      jsonb;
+  v_secret      text;
+  v_body        jsonb;
+  v_signature   text;
+BEGIN
+  SELECT is_local, webhook_url, username, config
+    INTO v_is_local, v_webhook_url, v_username, v_config
+  FROM public.bots WHERE id = p_bot_id;
+  IF v_is_local THEN
+    RETURN;  -- local bot: driven by the client, never woken
+  END IF;
+
+  SELECT decrypted_secret INTO v_secret
+  FROM vault.decrypted_secrets WHERE name = 'bot_wake_secret_' || p_bot_id;
+
+  IF v_secret IS NULL OR v_secret = '' THEN
+    RAISE WARNING 'Bot wake skipped for %: bot_wake_secret_% not in Vault',
+      p_bot_id, p_bot_id;
+    RETURN;
+  END IF;
+
+  -- Build the body once, then HMAC its canonical text form. pg_net serialises
+  -- the same jsonb to the same bytes, so the signature covers exactly what is
+  -- sent and the bot can verify over the raw request body without re-serialising.
+  v_body := jsonb_build_object(
+    'game_id',         p_game_id,
+    'bot_id',          p_bot_id,
+    'player_index',    p_player_index,
+    'username',        v_username,
+    'config',          v_config,
+    'observation',     p_data,
+    'version',         p_version,
+    'pending_players', p_pending_players,
+    'turn_deadline',   p_turn_deadline
+  );
+
+  v_signature := encode(
+    extensions.hmac(v_body::text, v_secret, 'sha256'),
+    'base64'
+  );
+
+  PERFORM net.http_post(
+    url     := v_webhook_url,
+    headers := jsonb_build_object(
+      'Content-Type',     'application/json',
+      'x-wake-signature', v_signature
+    ),
+    body    := v_body
+  );
+END;
+$$;
+
 -- ── notify_your_turn ──────────────────────────────────────────────────────────
--- Fires when the user's player index enters pending_players (it's now their
--- turn). Covers both INSERT (start_game creates the version-0 observation
--- rows — without this, initially-pending players would get no push for the
--- game's first move) and UPDATE (every subsequent action's fan-out).
+-- Fires when a seat's player_index enters pending_players (it's now its turn).
+-- Covers INSERT (start_game's version-0 rows — the game's first move) and UPDATE
+-- (every subsequent fan-out). One row exists per participant, so this also drives
+-- bots: a human row sends an FCM push, a bot row sends a server-bot wake.
 
 CREATE OR REPLACE FUNCTION private.notify_your_turn()
 RETURNS trigger
@@ -116,37 +207,38 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
-DECLARE
-  v_player_index int;
 BEGIN
   IF TG_OP = 'UPDATE' AND NEW.pending_players = OLD.pending_players THEN
     RETURN NEW;
   END IF;
 
-  SELECT player_index INTO v_player_index
-  FROM public.participants
-  WHERE game_id = NEW.game_id AND user_id = NEW.user_id;
-
-  IF v_player_index IS NULL
-    OR NOT (v_player_index = ANY(NEW.pending_players)) THEN
+  -- This seat must be pending now (player_index is on the row itself).
+  IF NOT (NEW.player_index = ANY(NEW.pending_players)) THEN
     RETURN NEW;
   END IF;
 
-  -- On UPDATE, only notify when the index newly entered the pending set.
-  -- On INSERT there is no previous set — pending at version 0 means notify.
-  IF TG_OP = 'UPDATE' AND v_player_index = ANY(OLD.pending_players) THEN
+  -- On UPDATE, only fire when the index *newly* entered the pending set.
+  -- On INSERT there is no previous set — pending at version 0 means fire.
+  IF TG_OP = 'UPDATE' AND NEW.player_index = ANY(OLD.pending_players) THEN
     RETURN NEW;
   END IF;
 
-  PERFORM private.send_push_notification(
-    p_user_id => NEW.user_id,
-    p_title   => 'Your turn',
-    p_body    => 'It''s your move.',
-    p_data    => jsonb_build_object(
-      'category',  'your_turn',
-      'deep_link', '/game/' || NEW.game_id
-    )
-  );
+  IF NEW.user_id IS NOT NULL THEN
+    PERFORM private.send_push_notification(
+      p_user_id => NEW.user_id,
+      p_title   => 'Your turn',
+      p_body    => 'It''s your move.',
+      p_data    => jsonb_build_object(
+        'category',  'your_turn',
+        'deep_link', '/game/' || NEW.game_id
+      )
+    );
+  ELSIF NEW.bot_id IS NOT NULL THEN
+    PERFORM private.send_bot_wake(
+      NEW.bot_id, NEW.game_id, NEW.player_index, NEW.data, NEW.version,
+      NEW.pending_players, NEW.turn_deadline
+    );
+  END IF;
 
   RETURN NEW;
 END;

@@ -33,11 +33,18 @@ enum _LobbyMode { public, friends }
 
 class _LobbyScreenState extends ConsumerState<LobbyScreen>
     with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+  // Guests cannot have friends. The Friends tab stays visible but disabled
+  // (greyed, with a locked sign-in panel as its content) so guests still see
+  // the feature exists — and get_friends_games is never called for them.
+  // Decided once at init: a guest→permanent conversion is a full auth-state
+  // change that re-navigates into a fresh lobby.
+  late final bool _isAnonymous;
+  late final TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    _isAnonymous = ref.read(isAnonymousProvider);
     _tabController = TabController(length: 2, vsync: this);
   }
 
@@ -49,25 +56,59 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final disabledColor = colorScheme.onSurface.withValues(alpha: 0.38);
+
     return Column(
       children: [
         TabBar(
           controller: _tabController,
-          tabs: const [
-            Tab(icon: Icon(Icons.public), text: 'Public'),
-            Tab(icon: Icon(Icons.people), text: 'Friends'),
+          tabs: [
+            const Tab(icon: Icon(Icons.public), text: 'Public'),
+            Tab(
+              icon: Icon(
+                Icons.people,
+                color: _isAnonymous ? disabledColor : null,
+              ),
+              child: Text(
+                'Friends',
+                style: _isAnonymous ? TextStyle(color: disabledColor) : null,
+              ),
+            ),
           ],
         ),
         Expanded(
           child: TabBarView(
             controller: _tabController,
-            children: const [
-              _LobbyTabContent(mode: _LobbyMode.public),
-              _LobbyTabContent(mode: _LobbyMode.friends),
+            children: [
+              const _LobbyTabContent(mode: _LobbyMode.public),
+              if (_isAnonymous)
+                const _FriendsLockedView()
+              else
+                const _LobbyTabContent(mode: _LobbyMode.friends),
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Locked content shown to guests in place of the friends lobby. The Friends
+/// tab is visible but non-functional until they create an account — mirroring
+/// the disabled "Sign up to play rated" treatment on rated game cards.
+class _FriendsLockedView extends StatelessWidget {
+  const _FriendsLockedView();
+
+  @override
+  Widget build(BuildContext context) {
+    return EmptyStateView(
+      icon: Icons.lock_outline,
+      title: 'Friends games',
+      message: 'Sign in to add friends and play private games with them.',
+      cta: 'Sign in',
+      tonalCta: true,
+      onCta: () => context.goNamed('settings'),
     );
   }
 }

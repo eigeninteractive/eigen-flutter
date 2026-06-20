@@ -101,10 +101,11 @@ BEGIN
   FROM public.participants
   WHERE game_id = p_game_id;
 
+  -- A row exists per participant (human and bot); key the update by seat index.
   FOR v_rec IN
-    SELECT user_id, player_index
+    SELECT player_index
     FROM public.participants
-    WHERE game_id = p_game_id AND user_id IS NOT NULL
+    WHERE game_id = p_game_id
     ORDER BY player_index
   LOOP
     v_obs := private.game_compute_observation(
@@ -126,8 +127,8 @@ BEGIN
         player_times    = p_player_times,
         turn_started_at = p_turn_started_at,
         updated_at      = NOW()
-    WHERE game_id = p_game_id
-      AND user_id  = v_rec.user_id;
+    WHERE game_id      = p_game_id
+      AND player_index = v_rec.player_index;
   END LOOP;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
@@ -333,6 +334,64 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 -- Creates game and adds creator as participant (index 0).
 -- game_states and observations are not created until start_game.
 -- ============================================
+-- Single source of truth for "is this game rated, and in which pool?". Combines
+-- the game-owned eligibility hook (game_rating_pool) with infra rules: the client
+-- may express only a downgrade *preference*, and guests always play unrated.
+-- create_game stores the result; preview_game_rating exposes it to the client.
+CREATE OR REPLACE FUNCTION private.derive_rated(
+  p_access            public.game_access,
+  p_turn_seconds      INT,
+  p_budget_seconds    INT,
+  p_increment_seconds INT,
+  p_min_players       INT,
+  p_max_players       INT,
+  p_config            JSONB,
+  p_rated_preference  BOOLEAN
+)
+RETURNS TABLE(rated BOOLEAN, pool TEXT)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  v_pool TEXT;
+BEGIN
+  v_pool := private.game_rating_pool(
+    p_access, p_turn_seconds, p_budget_seconds, p_increment_seconds,
+    p_min_players, p_max_players, COALESCE(p_config, '{}'::jsonb)
+  );
+  pool  := v_pool;
+  rated := COALESCE(p_rated_preference, true)
+           AND v_pool IS NOT NULL
+           AND NOT private.is_anonymous();
+  RETURN NEXT;
+END;
+$$;
+
+-- Client-facing preview so the create dialog can render a live "Rated / Casual"
+-- badge as config changes — backed by the same private.derive_rated used at
+-- creation, so the rule is never duplicated in Dart.
+CREATE OR REPLACE FUNCTION public.preview_game_rating(
+  p_access            public.game_access,
+  p_turn_seconds      INT     DEFAULT NULL,
+  p_budget_seconds    INT     DEFAULT NULL,
+  p_increment_seconds INT     DEFAULT NULL,
+  p_min_players       INT     DEFAULT 2,
+  p_max_players       INT     DEFAULT 2,
+  p_config            JSONB   DEFAULT '{}'::jsonb,
+  p_rated_preference  BOOLEAN DEFAULT true
+)
+RETURNS TABLE(rated BOOLEAN, pool TEXT)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT d.rated, d.pool
+  FROM private.derive_rated(
+    p_access, p_turn_seconds, p_budget_seconds, p_increment_seconds,
+    p_min_players, p_max_players, p_config, p_rated_preference
+  ) d;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.preview_game_rating(public.game_access, INT, INT, INT, INT, INT, JSONB, BOOLEAN)
+  FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.preview_game_rating(public.game_access, INT, INT, INT, INT, INT, JSONB, BOOLEAN)
+  TO authenticated;
+
 CREATE OR REPLACE FUNCTION public.create_game(
   -- Game-specific, required (no defaults): the game module always supplies these.
   -- Player counts come from GameModule.creationSpec/playersForConfig; the schema
@@ -366,6 +425,14 @@ DECLARE
 BEGIN
   v_user_id := private.require_auth();
 
+  -- Guests cannot create friends-access games: all social RPCs reject anonymous
+  -- users, so a guest can never have an accepted friend to join — the lobby
+  -- would be permanently unjoinable. Blocked here authoritatively; the client
+  -- also hides the Friends option for guests.
+  IF p_access = 'friends' AND private.is_anonymous() THEN
+    RAISE EXCEPTION 'Friends-access games require a registered account';
+  END IF;
+
   IF p_turn_seconds IS NOT NULL AND p_budget_seconds IS NOT NULL THEN
     RAISE EXCEPTION 'turn_seconds and budget_seconds are mutually exclusive';
   END IF;
@@ -377,13 +444,13 @@ BEGIN
       p_min_players, p_max_players;
   END IF;
 
-  v_pool  := private.game_rating_pool(
-               p_access, p_turn_seconds, p_budget_seconds, p_increment_seconds,
-               p_min_players, p_max_players, COALESCE(p_config, '{}'::jsonb)
-             );
-  -- Guests (anonymous users) play unrated regardless of preference or pool.
-  v_rated := p_rated_preference AND v_pool IS NOT NULL
-             AND NOT private.is_anonymous();
+  -- Single source of truth for rated/pool (shared with preview_game_rating so
+  -- the create dialog can show a live Rated/Casual badge with no duplicated rule).
+  SELECT d.rated, d.pool INTO v_rated, v_pool
+  FROM private.derive_rated(
+    p_access, p_turn_seconds, p_budget_seconds, p_increment_seconds,
+    p_min_players, p_max_players, p_config, p_rated_preference
+  ) d;
 
   <<loop_label>>
   LOOP
@@ -524,12 +591,13 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 -- Calls game_initial_state(), creates game_states and per-player observations,
 -- transitions to 'active'.
 -- ============================================
-CREATE OR REPLACE FUNCTION public.start_game(p_game_id UUID)
+-- Initialises game_states v0 + a per-participant observation row (human AND bot)
+-- and flips status to 'active'. The caller must already hold the games row lock
+-- and have validated preconditions (creator / status). Shared by start_game
+-- (host presses Start) and create_solo_game (atomic solo creation).
+CREATE OR REPLACE FUNCTION private.start_game_core(p_game_id UUID)
 RETURNS VOID AS $$
 DECLARE
-  v_user_id              UUID;
-  v_created_by           UUID;
-  v_status               public.game_status;
   v_config               JSONB;
   v_turn_seconds         INT;
   v_budget_seconds       INT;
@@ -550,27 +618,11 @@ DECLARE
   v_dl                   RECORD;
   i                      INT;
 BEGIN
-  v_user_id := private.require_auth();
-
-  -- Lock the game row for the duration of start_game so a concurrent
-  -- leave_game cannot remove a participant between the status check and
-  -- the game_states / observations inserts.
-  SELECT created_by, status, config, turn_seconds, budget_seconds,
-         increment_seconds, min_players, schema_version
-  INTO v_created_by, v_status, v_config, v_turn_seconds, v_budget_seconds,
-       v_increment_seconds, v_min_players, v_schema_version
-  FROM public.games WHERE id = p_game_id
-  FOR UPDATE;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Game not found';
-  END IF;
-  IF v_created_by IS NULL OR v_created_by != v_user_id THEN
-    RAISE EXCEPTION 'Only the game creator can start the game';
-  END IF;
-  IF v_status != 'ready' THEN
-    RAISE EXCEPTION 'Game is not ready to start';
-  END IF;
+  SELECT config, turn_seconds, budget_seconds, increment_seconds,
+         min_players, schema_version
+  INTO v_config, v_turn_seconds, v_budget_seconds, v_increment_seconds,
+       v_min_players, v_schema_version
+  FROM public.games WHERE id = p_game_id;
 
   SELECT COUNT(*) INTO v_count
   FROM public.participants WHERE game_id = p_game_id;
@@ -629,10 +681,11 @@ BEGIN
     (p_game_id, 0, v_initial_state, v_initial_pending, v_seed,
      v_initial_deadline, v_initial_player_times, v_initial_turn_started);
 
+  -- One observation row per participant — human (user_id) and bot (bot_id) alike.
   FOR v_rec IN
-    SELECT user_id, player_index
+    SELECT user_id, bot_id, player_index
     FROM public.participants
-    WHERE game_id = p_game_id AND user_id IS NOT NULL
+    WHERE game_id = p_game_id
     ORDER BY player_index
   LOOP
     v_obs := private.game_compute_observation(
@@ -645,10 +698,13 @@ BEGIN
     );
 
     INSERT INTO public.observations
-      (game_id, user_id, data, pending_players, version, turn_deadline, player_times, turn_started_at)
+      (game_id, user_id, bot_id, player_index, data, pending_players, version,
+       turn_deadline, player_times, turn_started_at)
     VALUES (
       p_game_id,
       v_rec.user_id,
+      v_rec.bot_id,
+      v_rec.player_index,
       v_obs->'data',
       ARRAY(SELECT jsonb_array_elements_text(v_obs->'pending_players')::INT),
       0,
@@ -661,6 +717,255 @@ BEGIN
   UPDATE public.games SET status = 'active' WHERE id = p_game_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
+CREATE OR REPLACE FUNCTION public.start_game(p_game_id UUID)
+RETURNS VOID AS $$
+DECLARE
+  v_user_id    UUID;
+  v_created_by UUID;
+  v_status     public.game_status;
+BEGIN
+  v_user_id := private.require_auth();
+
+  -- Lock the game row so a concurrent leave_game cannot remove a participant
+  -- between the status check and start_game_core's inserts.
+  SELECT created_by, status
+  INTO v_created_by, v_status
+  FROM public.games WHERE id = p_game_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Game not found';
+  END IF;
+  IF v_created_by IS NULL OR v_created_by != v_user_id THEN
+    RAISE EXCEPTION 'Only the game creator can start the game';
+  END IF;
+  IF v_status != 'ready' THEN
+    RAISE EXCEPTION 'Game is not ready to start';
+  END IF;
+
+  PERFORM private.start_game_core(p_game_id);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
+-- ============================================
+-- Bot seating
+-- ============================================
+-- Seats a *server* bot into an open seat of a waiting/ready game. Shared by
+-- add_bot_to_game (host-driven, with a creator check) and, later, matchmaking
+-- auto-fill (service-role). Caller must hold the games row lock. Enforces the
+-- server-bots-only + schema + rated invariants. Local bots are NEVER seated here;
+-- they go only through create_solo_game (which keeps them in sole-human games).
+CREATE OR REPLACE FUNCTION private.seat_server_bot(p_game_id UUID, p_bot_id UUID)
+RETURNS VOID AS $$
+DECLARE
+  v_status         public.game_status;
+  v_schema_version INT;
+  v_max_players    INT;
+  v_min_players    INT;
+  v_rated          BOOLEAN;
+  v_count          INT;
+  v_bot            RECORD;
+BEGIN
+  SELECT status, schema_version, max_players, min_players, rated
+  INTO v_status, v_schema_version, v_max_players, v_min_players, v_rated
+  FROM public.games WHERE id = p_game_id;
+
+  IF NOT FOUND THEN RAISE EXCEPTION 'Game not found'; END IF;
+  IF v_status NOT IN ('waiting', 'ready') THEN
+    RAISE EXCEPTION 'Game is not accepting players';
+  END IF;
+
+  SELECT schema_version, is_local, rated_eligible
+  INTO v_bot
+  FROM public.bots WHERE id = p_bot_id;
+
+  IF NOT FOUND THEN RAISE EXCEPTION 'Bot not found'; END IF;
+  -- Server bots only (a local bot is client-driven). Multiplayer/host-fill must
+  -- never seat a client-driven bot — that is invariant 2.
+  IF v_bot.is_local THEN
+    RAISE EXCEPTION 'Only server bots can be added to a game';
+  END IF;
+  -- Schema gate, mirroring the human join gate.
+  IF v_schema_version > v_bot.schema_version THEN
+    RAISE EXCEPTION 'Bot does not support this game schema (game %, bot up to %)',
+      v_schema_version, v_bot.schema_version;
+  END IF;
+  -- Rated guard (invariant 3): reject, never downgrade.
+  IF v_rated AND NOT v_bot.rated_eligible THEN
+    RAISE EXCEPTION 'This bot is not eligible for rated games';
+  END IF;
+
+  -- A bot identity may hold several seats: the wake and submit_bot_action carry
+  -- player_index, so seats are unambiguous, and the rating pipeline treats each
+  -- seat as an independent result for the identity. So no one-seat-per-bot guard —
+  -- only the full-game cap below bounds it.
+  SELECT COUNT(*) INTO v_count
+  FROM public.participants WHERE game_id = p_game_id;
+  IF v_count >= v_max_players THEN
+    RAISE EXCEPTION 'Game is full';
+  END IF;
+
+  INSERT INTO public.participants (game_id, bot_id, player_index)
+  VALUES (p_game_id, p_bot_id, v_count);
+
+  IF v_count + 1 >= v_min_players THEN
+    UPDATE public.games SET status = 'ready' WHERE id = p_game_id;
+  END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
+-- RPC: add_bot_to_game — the host's waiting-room "Add bot". Authenticated and
+-- creator-only (like start_game / cancel_game). Server bots only; guests cannot
+-- add server bots (they cost per-move compute). Holds the games lock; seat logic
+-- + invariants live in private.seat_server_bot.
+CREATE OR REPLACE FUNCTION public.add_bot_to_game(p_game_id UUID, p_bot_id UUID)
+RETURNS VOID AS $$
+DECLARE
+  v_user_id    UUID;
+  v_created_by UUID;
+BEGIN
+  v_user_id := private.require_auth();
+  IF private.is_anonymous() THEN
+    RAISE EXCEPTION 'Guests cannot add server bots';
+  END IF;
+
+  SELECT created_by INTO v_created_by
+  FROM public.games WHERE id = p_game_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN RAISE EXCEPTION 'Game not found'; END IF;
+  IF v_created_by IS NULL OR v_created_by != v_user_id THEN
+    RAISE EXCEPTION 'Only the game creator can add a bot';
+  END IF;
+
+  PERFORM private.seat_server_bot(p_game_id, p_bot_id);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
+REVOKE EXECUTE ON FUNCTION public.add_bot_to_game(UUID, UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.add_bot_to_game(UUID, UUID) TO authenticated;
+
+-- RPC: create_solo_game — atomic "Play vs AI". Creates an unrated, private game
+-- with the caller as the SOLE human, seats the given bots (local and/or server,
+-- in array order), and starts it in one shot. Because it is created full and
+-- active, it is never joinable, so a local bot only ever exists in a sole-human
+-- game (invariant 1) with no extra guard. Guests may seat local bots only; any
+-- server bot requires a timer (expire_turn backstops a dead server bot).
+CREATE OR REPLACE FUNCTION public.create_solo_game(
+  p_bot_ids           UUID[],
+  p_schema_version    INT,
+  p_turn_seconds      INT   DEFAULT NULL,
+  p_budget_seconds    INT   DEFAULT NULL,
+  p_increment_seconds INT   DEFAULT NULL,
+  p_config            JSONB DEFAULT '{}'::jsonb
+)
+RETURNS UUID AS $$
+DECLARE
+  v_user_id    UUID;
+  v_is_anon    BOOLEAN;
+  v_game_id    UUID;
+  v_total      INT;
+  v_has_server BOOLEAN := false;
+  v_has_local  BOOLEAN := false;
+  v_bot_id     UUID;
+  v_bot        RECORD;
+  v_idx        INT;
+BEGIN
+  v_user_id := private.require_auth();
+  v_is_anon := private.is_anonymous();
+
+  IF p_bot_ids IS NULL OR array_length(p_bot_ids, 1) IS NULL THEN
+    RAISE EXCEPTION 'A solo game needs at least one bot';
+  END IF;
+  IF p_turn_seconds IS NOT NULL AND p_budget_seconds IS NOT NULL THEN
+    RAISE EXCEPTION 'turn_seconds and budget_seconds are mutually exclusive';
+  END IF;
+  IF p_increment_seconds IS NOT NULL AND p_budget_seconds IS NULL THEN
+    RAISE EXCEPTION 'increment_seconds requires budget_seconds';
+  END IF;
+
+  v_total := 1 + array_length(p_bot_ids, 1);  -- the human + the bots
+
+  -- Validate every bot before creating anything.
+  FOREACH v_bot_id IN ARRAY p_bot_ids LOOP
+    SELECT schema_version, is_local INTO v_bot
+    FROM public.bots WHERE id = v_bot_id;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Bot not found: %', v_bot_id; END IF;
+    IF p_schema_version > v_bot.schema_version THEN
+      RAISE EXCEPTION 'Bot % does not support schema %', v_bot_id, p_schema_version;
+    END IF;
+    IF NOT v_bot.is_local THEN
+      v_has_server := true;
+      IF v_is_anon THEN
+        RAISE EXCEPTION 'Guests can only play against local bots';
+      END IF;
+    ELSE
+      v_has_local := true;
+    END IF;
+  END LOOP;
+
+  -- Timing is a turn-deadline backstop for an actor that might not respond. A
+  -- server bot needs one (its endpoint may be unreachable); a local bot is driven
+  -- by the present human's client, so it needs none and must not be subject to a
+  -- deadline it can miss merely because the human navigated away. These two rules
+  -- also make a local+server mix impossible — exactly one bot class per game.
+  IF v_has_server AND p_turn_seconds IS NULL AND p_budget_seconds IS NULL THEN
+    RAISE EXCEPTION 'A solo game with a server bot must be timed';
+  END IF;
+  IF v_has_local AND (p_turn_seconds IS NOT NULL OR p_budget_seconds IS NOT NULL) THEN
+    RAISE EXCEPTION 'A solo game with a local bot must be untimed';
+  END IF;
+
+  -- Both local and server bots may fill several seats: local bots resolve by
+  -- player_index, and server bots now carry player_index through the wake and
+  -- submit_bot_action, so the same identity in multiple seats is unambiguous.
+
+  -- Private + unrated; min=max=total so it is full at creation and never accepts
+  -- another human. Retry the short_code on the rare collision (UNIQUE NOT NULL).
+  <<loop_label>>
+  LOOP
+    BEGIN
+      INSERT INTO public.games
+        (created_by, access, turn_seconds, budget_seconds, increment_seconds,
+         min_players, max_players, config, schema_version, short_code, rated, rating_pool)
+      VALUES (
+        v_user_id, 'private', p_turn_seconds, p_budget_seconds, p_increment_seconds,
+        v_total, v_total, COALESCE(p_config, '{}'::jsonb), p_schema_version,
+        upper(substring(md5(random()::text) from 1 for 6)), false, NULL
+      )
+      RETURNING id INTO v_game_id;
+      EXIT loop_label;
+    EXCEPTION WHEN unique_violation THEN
+      -- new short_code
+    END;
+  END LOOP;
+
+  INSERT INTO public.participants (game_id, user_id, player_index)
+  VALUES (v_game_id, v_user_id, 0);
+
+  v_idx := 1;
+  FOREACH v_bot_id IN ARRAY p_bot_ids LOOP
+    INSERT INTO public.participants (game_id, bot_id, player_index)
+    VALUES (v_game_id, v_bot_id, v_idx);
+    v_idx := v_idx + 1;
+  END LOOP;
+
+  PERFORM private.start_game_core(v_game_id);
+
+  RETURN v_game_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
+REVOKE EXECUTE ON FUNCTION public.create_solo_game(UUID[], INT, INT, INT, INT, JSONB) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.create_solo_game(UUID[], INT, INT, INT, INT, JSONB) TO authenticated;
+
+-- Participants are read directly from the participants table (RLS-gated by game
+-- visibility) — they are ephemeral, per-game data. A bot seat's static reference
+-- data (username for the localBots match, local config for chooseAction) is NOT
+-- joined here: identity resolves via get_players/playerInfoCache and capability via
+-- the cached get_bots catalog, each keyed by the participant's id. So there is no
+-- get_participants RPC.
 
 -- ============================================
 -- RPC: trigger_turn_expiry
@@ -944,15 +1249,23 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 -- RPC: submit_action
 -- Validates action, applies it, fans out per-player observations.
 -- ============================================
-CREATE OR REPLACE FUNCTION public.submit_action(
+-- Core of every action submission. Under the games row lock: validate the
+-- deadline + optimistic version, confirm it is this seat's turn, run
+-- game_apply_action, apply budget deduction, and commit. The acting identity
+-- (user vs bot) and seat index are resolved by the caller, so this is shared by
+-- submit_action (human), submit_bot_action (server bot) and
+-- submit_local_bot_action (client-driven bot).
+CREATE OR REPLACE FUNCTION private.apply_seat_action(
   p_game_id          UUID,
+  p_player_index     INT,
+  p_acting_user_id   UUID,
+  p_acting_bot_id    UUID,
+  p_action_type      TEXT,
   p_data             JSONB,
   p_expected_version INT
 )
 RETURNS VOID AS $$
 DECLARE
-  v_user_id              UUID;
-  v_participant          RECORD;
   v_status               public.game_status;
   v_config               JSONB;
   v_turn_seconds         INT;
@@ -976,9 +1289,6 @@ DECLARE
   v_outcome              JSONB;
   v_elapsed_ms           BIGINT;
 BEGIN
-  v_user_id := private.require_auth();
-  SELECT * INTO v_participant FROM private.require_participant(p_game_id, v_user_id);
-
   -- Acquire lock and check status atomically — no TOCTOU window between
   -- the active check and the lock. game_states is append-only so the games
   -- row serves as the serialization point for all concurrent writers.
@@ -1007,12 +1317,12 @@ BEGIN
   -- Version check operates on the locked, consistent state.
   PERFORM private.validate_version(v_current_version, p_expected_version);
 
-  IF NOT (v_participant.player_index = ANY(v_current_pending)) THEN
+  IF NOT (p_player_index = ANY(v_current_pending)) THEN
     RAISE EXCEPTION 'Not your turn';
   END IF;
 
   v_result      := private.game_apply_action(
-    v_current_state, v_current_pending, p_data, v_participant.player_index, v_current_seed, v_config,
+    v_current_state, v_current_pending, p_data, p_player_index, v_current_seed, v_config,
     v_schema_version
   );
   v_new_state   := v_result->'state';
@@ -1035,19 +1345,19 @@ BEGIN
       EXTRACT(EPOCH FROM (NOW() - v_current_turn_started)) * 1000
     )::BIGINT;
     -- Deduct elapsed from the acting player's bank, floor at 0.
-    v_new_player_times[v_participant.player_index + 1] :=
-      GREATEST(0, v_new_player_times[v_participant.player_index + 1] - v_elapsed_ms);
+    v_new_player_times[p_player_index + 1] :=
+      GREATEST(0, v_new_player_times[p_player_index + 1] - v_elapsed_ms);
     -- Fischer increment added after each bank-consuming action.
-    v_new_player_times[v_participant.player_index + 1] :=
-      v_new_player_times[v_participant.player_index + 1]
+    v_new_player_times[p_player_index + 1] :=
+      v_new_player_times[p_player_index + 1]
       + (COALESCE(v_increment_seconds, 0) * 1000)::BIGINT;
   END IF;
 
   PERFORM private.commit_action(
     p_game_id,
-    v_user_id,
-    NULL,  -- bot_id: human submit_action always has a user_id
-    'user',
+    p_acting_user_id,
+    p_acting_bot_id,
+    p_action_type,
     p_data,
     v_new_state,
     v_new_pending,
@@ -1060,10 +1370,172 @@ BEGIN
     v_action_seconds,
     v_budget_seconds,
     v_turn_seconds,
-    v_participant.player_index
+    p_player_index
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
+-- Human action: resolve the caller's seat, then apply.
+CREATE OR REPLACE FUNCTION public.submit_action(
+  p_game_id          UUID,
+  p_data             JSONB,
+  p_expected_version INT
+)
+RETURNS VOID AS $$
+DECLARE
+  v_user_id     UUID;
+  v_participant RECORD;
+BEGIN
+  v_user_id := private.require_auth();
+  SELECT * INTO v_participant FROM private.require_participant(p_game_id, v_user_id);
+  PERFORM private.apply_seat_action(
+    p_game_id, v_participant.player_index, v_user_id, NULL, 'user',
+    p_data, p_expected_version
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
+-- Shared security boundary for the two client-facing local-bot RPCs (observation
+-- read + action submit): asserts p_caller is the SOLE human of a solo game and that
+-- p_player_index is a *local* bot seat in it, returning that seat's bot_id. Defining
+-- it once keeps the gate from drifting between the two entry points. STABLE: pure
+-- reads; the callers that mutate take the games lock in apply_seat_action.
+CREATE OR REPLACE FUNCTION private.resolve_local_bot_seat(
+  p_game_id      UUID,
+  p_player_index INT,
+  p_caller       UUID
+)
+RETURNS UUID AS $$
+DECLARE
+  v_bot_id      UUID;
+  v_is_local    BOOLEAN;
+  v_human_count INT;
+BEGIN
+  IF NOT private.is_game_participant(p_game_id, p_caller) THEN
+    RAISE EXCEPTION 'Not a participant in this game';
+  END IF;
+
+  SELECT p.bot_id, b.is_local INTO v_bot_id, v_is_local
+  FROM public.participants p
+  JOIN public.bots b ON b.id = p.bot_id
+  WHERE p.game_id = p_game_id AND p.player_index = p_player_index AND p.type = 'bot';
+
+  IF v_bot_id IS NULL THEN
+    RAISE EXCEPTION 'Seat % is not a bot in this game', p_player_index;
+  END IF;
+  -- Local bots only: a server bot acts solely through the gateway (submit_bot_action,
+  -- service-role) and computes remotely, so a client neither drives nor reads it.
+  -- Allowing it would let a participant front-run the opponent bot in a multi-human
+  -- or rated game.
+  IF NOT v_is_local THEN
+    RAISE EXCEPTION 'Seat % is a server bot and cannot be driven by a client', p_player_index;
+  END IF;
+
+  -- Sole-human gate: the caller is a participating human, so exactly one human means
+  -- the caller is alone — nobody to cheat against.
+  SELECT COUNT(*) INTO v_human_count
+  FROM public.participants
+  WHERE game_id = p_game_id AND user_id IS NOT NULL;
+  IF v_human_count <> 1 THEN
+    RAISE EXCEPTION 'Local bot play is only available in a solo game';
+  END IF;
+
+  RETURN v_bot_id;
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '';
+
+-- Server-side bot action. service_role-only: the bot-gateway authenticates the
+-- bot (Ed25519 signature vs bots.public_key) and then calls this. The action names
+-- the exact seat (p_player_index) the bot is moving for — one bot identity may hold
+-- several seats, so bot_id alone is ambiguous; the seat is echoed from the wake and
+-- validated here. Commits as the bot; all turn/version/deadline checks live in
+-- apply_seat_action.
+CREATE OR REPLACE FUNCTION public.submit_bot_action(
+  p_game_id          UUID,
+  p_bot_id           UUID,
+  p_player_index     INT,
+  p_data             JSONB,
+  p_expected_version INT
+)
+RETURNS VOID AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.participants
+    WHERE game_id = p_game_id AND bot_id = p_bot_id
+      AND player_index = p_player_index AND type = 'bot'
+  ) THEN
+    RAISE EXCEPTION 'Bot does not hold seat % in this game', p_player_index;
+  END IF;
+
+  PERFORM private.apply_seat_action(
+    p_game_id, p_player_index, NULL, p_bot_id, 'bot', p_data, p_expected_version
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
+-- Client-driven local bot action. authenticated: the caller must be a participant
+-- and the target SEAT must be a bot in the SAME game. Resolved by player_index
+-- (not bot_id) so the same local bot may fill several seats in a solo game — the
+-- client knows the seat. Used only in sole-human solo games (the human's client
+-- computed the bot's move). Commits as the bot; turn/version/deadline checks live
+-- in apply_seat_action.
+CREATE OR REPLACE FUNCTION public.submit_local_bot_action(
+  p_game_id          UUID,
+  p_player_index     INT,
+  p_data             JSONB,
+  p_expected_version INT
+)
+RETURNS VOID AS $$
+DECLARE
+  v_bot_id UUID;
+BEGIN
+  v_bot_id := private.resolve_local_bot_seat(
+    p_game_id, p_player_index, private.require_auth()
+  );
+
+  PERFORM private.apply_seat_action(
+    p_game_id, p_player_index, NULL, v_bot_id, 'bot', p_data, p_expected_version
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
+-- Reveals a local bot seat's full observation to the SOLE human of a solo game so
+-- the client can run the local bot. Keyed by player_index (the client knows the
+-- seat; allows duplicate local bots). The security gate lives in
+-- private.resolve_local_bot_seat (caller is sole human; seat is a *local* bot) —
+-- this is the only place the engine ever hands a bot's hidden view to a client.
+-- Returns SETOF observations: the exact row shape a human reads from the table
+-- directly, so the bot pull never drifts from the human pull.
+CREATE OR REPLACE FUNCTION public.get_local_bot_observation(
+  p_game_id      UUID,
+  p_player_index INT
+)
+RETURNS SETOF public.observations
+AS $$
+BEGIN
+  PERFORM private.resolve_local_bot_seat(
+    p_game_id, p_player_index, private.require_auth()
+  );
+
+  RETURN QUERY
+  SELECT o.*
+  FROM public.observations o
+  WHERE o.game_id = p_game_id AND o.player_index = p_player_index;
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '';
+
+-- submit_bot_action is service-role-only (the gateway calls it after verifying
+-- the bot's signature); never reachable by anon/authenticated clients.
+REVOKE EXECUTE ON FUNCTION public.submit_bot_action(UUID, UUID, INT, JSONB, INT)
+  FROM PUBLIC, anon, authenticated;
+
+REVOKE EXECUTE ON FUNCTION public.submit_local_bot_action(UUID, INT, JSONB, INT)
+  FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.submit_local_bot_action(UUID, INT, JSONB, INT)
+  TO authenticated;
+
+REVOKE EXECUTE ON FUNCTION public.get_local_bot_observation(UUID, INT) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.get_local_bot_observation(UUID, INT) TO authenticated;
 
 -- ============================================
 -- RPC: get_lobby_games
