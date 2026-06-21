@@ -461,23 +461,57 @@ The implementor's only bot declaration is the **local bot logic they wrote**.
 Everything else (server-bot availability, whether solo play is offered, opponent
 counts, difficulties, local/server mix) is **derived** — see below.
 
+A local bot is a **pure reducer** `(observation, state) → (action, nextState)`,
+generic over the same `<observation, action, config>` triple as `BaseEngine` plus
+a `TState` for its private per-(game, seat) brain (a search tree, a belief model) —
+client-only, never serialised to the server.
+
 ```dart
-// Generic over the same <observation, action, config> triple as BaseEngine, so a
-// bot is written and typed exactly like the game's engine.
-abstract class LocalBot<TObservationData, TActionData, TConfigData> {
+abstract class LocalBot<TObservationData, TActionData, TConfigData, TState> {
   String get username; // matches bots.username
-  /// Decide the bot seat's move from its (typed) observation, returning the game's
-  /// typed action — infra serialises it through BaseEngine.serializeAction, the same
-  /// seam the human path uses. [config] is the matching bots.config row (empty when
-  /// unset) — for DB-tuned personas; ignore it if parameterized in the constructor.
-  FutureOr<TActionData> chooseAction({
+
+  /// Seeds the per-(game, seat) state (an empty tree / prior belief). Runs once on
+  /// the main isolate at seat start; keep it light. [config] is the matching
+  /// bots.config row (empty when unset) — for DB-tuned personas.
+  TState createState({
+    required BaseEngine<TObservationData, TActionData, TConfigData> engine,
+    required int seatIndex,
+    required Map<String, dynamic> config,
+  });
+
+  /// PURE: decide the seat's move and the next state from the latest observation
+  /// and the state of this seat's last *accepted* action. Infra serialises the
+  /// action through BaseEngine.serializeAction (the same seam the human path uses).
+  FutureOr<({TActionData action, TState state})> chooseAction({
     required BaseEngine<TObservationData, TActionData, TConfigData> engine,
     required TObservationData observation,
-    required int botSeatIndex,
-    required Map<String, dynamic> config,
+    required int seatIndex,
+    required TState state,
   });
 }
 ```
+
+**Run off-thread, by the engine.** The driver runs every `chooseAction` in an
+**ephemeral isolate** (`Isolate.run`), so a move may take seconds without ever
+blocking a UI frame — the implementor writes no isolate code. The cost is that
+everything the call touches is copied across the boundary, which sets two rules:
+
+- **Everything must be isolate-sendable** — plain logic and data; no Supabase
+  clients, ports, or `dart:ui` handles in `TState`, the bot, or the engine (so a
+  `BaseEngine` used with local bots must be sendable).
+- **The bot and engine are re-copied every move** — keep them light. A bot needing
+  large static data (a pretrained net, big tables) belongs **server-side**, not
+  local; it would be re-shipped into the isolate each move.
+
+**Pure, with commit-on-accept.** `chooseAction` must not mutate `state` or perform
+side effects — it may be run speculatively and discarded the instant a newer
+observation supersedes it. The driver keeps the committed state on the main isolate
+and commits the returned state **only when the action is accepted** by the server,
+so a superseded/rejected compute is dropped whole (no rollback). Any randomness
+must be seeded from `state` and the advanced seed returned. Because a rejected
+action means the next call resumes from the last *accepted* state against a newer
+observation, the observation must be a full-enough seat snapshot to advance an
+accumulated belief in one step (this engine's seat-views are).
 
 The action half mirrors the observation half: `BaseEngine.parseObservation` turns
 JSON into the typed observation a bot reads, and `BaseEngine.serializeAction` turns
@@ -505,14 +539,21 @@ meaningless to Poker. The engine owns only the `LocalBot` *contract* + the wirin
 (driver, RPCs, picker); the game's `lib/game/` provides the implementations,
 exactly parallel to `GameModule` / `BaseEngine`.
 
-The **local-bot driver** only ever runs in a solo game: on each observation event,
-for every pending **local** bot seat (one whose `username` matches a `localBots`
-entry — a server bot has no matching entry, so it is skipped) →
-`get_local_bot_observation` →
-`chooseAction` → `submit_local_bot_action` (heavy search via `compute()`;
-idempotent — server re-checks pending + version). Server-bot seats in the same solo
-game are ignored by the driver (their webhook drives them). Setup phases (e.g.
-Stratego piece placement) are ordinary in-game actions handled by the same loop.
+**The driver — a supervisor + a per-seat driver.** A `void`-state supervisor
+(`LocalBotDriver`, kept alive by the game screen) evaluates the **solo gate once**
+(exactly one human) and watches one **per-seat driver** (`LocalBotSeatDriver`) for
+each bot seat whose `username` matches a `localBots` entry — a server bot has no
+match, so it is skipped (its webhook drives it). Each per-seat driver is an
+independent entity: when its seat is pending it pulls that seat's view via
+`get_local_bot_observation`, runs `chooseAction` off-thread (`Isolate.run`), and
+submits via `submit_local_bot_action`; a newer observation supersedes the
+in-flight compute (it was computed on an older game version — discard, and the
+server re-checks pending + version anyway). Because seats are independent, a **simultaneous-pending** game
+(Exploding Kittens "Nope") drives all its bot seats in parallel and the server's
+version lock arbitrates who landed first — but since local games are untimed, such
+a window must close on an **explicit pass action** per eligible seat, not a
+timeout. Setup phases (e.g. Stratego piece placement) are ordinary in-game actions
+handled by the same loop.
 
 **Resolving a bot seat — two cached layers, no per-game join.** Participants are
 ephemeral, per-game rows read straight from the table (RLS-gated), carrying only

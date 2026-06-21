@@ -1444,7 +1444,7 @@ lib/
 │   │   └── providers/
 │   │       ├── game_providers.dart       # gamePlayersProvider, activeGamesProvider, availableBots, soloPlayAvailable, etc.
 │   │       ├── game_frame_provider.dart  # gameFrameProvider, gameEngineProvider, currentGameModuleProvider
-│   │       └── local_bot_driver.dart     # LocalBotDriver — client-side solo local-bot driver (§26)
+│   │       └── local_bot_driver.dart     # LocalBotDriver supervisor + LocalBotSeatDriver — client-side solo local-bot driving (§26)
 │   ├── profile/
 │   │   ├── data/
 │   │   │   ├── models/
@@ -3779,19 +3779,41 @@ _Local-bot driving_ and `docs/bot.md`).
 ### Local-bot driving (client-side)
 
 A local bot has no server runtime — its Dart `LocalBot` runs on the **sole
-human's client** (`LocalBotDriver`, a `void`-state provider the game screen
-keeps alive). It `ref.listen`s the game, engine, players and observation;
-whenever a bot seat is pending in a _solo, active_ game it pulls that seat's
-view via `get_local_bot_observation` (sole-human-gated), calls `chooseAction`,
-and submits through `submit_local_bot_action`. It **single-flights** (the guard
-is set before any await) and the server re-validates every move under lock, so
-concurrent triggers or a stale submit are harmless. The driver is
-**screen-scoped**: leave the screen and it disposes; re-enter and it resumes
-from the current observation. Liveness is therefore covered without it — an
-untimed abandoned solo game is reaped by idle-cleanup; "keep playing while the
-app is closed" is, by definition, a _server_ bot. This is also why local bots
-must be **untimed**: nothing drives them while the client is away, so a deadline
-could only make them forfeit a turn for no reason.
+human's client**. A bot is a pure reducer `(observation, state) → (action,
+nextState)`; the engine runs `chooseAction` in an **ephemeral isolate**
+(`Isolate.run`), so a move may take seconds without ever blocking a UI frame and
+the implementor writes no isolate code. The flip side — the bot and engine are
+copied into the isolate per move — is why a bot needing large static data (a
+pretrained net) belongs **server-side**, not local; everything the call touches
+must be isolate-sendable.
+
+Two providers cooperate (`local_bot_driver.dart`): a **supervisor**
+(`LocalBotDriver`, a `void`-state provider the game screen keeps alive) evaluates
+the **solo gate once** (exactly one human) and watches one **per-seat driver**
+(`LocalBotSeatDriver`) for each bot seat with a shipped `localBots` impl —
+server-bot seats (no match) are skipped, their webhook drives them. Each per-seat
+driver holds that seat's committed state on the main isolate and, whenever the
+seat is pending, pulls its view via `get_local_bot_observation`
+(sole-human-gated), runs `chooseAction` off-thread, and submits through
+`submit_local_bot_action`.
+
+Keeping the committed state in the driver (not inside the compute) makes
+preemption free: a newer observation just spawns a fresh compute and the doomed
+one is **discarded** — it was computed on an older game version than the stream's
+latest (the orphaned isolate finishes and is GC'd); state is committed **only when
+its action is accepted**. Each seat is an
+independent entity, so a simultaneous-pending game (e.g. Exploding Kittens "Nope")
+drives all its bot seats in parallel and the server's version lock arbitrates who
+landed first. The server re-validates every move under lock, so a stale or
+duplicated submit is harmless — the driver is an optimisation of "who computes",
+never a trust boundary.
+
+The driver is **screen-scoped**: leave and it disposes; re-enter and it resumes
+from the current observation (re-seeding state via `createState`). Liveness is
+covered without it — an untimed abandoned solo game is reaped by idle-cleanup;
+"keep playing while the app is closed" is, by definition, a _server_ bot. This is
+also why local bots must be **untimed**: nothing drives them while the client is
+away. `docs/bot.md` is the full contract + per-game state reference.
 
 ### One identity, many seats
 

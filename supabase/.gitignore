@@ -3,6 +3,7 @@
 .temp
 signing_key.json
 signing_keys.json
+functions/**/deno.lock
 
 # dotenvx
 .env.keys

@@ -130,6 +130,8 @@ BEGIN
   -- these rows are guaranteed to exist by the time this trigger fires.
   -- player_ratings uses LEFT JOIN — defaults (25, 25/3) applied here
   -- so the edge function never needs to know about the DB schema.
+  -- display_rating is NOT bundled: it is a pure function of mu/sigma, so the
+  -- edge function derives both the before and after values itself.
   SELECT jsonb_agg(jsonb_build_object(
     'player_index',   go.player_index,
     'user_id',        go.user_id,
@@ -137,8 +139,7 @@ BEGIN
     'placement',      go.placement,
     'team_index',     go.team_index,
     'mu',             COALESCE(pr.mu,             25.0),
-    'sigma',          COALESCE(pr.sigma,           25.0 / 3.0),
-    'display_rating', COALESCE(pr.display_rating,  0)
+    'sigma',          COALESCE(pr.sigma,           25.0 / 3.0)
   ) ORDER BY go.player_index)
   INTO v_players
   FROM public.game_outcomes go

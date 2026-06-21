@@ -25,6 +25,7 @@ import 'package:eigen_engine/features/game/presentation/widgets/budget_clock.dar
 import 'package:eigen_engine/features/game/presentation/widgets/turn_countdown.dart';
 import 'package:eigen_engine/features/game/providers/game_providers.dart';
 import 'package:eigen_engine/features/game/providers/game_frame_provider.dart';
+import 'package:eigen_engine/features/game/providers/local_bot_driver.dart';
 import 'package:eigen_engine/features/social/presentation/widgets/player_profile_sheet.dart';
 import 'package:eigen_engine/shared/widgets/player_avatar.dart';
 
@@ -300,6 +301,10 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   @override
   Widget build(BuildContext context) {
     final gameAsync = ref.watch(gameStreamProvider(gameId: widget.gameId));
+    // Keep the local-bot driver alive while this screen is shown. Its state is
+    // void (it never rebuilds); watching it is what lets it react to game,
+    // engine, players and observation changes and drive pending local-bot seats.
+    ref.watch(localBotDriverProvider(gameId: widget.gameId));
 
     return Scaffold(
       body: Column(

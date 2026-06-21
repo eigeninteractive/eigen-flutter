@@ -612,10 +612,12 @@ bots run on the present human's client, so a local-bot game is always **untimed*
 is the only bot surface you implement.
 
 1. **Implement `LocalBot`** in your game package (alongside your `GameModule`, never
-   in the engine):
+   in the engine). A bot is a **pure reducer** `(observation, state) → (action,
+   nextState)`; the fourth type param is your bot's private per-(game, seat) brain
+   (`TState`). A bot that needs no memory uses `Null`:
 
    ```dart
-   class MinimaxBot extends LocalBot<MyObservation, MyAction, MyConfig> {
+   class MinimaxBot extends LocalBot<MyObservation, MyAction, MyConfig, Null> {
      const MinimaxBot({required this.username, this.depth = 4});
 
      @override
@@ -624,37 +626,47 @@ is the only bot surface you implement.
      final int depth;
 
      @override
-     FutureOr<MyAction> chooseAction({
+     Null createState({
+       required BaseEngine<MyObservation, MyAction, MyConfig> engine,
+       required int seatIndex,
+       required Map<String, dynamic> config, // bots.config, may be empty
+     }) => null; // stateless bot — a stateful one returns its initial brain
+
+     @override
+     ({MyAction action, Null state}) chooseAction({
        required BaseEngine<MyObservation, MyAction, MyConfig> engine,
        required MyObservation observation,   // already typed — no cast
-       required int botSeatIndex,
-       required Map<String, dynamic> config, // bots.config, may be empty
+       required int seatIndex,
+       required Null state,
      }) {
        // ...pick a legal move (use `engine` for validation/legal moves)...
-       return MyAction(cell: bestCell); // your typed action model
+       return (action: MyAction(cell: bestCell), state: null);
      }
    }
    ```
 
+   A **stateful** bot (an MCTS tree, a Stratego/poker belief model) sets `TState` to
+   its brain type: `createState` seeds it, and each `chooseAction` returns the
+   **next** state — re-rooted to the played move, beliefs folded in — which the
+   driver commits **only when the action is accepted**.
+
    `LocalBot` is generic over the same `<observation, action, config>` triple as
-   your engine, so you write it exactly like the engine and get a fully typed
-   `observation` in and a typed action out — **no casts, no hand-rolled JSON**. The
-   infra driver serialises your returned action via `engine.serializeAction`, the
-   same seam the human path uses, so the two can never drift.
+   your engine (plus `TState`), so you write it like the engine and get a fully
+   typed `observation` in and a typed action out — **no casts, no hand-rolled
+   JSON**. The driver serialises your action via `engine.serializeAction`, the same
+   seam the human path uses, so the two can never drift.
 
-   `observation` is `engine.parseObservation(rawData)` for the bot's seat — cast it
-   exactly as you do in `buildContent`. Heavy search? Run it in a `compute()`
-   isolate; the driver is idempotent (the server re-checks the seat + version).
+   **The engine runs `chooseAction` off-thread** (`Isolate.run`), so heavy search
+   never blocks a UI frame — no `compute()` of your own. In return it must be
+   **pure** (never mutate `state` or touch the outside world; seed any randomness
+   from `state` and return the advanced seed), and everything it touches — bot,
+   engine, observation, action, `state` — must be **isolate-sendable** (plain data,
+   no clients/ports). A bot needing **large static data** (a pretrained net) belongs
+   **server-side**: it would be re-copied into the isolate every move.
 
-   **Keep the implementation stateless.** `localBots` entries are `const` and the
-   *same instance* is reused across turns, across the several seats one identity may
-   hold, and across games. Derive everything from the `chooseAction` arguments;
-   never cache per-game or per-seat state on a field, or it will bleed between seats.
-   Immutable constructor config (like `depth`) is fine.
-
-   **What `chooseAction` returns is just an action** — the same
-   `Map<String, dynamic>` a human move produces (see *Designing action data* below).
-   You design the shape; the server validates it in `game_apply_action`.
+   **What `chooseAction` returns is an action plus the next state** — the action is
+   the same shape a human move produces (see *Designing action data* below); you
+   design it, and the server validates it in `game_apply_action`.
 
 2. **Register instances** in your module — this presence *is* the local-bot support
    flag (empty default ⇒ no bot UI):
@@ -668,9 +680,9 @@ is the only bot surface you implement.
    ```
 
    One class can back several personas via constructor args **or** the DB
-   `bots.config` handed to `chooseAction` (N:1). The engine's driver matches a
+   `bots.config` handed to `createState` (N:1). The engine's driver matches a
    pending bot seat to the `localBots` entry whose `username` equals the seat's
-   `bots.username`, calls `chooseAction`, and submits — you write no wake/submit
+   `bots.username`, runs `chooseAction`, and submits — you write no wake/submit
    plumbing.
 
 3. **Insert a matching `bots` row** per persona (see SQL below) with
