@@ -17,6 +17,7 @@ import 'package:eigen_engine/core/game/game_module.dart';
 import 'package:eigen_engine/core/game/game_outcome.dart';
 import 'package:eigen_engine/core/game/players_context.dart';
 import 'package:eigen_engine/core/game/game_status.dart';
+import 'package:eigen_engine/core/game/timing_constants.dart';
 import 'package:eigen_engine/core/game/timing_context.dart';
 import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
 import 'package:eigen_engine/features/game/data/models/game.dart';
@@ -270,14 +271,20 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     super.dispose();
   }
 
-  /// Schedules (or cancels) a timer that fires when [deadline] is reached,
-  /// then calls [trigger_turn_expiry] so the server can process the timeout
-  /// before the pg_cron job runs. Replaces any previously scheduled timer.
+  /// Schedules (or cancels) a timer that fires [kExpiryTriggerDelay] *after*
+  /// the [deadline], then calls [trigger_turn_expiry] so the server can process
+  /// the timeout before the pg_cron job runs. Replaces any previously scheduled
+  /// timer.
+  ///
+  /// The delay sits past the server's grace window
+  /// ([kServerDeadlineGrace]) on purpose: nudging at exactly the deadline would
+  /// hit the server while it is still abstaining, the nudge would no-op, and the
+  /// timeout would slip to the next (every-minute) pg_cron sweep.
   void _scheduleDeadlineTimer(DateTime? deadline) {
     _deadlineTimer?.cancel();
     _deadlineTimer = null;
     if (deadline == null) return;
-    final delay = deadline.difference(DateTime.now());
+    final delay = deadline.add(kExpiryTriggerDelay).difference(DateTime.now());
     _deadlineTimer = Timer(
       delay.isNegative ? Duration.zero : delay,
       _triggerExpiry,

@@ -77,6 +77,20 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '';
 
+-- Grace window (milliseconds) added to every deadline comparison so a player
+-- who submits on time is not rejected because network latency carried the
+-- request past the deadline (server time is measured at request arrival, not
+-- at the tap). MUST be applied symmetrically everywhere a deadline is compared
+-- to NOW() — the submit_action guard, the expire_turn re-check under lock, and
+-- the expire_all_turns cron sweep — otherwise the timeout path races ahead and
+-- times out the on-time player anyway. In budget mode the grace is fair: the
+-- elapsed bank deduction still runs, so it only forgives acceptance, not time
+-- charged. Keep it small relative to per-action turn_seconds windows.
+CREATE OR REPLACE FUNCTION private.deadline_grace_ms()
+RETURNS BIGINT AS $$
+  SELECT 750::BIGINT;
+$$ LANGUAGE sql IMMUTABLE;
+
 -- Fans out per-player observation slices after every state change.
 -- Calls game_compute_observation once per participant so hidden-info games
 -- can write different slices (e.g. Poker hole cards, Literature hands).
@@ -1310,7 +1324,9 @@ BEGIN
   LIMIT 1;
 
   -- Deadline check after lock: concurrent expire_turn may have already fired.
-  IF v_current_deadline IS NOT NULL AND v_current_deadline < NOW() THEN
+  -- Grace window absorbs network latency so an on-time submit is not rejected.
+  IF v_current_deadline IS NOT NULL
+     AND v_current_deadline + private.deadline_grace_ms() * INTERVAL '1 millisecond' < NOW() THEN
     RAISE EXCEPTION 'Turn has expired';
   END IF;
 
@@ -1698,7 +1714,7 @@ BEGIN
       ORDER  BY gs.game_id, gs.version DESC
     ) latest
     WHERE latest.turn_deadline IS NOT NULL
-      AND latest.turn_deadline < NOW()
+      AND latest.turn_deadline + private.deadline_grace_ms() * INTERVAL '1 millisecond' < NOW()
   LOOP
     BEGIN
       PERFORM private.expire_turn(v_game_id);
@@ -1762,7 +1778,10 @@ BEGIN
   LIMIT 1;
 
   -- Re-check under lock: a concurrent submit_action may have already acted.
-  IF v_current_deadline IS NULL OR v_current_deadline >= NOW() THEN
+  -- Same grace window as submit_action so the timeout path abstains while an
+  -- on-time-but-latent submit can still win the lock race.
+  IF v_current_deadline IS NULL
+     OR v_current_deadline + private.deadline_grace_ms() * INTERVAL '1 millisecond' >= NOW() THEN
     RETURN;
   END IF;
 
@@ -1870,11 +1889,16 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
--- Delete stale anonymous (guest) accounts: anonymous, older than 90 days, with
--- no game action in the last 90 days. Each is torn down via private.purge_user
--- (cancel/leave/forfeit then delete) — the same path delete_account uses — so a
--- guest's lingering games are resolved gracefully rather than orphaned. Each
--- purge runs in its own subtransaction so one bad game can't block the rest.
+-- Delete stale anonymous (guest) accounts: anonymous, older than 7 days, with
+-- no game action in the last 2 days. The short windows keep a guest's data from
+-- accumulating long enough that its eventual deletion is a painful surprise;
+-- active guests (any action in the last 2 days) are always kept, and the 7-day
+-- floor gives a brief minimum lifetime. The in-app guest upgrade card warns
+-- about this window so the loss is never unexpected. Each account is torn down
+-- via private.purge_user (cancel/leave/forfeit then delete) — the same path
+-- delete_account uses — so a guest's lingering games are resolved gracefully
+-- rather than orphaned. Each purge runs in its own subtransaction so one bad
+-- game can't block the rest.
 CREATE OR REPLACE FUNCTION private.cleanup_stale_anonymous_users()
 RETURNS VOID AS $$
 DECLARE
@@ -1883,11 +1907,11 @@ BEGIN
   FOR v_user_id IN
     SELECT au.id FROM auth.users au
     WHERE au.is_anonymous = true
-      AND au.created_at < NOW() - INTERVAL '90 days'
+      AND au.created_at < NOW() - INTERVAL '7 days'
       AND NOT EXISTS (
         SELECT 1 FROM public.actions a
         WHERE a.user_id = au.id
-          AND a.created_at >= NOW() - INTERVAL '90 days'
+          AND a.created_at >= NOW() - INTERVAL '2 days'
       )
   LOOP
     BEGIN

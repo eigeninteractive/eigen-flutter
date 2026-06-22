@@ -155,6 +155,7 @@ class _TimingHeader extends StatelessWidget {
             const SizedBox(width: 6),
             TurnCountdown(
               deadline: deadline,
+              turnStartedAt: timing.turnStartedAt,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ],

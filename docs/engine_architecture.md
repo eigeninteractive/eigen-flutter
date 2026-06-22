@@ -452,15 +452,64 @@ On every `submit_action` where the hook did **not** return `turn_seconds`:
 
 If the bank reaches 0 and `increment_seconds` is 0 (or null), the deadline is
 set to `NOW()`. Any subsequent submit attempt by that player fails with "Turn
-has expired" because the stored deadline is already in the past.
+has expired" once the deadline plus the grace window (see below) has passed.
+
+### Deadline Grace Window (Latency Tolerance)
+
+Server time is measured at request **arrival** (`NOW()` = transaction start),
+not when the player tapped submit, so a player's network latency is charged
+against their clock. Without compensation, an action submitted on time can
+arrive after the deadline and be rejected — and then the timeout path
+forfeits/skips the player who actually acted on time.
+
+To prevent this, **every deadline comparison adds a fixed grace window** of
+`private.deadline_grace_ms()` (currently 750 ms), applied symmetrically in all
+three places a deadline is compared to `NOW()`:
+
+- `submit_action` — accepts an action while `turn_deadline + grace >= NOW()`.
+- `expire_turn` — abstains (returns without acting) while
+  `turn_deadline + grace >= NOW()`.
+- `expire_all_turns` (cron sweep) — only enqueues games where
+  `turn_deadline + grace < NOW()`.
+
+The symmetry is essential: grace in `submit_action` alone would still lose the
+race to the timeout path. With grace on all three, the timeout path stays
+dormant for exactly as long as `submit_action` stays lenient, so an
+on-time-but-latent submit reliably wins the `FOR UPDATE` lock.
+
+**Budget mode fairness.** The grace forgives *acceptance*, not *time charged* —
+the elapsed bank deduction (floored at 0) still runs, so a player cannot gain
+free thinking time by exploiting the window. In per-action mode the grace is a
+genuine small extension, so it is kept small relative to typical `turn_seconds`.
+
+#### Client Soft-Deadline Margin
+
+The server grace is the enforcement boundary; the client additionally nudges
+honest players to submit *before* the true deadline so the grace is rarely
+needed. This is display-only and never affects enforcement:
+
+- **Per-action / hook-override** (`TurnCountdown`): the displayed countdown
+  reaches zero `softMargin` early, where `softMargin = min(1s, 25% × window)`
+  and `window = turn_deadline − turn_started_at`. The cap prevents a short
+  window (e.g. a 3 s Nope) from being swallowed.
+- **Budget mode** (`BudgetClock`): the clock stays truthful — subtracting a
+  margin would make a chess-style clock snap back up on submit. Instead the
+  local player's own active cell shows a "Submit!" cue once their bank enters
+  the final-headroom zone.
+- **Untimed**: no deadline, no margin.
+
+The constants live in `lib/core/game/timing_constants.dart`
+(`kServerDeadlineGrace`, `kSoftDeadlineMargin`, `kSoftDeadlineMaxFraction`) and
+are hardcoded to mirror `deadline_grace_ms()` — keep the two in sync.
 
 ### Timeout Handling
 
 `private.expire_turn(game_id)` is called by pg_cron for any game where
-`turn_deadline < NOW()`. It:
+`turn_deadline + grace < NOW()`. It:
 
-1. Acquires a `FOR UPDATE` lock and re-checks the deadline (guards against a
-   concurrent `submit_action`).
+1. Acquires a `FOR UPDATE` lock and re-checks the deadline against the same
+   grace window (guards against a concurrent `submit_action`, which would win
+   the lock during the grace window).
 2. In budget mode, zeroes the timed-out player's bank
    (`player_times[player_index + 1] := 0`).
 3. Calls `game_apply_action` with `{"type": "timeout"}` — the hook decides the
@@ -517,18 +566,27 @@ final remaining = obs.playerTimes![myPlayerIndex] - elapsed;
 > **Known limitation — device clock skew.** All countdowns compare server
 > timestamps (`turn_deadline`, `turn_started_at`) against `DateTime.now()`. A
 > device with a skewed clock displays a wrong countdown and may fire
-> `trigger_turn_expiry` early (harmless — the server re-validates under lock) or
-> late (the pg_cron backstop catches it). Enforcement is never affected; only
-> the displayed value is. A future fix would estimate a server-time offset from
-> `observations.updated_at` at receipt and apply it in the timer builders.
+> `trigger_turn_expiry` early (harmless — the server re-validates under lock and
+> abstains during the grace window) or late (the pg_cron backstop catches it).
+> Enforcement is never affected; only the displayed value is. The server grace
+> window and client soft margin (above) absorb modest skew on the submit path;
+> a future fix would estimate a server-time offset from `observations.updated_at`
+> at receipt and apply it in the timer builders.
 
 #### Client-Side Expiry Trigger
 
 The game screen maintains a `_deadlineTimer` (`dart:async Timer`) scheduled to
-fire when `turn_deadline` is reached. On fire it calls `trigger_turn_expiry` — a
-safe, idempotent nudge that lets the server process the timeout before pg_cron
-runs (which may fire on a coarse schedule). The server re-validates under
-`FOR UPDATE` lock, so concurrent calls from multiple active clients are safe.
+fire at `turn_deadline + kExpiryTriggerDelay` — i.e. ~1 s *past* the deadline,
+deliberately beyond the server grace window (`kExpiryTriggerDelay` =
+`kServerDeadlineGrace` + a 250 ms skew/jitter epsilon). Firing at the deadline
+itself would hit the server while it is still abstaining, the nudge would
+no-op, and the timeout would slip to the coarse pg_cron sweep. The delay only
+affects the AFK/timeout path; a player who acts is never delayed by it.
+
+On fire it calls `trigger_turn_expiry` — a safe, idempotent nudge that lets the
+server process the timeout before pg_cron runs (which may fire on a coarse
+schedule). The server re-validates under `FOR UPDATE` lock, so concurrent calls
+from multiple active clients are safe.
 
 Any active participant — not just the player whose time ran out — should trigger
 expiry. If Player A times out but has the app backgrounded, Player B's client
@@ -3721,8 +3779,11 @@ row is reclaimed by the cleanup job.
 ### Cleanup
 
 `private.cleanup_stale_anonymous_users()` (daily pg_cron,
-`cleanup-stale-anon-users`) deletes anonymous accounts older than 90 days with
-no game action in the last 90 days. Each is torn down through
+`cleanup-stale-anon-users`) deletes anonymous accounts older than 7 days with
+no game action in the last 2 days. The short windows keep guest data from
+accumulating long enough that deletion is a painful surprise; active guests are
+always kept, and the in-app guest upgrade card warns about the window. Each is
+torn down through
 `private.purge_user` — the **same** path `delete_account` uses (cancel created
 lobbies, leave joined lobbies, forfeit active games, then delete the
 `auth.users` row, cascading as in §22). Because the teardown is shared, a

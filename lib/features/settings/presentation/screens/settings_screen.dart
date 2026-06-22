@@ -414,6 +414,21 @@ class _UpgradeAccountCard extends ConsumerWidget {
               'features.',
               style: textTheme.bodyMedium?.copyWith(color: onContainer),
             ),
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.schedule_outlined, size: 18, color: onContainer),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Guest data is removed after a few days of inactivity. '
+                    'Create an account to keep it for good.',
+                    style: textTheme.bodySmall?.copyWith(color: onContainer),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerRight,

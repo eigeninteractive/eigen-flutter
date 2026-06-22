@@ -12,15 +12,22 @@ import 'package:flutter/material.dart';
 /// Set [isPaused] to freeze the displayed value without cancelling the
 /// underlying timer — the frozen duration resumes from the correct wall-clock
 /// value as soon as [isPaused] becomes false again.
+///
+/// [softMargin] shifts the *displayed* zero point earlier than [deadline] so
+/// the player is nudged to submit before the true server deadline (absorbing
+/// network latency). It is display-only — the server stays authoritative and
+/// the expiry trigger uses the true deadline. Defaults to no margin.
 class TurnTimerBuilder extends StatefulWidget {
   const TurnTimerBuilder({
     super.key,
     required this.deadline,
     required this.builder,
+    this.softMargin = Duration.zero,
     this.isPaused = false,
   });
 
   final DateTime deadline;
+  final Duration softMargin;
   final bool isPaused;
 
   /// Called every second with the remaining duration (clamped to zero).
@@ -34,6 +41,10 @@ class _TurnTimerBuilderState extends State<TurnTimerBuilder> {
   Timer? _timer;
   Duration _remaining = Duration.zero;
 
+  /// The displayed deadline, pulled earlier by [TurnTimerBuilder.softMargin].
+  DateTime get _effectiveDeadline =>
+      widget.deadline.subtract(widget.softMargin);
+
   @override
   void initState() {
     super.initState();
@@ -46,7 +57,8 @@ class _TurnTimerBuilderState extends State<TurnTimerBuilder> {
   @override
   void didUpdateWidget(TurnTimerBuilder oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.deadline != widget.deadline) {
+    if (oldWidget.deadline != widget.deadline ||
+        oldWidget.softMargin != widget.softMargin) {
       _timer?.cancel();
       _tickForced();
       _timer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
@@ -60,7 +72,7 @@ class _TurnTimerBuilderState extends State<TurnTimerBuilder> {
   /// Updates [_remaining] regardless of [isPaused]. Used for the initial
   /// render and on deadline change so the widget is never invisibly blank.
   void _tickForced() {
-    final r = widget.deadline.difference(DateTime.now());
+    final r = _effectiveDeadline.difference(DateTime.now());
     if (!mounted) return;
     if (r.isNegative) {
       _timer?.cancel();
@@ -72,7 +84,7 @@ class _TurnTimerBuilderState extends State<TurnTimerBuilder> {
 
   void _tick() {
     if (widget.isPaused) return;
-    final r = widget.deadline.difference(DateTime.now());
+    final r = _effectiveDeadline.difference(DateTime.now());
     if (!mounted) return;
     if (r.isNegative) {
       _timer?.cancel();

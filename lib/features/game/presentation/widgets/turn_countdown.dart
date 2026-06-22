@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:eigen_engine/core/connectivity/connectivity_provider.dart';
+import 'package:eigen_engine/core/game/timing_constants.dart';
 import 'package:eigen_engine/features/game/presentation/widgets/timer_builders.dart';
 
 /// Styled countdown toward [deadline].
@@ -17,11 +18,23 @@ import 'package:eigen_engine/features/game/presentation/widgets/timer_builders.d
 /// Provide [style] to override the default [TextTheme.bodySmall] — useful
 /// when the countdown should be larger (e.g. inside the game screen).
 ///
+/// Provide [turnStartedAt] to enable the soft-deadline margin: the countdown
+/// reaches zero slightly before the true server deadline so an on-time submit
+/// survives network latency. The margin is capped to a fraction of the turn
+/// window (`deadline - turnStartedAt`) so short windows are not swallowed. Omit
+/// it (e.g. on at-a-glance home cards) for a truthful, unmargined countdown.
+///
 /// Timing state is owned by [TurnTimerBuilder].
 class TurnCountdown extends ConsumerWidget {
-  const TurnCountdown({super.key, required this.deadline, this.style});
+  const TurnCountdown({
+    super.key,
+    required this.deadline,
+    this.turnStartedAt,
+    this.style,
+  });
 
   final DateTime deadline;
+  final DateTime? turnStartedAt;
   final TextStyle? style;
 
   @override
@@ -29,8 +42,13 @@ class TurnCountdown extends ConsumerWidget {
     final isOffline = ref.watch(isOfflineProvider);
     final colorScheme = Theme.of(context).colorScheme;
 
+    final softMargin = turnStartedAt == null
+        ? Duration.zero
+        : softDeadlineMarginFor(deadline.difference(turnStartedAt!));
+
     return TurnTimerBuilder(
       deadline: deadline,
+      softMargin: softMargin,
       isPaused: isOffline,
       builder: (context, remaining) {
         if (remaining == Duration.zero) return const SizedBox.shrink();

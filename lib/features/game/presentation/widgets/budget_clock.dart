@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:eigen_engine/core/connectivity/connectivity_provider.dart';
+import 'package:eigen_engine/core/game/timing_constants.dart';
 import 'package:eigen_engine/features/game/presentation/widgets/timer_builders.dart';
 
 /// Shows all players' remaining time banks side by side for budget
@@ -10,6 +11,13 @@ import 'package:eigen_engine/features/game/presentation/widgets/timer_builders.d
 /// the cell whose value changed triggers a rebuild. Inactive players'
 /// banks are static until the next observation arrives.
 /// Any bank below 60 seconds turns [ColorScheme.error].
+///
+/// The clock stays truthful (unlike the per-action countdown, it is not pulled
+/// earlier by a soft margin — that would make a chess-style clock snap back up
+/// on submit). Instead, the local player's own cell shows a "Submit!" cue once
+/// their remaining bank drops into the final-headroom zone
+/// ([softDeadlineMarginFor]), nudging them to commit before latency carries the
+/// move past the deadline. The server grace window does the actual protecting.
 ///
 /// When offline all cells freeze at their last known values and the active
 /// cell renders as inactive so it doesn't falsely suggest time is draining.
@@ -51,14 +59,28 @@ class BudgetClock extends ConsumerWidget {
               pendingPlayers: pendingPlayers,
               playerIndex: i,
               isPaused: isOffline,
-              builder: (context, remainingMs, isActive) => _ClockCell(
-                remainingMs: remainingMs,
-                label: i == myPlayerIndex ? 'You' : 'P${i + 1}',
-                // Treat active cell as inactive when offline so the pulsing
-                // border and drain colour don't suggest time is running.
-                isActive: isActive && !isOffline,
-                colorScheme: colorScheme,
-              ),
+              builder: (context, remainingMs, isActive) {
+                final isMine = i == myPlayerIndex;
+                // Final-headroom zone for my own active cell: capped to a
+                // fraction of the bank so a tiny bank doesn't sit permanently
+                // in the cue.
+                final softMarginMs = softDeadlineMarginFor(
+                  Duration(milliseconds: playerTimes[i]),
+                ).inMilliseconds;
+                return _ClockCell(
+                  remainingMs: remainingMs,
+                  label: isMine ? 'You' : 'P${i + 1}',
+                  // Treat active cell as inactive when offline so the pulsing
+                  // border and drain colour don't suggest time is running.
+                  isActive: isActive && !isOffline,
+                  isSubmitZone:
+                      isMine &&
+                      isActive &&
+                      !isOffline &&
+                      remainingMs <= softMarginMs,
+                  colorScheme: colorScheme,
+                );
+              },
             ),
           ),
         ],
@@ -72,12 +94,17 @@ class _ClockCell extends StatelessWidget {
     required this.remainingMs,
     required this.label,
     required this.isActive,
+    required this.isSubmitZone,
     required this.colorScheme,
   });
 
   final int remainingMs;
   final String label;
   final bool isActive;
+
+  /// True for the local player's active cell once it drops into the final
+  /// headroom before the deadline — shows a "Submit!" nudge.
+  final bool isSubmitZone;
   final ColorScheme colorScheme;
 
   bool get _isUrgent => remainingMs < 60000;
@@ -125,11 +152,12 @@ class _ClockCell extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            label,
+            isSubmitZone ? 'Submit!' : label,
             style: textTheme.labelSmall?.copyWith(
               color: isActive
                   ? (_isUrgent ? colorScheme.error : colorScheme.primary)
                   : colorScheme.onSurfaceVariant,
+              fontWeight: isSubmitZone ? FontWeight.bold : null,
             ),
           ),
           const SizedBox(height: 4),

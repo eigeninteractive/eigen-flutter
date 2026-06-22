@@ -418,6 +418,69 @@ createServer((req, res) => {
 }).listen(8080);
 ```
 
+The same loop in **Python** (stdlib only — `http.server` + `hmac`, no SDK):
+
+```python
+import base64, hashlib, hmac, json, os, urllib.error, urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+BOT_ID   = os.environ["BOT_ID"]
+SECRET   = os.environ["BOT_SECRET"].encode()   # matches Vault bot_secret_<id>
+RPC_URL  = os.environ["RPC_URL"]               # …/rest/v1/rpc/submit_bot_action_signed
+ANON_KEY = os.environ["SUPABASE_ANON_KEY"]
+
+def mac(raw: bytes) -> str:
+    return base64.b64encode(hmac.new(SECRET, raw, hashlib.sha256).digest()).decode()
+
+class Handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        raw = self.rfile.read(int(self.headers["Content-Length"]))   # verify the RAW bytes
+
+        # 1. Verify the wake HMAC (constant-time).
+        if not hmac.compare_digest(mac(raw), self.headers.get("x-wake-signature", "")):
+            self.send_response(401); self.end_headers(); return
+        self.send_response(200); self.end_headers()                  # ack fast; act below
+
+        # 2. Decide a move for THIS seat.
+        wake = json.loads(raw)
+        data = choose_move(wake["observation"], wake["player_index"])  # your AI
+
+        # 3. Sign the EXACT payload bytes you send (same secret).
+        payload = json.dumps({
+            "game_id": wake["game_id"], "bot_id": BOT_ID,
+            "player_index": wake["player_index"], "version": wake["version"], "data": data,
+        }, separators=(",", ":"))
+
+        # 4. Submit before turn_deadline.
+        body = json.dumps({"p_payload": payload, "p_signature": mac(payload.encode())}).encode()
+        req = urllib.request.Request(RPC_URL, data=body, method="POST", headers={
+            "Content-Type": "application/json",
+            "apikey": ANON_KEY, "Authorization": f"Bearer {ANON_KEY}",
+        })
+        try:
+            urllib.request.urlopen(req)
+        except urllib.error.HTTPError as e:
+            print("action rejected:", e.code, e.read().decode())
+
+ThreadingHTTPServer(("", 8080), Handler).serve_forever()
+```
+
+And the bare **action submit** as a language-agnostic `curl` (sign the exact
+`PAYLOAD` string, then send that same string back as `p_payload`):
+
+```bash
+PAYLOAD='{"game_id":"…","bot_id":"…","player_index":1,"version":7,"data":{"position":4}}'
+SIG=$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$BOT_SECRET" -binary | base64)
+
+curl -sS -X POST "$SUPABASE_URL/rest/v1/rpc/submit_bot_action_signed" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ANON_KEY" \
+  -H "Content-Type: application/json" \
+  --data "$(jq -n --arg p "$PAYLOAD" --arg s "$SIG" '{p_payload:$p, p_signature:$s}')"
+```
+
+> The signed bytes and the `p_payload` you send must be **byte-identical** — sign the
+> string, then transmit that exact string (here `jq` escapes it without changing it).
+
 Store the secret once in Vault as `bot_secret_<bot_id>` — it is the bot's only
 credential. Nothing else is required: no keypair, no Supabase client, no database
 access, no polling.
