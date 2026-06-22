@@ -1590,8 +1590,7 @@ $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '';
 -- submit_bot_action_signed is anon-callable: the per-bot HMAC over the payload is
 -- the auth gate (the bot has no Supabase session). The verify helper is internal.
 REVOKE EXECUTE ON FUNCTION public.submit_bot_action_signed(TEXT, TEXT) FROM PUBLIC;
-GRANT  EXECUTE ON FUNCTION public.submit_bot_action_signed(TEXT, TEXT)
-  TO anon, authenticated;
+GRANT  EXECUTE ON FUNCTION public.submit_bot_action_signed(TEXT, TEXT) TO anon;
 REVOKE EXECUTE ON FUNCTION private.verify_bot_action_hmac(UUID, TEXT, TEXT)
   FROM PUBLIC, anon, authenticated;
 
