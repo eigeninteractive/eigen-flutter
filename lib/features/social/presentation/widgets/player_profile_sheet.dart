@@ -7,6 +7,7 @@ import 'package:eigen_engine/features/rating/providers/rating_providers.dart';
 import 'package:eigen_engine/features/social/presentation/widgets/friend_actions.dart';
 import 'package:eigen_engine/shared/data/models/player_info.dart';
 import 'package:eigen_engine/shared/providers/player_providers.dart';
+import 'package:eigen_engine/shared/widgets/bot_tag.dart';
 import 'package:eigen_engine/shared/widgets/player_avatar.dart';
 
 /// Modal bottom sheet showing a player's public profile.
@@ -130,7 +131,11 @@ class _Header extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Column(
         children: [
-          PlayerAvatar(playerInfo: player, radius: 40),
+          PlayerAvatar(
+            playerInfo: player,
+            radius: 40,
+            isBot: type == ParticipantType.bot,
+          ),
           const SizedBox(height: 16),
           Text(
             player.displayName,
@@ -146,11 +151,7 @@ class _Header extends StatelessWidget {
           ),
           if (type == ParticipantType.bot) ...[
             const SizedBox(height: 12),
-            Chip(
-              avatar: const Icon(Icons.smart_toy_outlined, size: 16),
-              label: const Text('Bot'),
-              visualDensity: VisualDensity.compact,
-            ),
+            const BotTag(),
           ],
         ],
       ),

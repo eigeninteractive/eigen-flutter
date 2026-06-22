@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:eigen_engine/core/game/participant_type.dart';
 import 'package:eigen_engine/features/game/data/models/game.dart';
 import 'package:eigen_engine/features/game/presentation/extensions/game_ui.dart';
 import 'package:eigen_engine/features/game/presentation/widgets/turn_countdown.dart';
@@ -422,9 +423,12 @@ class _GameCard extends ConsumerWidget {
 
     // Resolve player identities from the cached game players provider.
     final gamePlayersAsync = ref.watch(gamePlayersProvider(gameId: game.id));
-    final playerInfos =
-        gamePlayersAsync.value?.players.values.map((gp) => gp.info).toList() ??
-        [];
+    final gamePlayers =
+        gamePlayersAsync.value?.players.values.toList() ?? const [];
+    final avatars = [
+      for (final gp in gamePlayers)
+        (info: gp.info, isBot: gp.type == ParticipantType.bot),
+    ];
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -436,10 +440,10 @@ class _GameCard extends ConsumerWidget {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              if (playerInfos.isNotEmpty)
+              if (avatars.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(right: 16),
-                  child: OverlappingAvatars(players: playerInfos, radius: 18),
+                  child: OverlappingAvatars(players: avatars, radius: 18),
                 )
               else
                 Container(

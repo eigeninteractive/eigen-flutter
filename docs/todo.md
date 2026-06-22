@@ -1,7 +1,5 @@
 # P0
 
-- [ ] Bots - How to show bots distinctly in the UI? Reduce the bot.md doc, its
-      references, etc. into engine_architecture.md
 - [ ] Add thorough docs
 - [ ] Monetization Flows
 - [ ] Replay Support

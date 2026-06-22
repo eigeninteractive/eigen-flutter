@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:eigen_engine/shared/data/models/player_info.dart';
 import 'package:eigen_engine/shared/widgets/player_avatar.dart';
 
+/// An avatar to render: a player's identity plus whether it's a bot.
+typedef AvatarEntry = ({PlayerInfo info, bool isBot});
+
 /// Displays a row of [PlayerAvatar]s that partially overlap horizontally.
 ///
 /// Used in home screen game cards and lobby cards to show the players
@@ -16,8 +19,8 @@ class OverlappingAvatars extends StatelessWidget {
     this.maxVisible = 4,
   });
 
-  /// The list of players to display as overlapping avatars.
-  final List<PlayerInfo> players;
+  /// The players to display as overlapping avatars.
+  final List<AvatarEntry> players;
 
   /// Radius of each avatar circle.
   final double radius;
@@ -54,7 +57,11 @@ class OverlappingAvatars extends StatelessWidget {
                   shape: BoxShape.circle,
                   border: Border.all(color: colorScheme.surface, width: 2),
                 ),
-                child: PlayerAvatar(playerInfo: visible[i], radius: radius - 2),
+                child: PlayerAvatar(
+                  playerInfo: visible[i].info,
+                  radius: radius - 2,
+                  isBot: visible[i].isBot,
+                ),
               ),
             ),
           if (overflow > 0)

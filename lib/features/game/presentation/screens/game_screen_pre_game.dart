@@ -349,6 +349,7 @@ class _ParticipantList extends StatelessWidget {
     return Column(
       children: players.map((gp) {
         final isMe = gp.playerIndex == playersContext.myPlayerIndex;
+        final isBot = gp.type == ParticipantType.bot;
 
         return Padding(
           padding: const EdgeInsets.only(bottom: 12),
@@ -358,6 +359,7 @@ class _ParticipantList extends StatelessWidget {
               PlayerAvatar(
                 playerInfo: gp.info,
                 radius: 20,
+                isBot: isBot,
                 onTap: () => PlayerProfileSheet.show(
                   context,
                   playerId: gp.info.id,
@@ -369,6 +371,7 @@ class _ParticipantList extends StatelessWidget {
                 isMe ? 'You' : '@${gp.info.username}',
                 style: textTheme.bodyMedium,
               ),
+              if (isBot) ...[const SizedBox(width: 8), const BotTag()],
             ],
           ),
         );

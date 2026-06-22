@@ -7,11 +7,18 @@ import 'package:eigen_engine/shared/data/models/player_info.dart';
 /// Shows a cached network image if [PlayerInfo.avatarUrl] is available,
 /// otherwise shows a generic person icon. The same icon is used as placeholder
 /// while the image loads and as fallback on error.
+///
+/// When [isBot] is true the avatar is marked as a bot: a small robot badge is
+/// overlaid in the bottom-right corner, and the no-photo fallback uses a robot
+/// glyph instead of the person glyph. This is the single place bots are made
+/// visually distinct from humans, so every surface that renders a [PlayerAvatar]
+/// gets the marker for free — pass [isBot] wherever the participant type is known.
 class PlayerAvatar extends StatelessWidget {
   const PlayerAvatar({
     super.key,
     required this.playerInfo,
     this.radius = 20,
+    this.isBot = false,
     this.showBorder = false,
     this.borderColor,
     this.onTap,
@@ -22,6 +29,9 @@ class PlayerAvatar extends StatelessWidget {
 
   /// Radius of the circle avatar. Default is 20 (40px diameter).
   final double radius;
+
+  /// Whether this avatar represents a bot rather than a human player.
+  final bool isBot;
 
   /// Whether to show a border ring around the avatar.
   final bool showBorder;
@@ -37,6 +47,7 @@ class PlayerAvatar extends StatelessWidget {
     final avatar = _AvatarCircle(
       playerInfo: playerInfo,
       radius: radius,
+      isBot: isBot,
       showBorder: showBorder,
       borderColor: borderColor ?? Theme.of(context).colorScheme.primary,
     );
@@ -52,12 +63,14 @@ class _AvatarCircle extends StatelessWidget {
   const _AvatarCircle({
     required this.playerInfo,
     required this.radius,
+    required this.isBot,
     required this.showBorder,
     required this.borderColor,
   });
 
   final PlayerInfo playerInfo;
   final double radius;
+  final bool isBot;
   final bool showBorder;
   final Color borderColor;
 
@@ -65,7 +78,7 @@ class _AvatarCircle extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final icon = Icon(
-      Icons.person_outline,
+      isBot ? Icons.smart_toy_outlined : Icons.person_outline,
       size: radius,
       color: colorScheme.onSurfaceVariant,
     );
@@ -98,6 +111,46 @@ class _AvatarCircle extends StatelessWidget {
       );
     }
 
+    if (isBot) {
+      circle = Stack(
+        clipBehavior: Clip.none,
+        children: [circle, _BotBadge(radius: radius)],
+      );
+    }
+
     return circle;
+  }
+}
+
+/// Small robot badge overlaid on the bottom-right of a bot's avatar.
+class _BotBadge extends StatelessWidget {
+  const _BotBadge({required this.radius});
+
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final badgeRadius = (radius * 0.42).clamp(7.0, 14.0);
+
+    return Positioned(
+      right: -1,
+      bottom: -1,
+      child: Container(
+        width: badgeRadius * 2,
+        height: badgeRadius * 2,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: colorScheme.secondaryContainer,
+          border: Border.all(color: colorScheme.surface, width: 1.5),
+        ),
+        alignment: Alignment.center,
+        child: Icon(
+          Icons.smart_toy,
+          size: badgeRadius,
+          color: colorScheme.onSecondaryContainer,
+        ),
+      ),
+    );
   }
 }

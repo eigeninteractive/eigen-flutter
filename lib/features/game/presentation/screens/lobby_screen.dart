@@ -5,12 +5,12 @@ import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 import 'package:eigen_engine/core/errors/error_messages.dart';
 import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
 import 'package:eigen_engine/features/game/data/game_repository.dart';
+import 'package:eigen_engine/core/game/participant_type.dart';
 import 'package:eigen_engine/features/game/data/models/game.dart';
 import 'package:eigen_engine/features/game/data/models/participant.dart';
 import 'package:eigen_engine/features/game/providers/game_providers.dart';
 import 'package:eigen_engine/features/game/utils/game_timing.dart';
 import 'package:eigen_engine/features/game/presentation/widgets/new_game_dialog.dart';
-import 'package:eigen_engine/shared/data/models/player_info.dart';
 import 'package:eigen_engine/shared/providers/player_providers.dart';
 import 'package:eigen_engine/shared/widgets/empty_state_view.dart';
 import 'package:eigen_engine/shared/widgets/overlapping_avatars.dart';
@@ -291,13 +291,13 @@ class _GameCardState extends ConsumerState<_GameCard> {
     final playerCount = widget.participants.length;
 
     // Resolve participant PlayerInfo from the cached provider.
-    final playerInfos = <PlayerInfo>[];
+    final avatars = <AvatarEntry>[];
     for (final p in widget.participants) {
       final playerId = p.userId ?? p.botId;
       if (playerId == null) continue;
       final info = ref.watch(playerInfoCacheProvider(id: playerId));
       if (info.value case final value?) {
-        playerInfos.add(value);
+        avatars.add((info: value, isBot: p.type == ParticipantType.bot));
       }
     }
 
@@ -310,8 +310,8 @@ class _GameCardState extends ConsumerState<_GameCard> {
                 pathParameters: {'gameId': widget.game.id},
               )
             : null,
-        leading: playerInfos.isNotEmpty
-            ? OverlappingAvatars(players: playerInfos, radius: 18)
+        leading: avatars.isNotEmpty
+            ? OverlappingAvatars(players: avatars, radius: 18)
             : CircleAvatar(
                 backgroundColor: isOwner
                     ? colorScheme.secondaryContainer
