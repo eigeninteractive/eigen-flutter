@@ -601,7 +601,8 @@ Bots are **optional** — a game with no bots needs nothing here. A bot is the s
 pure function the engine already drives for humans (**observation → legal action**),
 so once seated a bot reuses the entire turn/commit/rating spine. There are two
 kinds, and they differ only in *who computes the move* and *how the move is
-authenticated*. `docs/bot.md` is the full design; this is the implementor's how-to.
+authenticated*. See `engine_architecture.md §26` for the architecture and security
+model (invariants, seating, auth); this is the implementor's how-to.
 
 ### Local bots (your code, runs on the player's device)
 
@@ -695,8 +696,9 @@ is closed". They also work in **solo solo play**, but only when the game is
 **timed** — the server requires a deadline backstop for an unreachable bot, so the
 Play-vs-AI picker offers server bots only once a timed mode is chosen (and never to
 guests). They run outside this repo — the engine only talks to them over HTTPS, so
-they implement no Dart contract. `docs/bot.md` has a ~40-line Node reference server
-(verify wake → compute → sign → submit); the flow:
+they implement no Dart contract. The whole protocol is ~40 lines in any language
+with HMAC-SHA256 (verify wake → compute → sign → submit; reference server below);
+the flow:
 
 - On the bot's turn the engine `POST`s a **wake** to the row's `webhook_url`,
   carrying the observation: `{ game_id, bot_id, player_index, username, config,
@@ -723,6 +725,67 @@ So the bot deployment holds **one secret** (it signs actions and verifies wakes)
 Server-bot games must be **timed** (the turn deadline is the liveness backstop for an
 unreachable bot).
 
+**Reference server (Node 18+, built-in `crypto`).** The entire contract — verify
+the wake, decide a move for *this* seat, sign the action, submit before
+`turn_deadline`. Sign over the **raw** request bytes (don't re-serialise), and the
+bytes you sign must be **byte-identical** to the `p_payload` you send.
+
+```js
+import { createServer } from "node:http";
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+const BOT_ID = process.env.BOT_ID;
+const SECRET = process.env.BOT_SECRET;        // matches Vault bot_secret_<id>
+const RPC_URL = process.env.RPC_URL;          // …/rest/v1/rpc/submit_bot_action_signed
+const ANON_KEY = process.env.SUPABASE_ANON_KEY;
+const hmac = (s) => createHmac("sha256", SECRET).update(s).digest("base64");
+
+createServer((req, res) => {
+  const chunks = [];
+  req.on("data", (c) => chunks.push(c));
+  req.on("end", async () => {
+    const raw = Buffer.concat(chunks);                       // the RAW bytes
+    const a = Buffer.from(hmac(raw));
+    const b = Buffer.from(req.headers["x-wake-signature"] ?? "");
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {   // 1. verify wake
+      res.writeHead(401).end(); return;
+    }
+    res.writeHead(200).end();                                // ack fast; act below
+
+    const wake = JSON.parse(raw.toString("utf8"));
+    const data = chooseMove(wake.observation, wake.player_index); // 2. your AI
+    const payload = JSON.stringify({                         // 3. sign the action
+      game_id: wake.game_id, bot_id: BOT_ID,
+      player_index: wake.player_index, version: wake.version, data,
+    });
+    const r = await fetch(RPC_URL, {                         // 4. submit before deadline
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}`,
+      },
+      body: JSON.stringify({ p_payload: payload, p_signature: hmac(payload) }),
+    });
+    if (!r.ok) console.warn("action rejected:", r.status, await r.text());
+  });
+}).listen(8080);
+```
+
+Handle the reply: `200` committed; a `Stale state`/seat-conflict error is a benign
+race (the turn moved on) — drop it; `Unauthorized` means a bad MAC or registration.
+The wake is fire-and-forget (pg_net ignores your HTTP status), so only the action
+call matters. The same loop is ~40 lines in Python (`http.server` + `hmac`) or any
+language. The bare action submit as a language-agnostic `curl`:
+
+```bash
+PAYLOAD='{"game_id":"…","bot_id":"…","player_index":1,"version":7,"data":{"position":4}}'
+SIG=$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$BOT_SECRET" -binary | base64)
+curl -sS -X POST "$SUPABASE_URL/rest/v1/rpc/submit_bot_action_signed" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ANON_KEY" \
+  -H "Content-Type: application/json" \
+  --data "$(jq -n --arg p "$PAYLOAD" --arg s "$SIG" '{p_payload:$p, p_signature:$s}')"
+```
+
 ### Inserting bot rows (Supabase dashboard — by hand, one-time)
 
 There is no provisioning RPC; you `INSERT` directly. A `CHECK` enforces local ⇒ no
@@ -746,8 +809,10 @@ select vault.create_secret('<random secret>', 'bot_secret_<bot_id>');
 `schema_version` is the highest game schema the bot supports (mirrors the human
 join gate — seating refuses a bot below the game's `schema_version`).
 `rated_eligible = true` is required for a bot to enter a rated game. Set `config`
-(jsonb) to parameterize a persona; for a server bot it travels only in the wake,
-never to clients.
+(jsonb) to parameterize a persona (N:1) and/or declare capabilities for
+`game_bot_seatable`. `config` is **public read-only reference data** — `get_bots`
+exposes it for both local and server bots (the pickers and the seatable filter
+read it), so never put secrets there.
 
 ### In-game, treat bots as players
 

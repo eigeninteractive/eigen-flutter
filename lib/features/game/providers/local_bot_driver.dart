@@ -15,9 +15,9 @@ part 'local_bot_driver.g.dart';
 /// not reset a bot's brain (its search tree / belief) — the per-seat driver is
 /// screen-scoped and would otherwise re-seed from scratch via `createState`.
 /// Cleared on app restart; durable resume would need disk persistence plus a
-/// per-bot state codec (out of scope — see `bot.md`). Bounded to the
-/// most-recently-used [LocalBotStateCache._maxEntries] seats so a long session
-/// of solo games cannot grow memory without limit.
+/// per-bot state codec.
+/// Bounded to the most-recently-used [LocalBotStateCache._maxEntries] seats so a
+/// long session of solo games cannot grow memory without limit.
 @Riverpod(keepAlive: true)
 LocalBotStateCache localBotStateCache(Ref ref) => LocalBotStateCache();
 

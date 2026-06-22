@@ -149,7 +149,12 @@ via `get_replay` — no action log re-execution needed.
 
 #### `observations` (Player-Specific Projections)
 
-- `game_id`, `user_id` (PK composite)
+- `game_id`, `player_index` (**PK composite**) — one row per participant, human
+  **or** bot. The table is generalised so bot seats receive observations too,
+  which is what lets the turn-notification trigger wake a server bot with its
+  view already computed (see §26).
+- `user_id` (uuid, nullable fk to users, ON DELETE CASCADE) — set for a human seat
+- `bot_id` (uuid, nullable fk to bots, ON DELETE CASCADE) — set for a bot seat
 - `data` (jsonb) — game-specific state slice computed by
   `game_compute_observation`. Perfect-info games see the full state; hidden-info
   games see only their permitted slice.
@@ -170,7 +175,12 @@ via `get_replay` — no action log re-execution needed.
 - `created_at`, `updated_at`
 - **Realtime**: enabled. Game screen subscribes by `game_id`; home screen uses
   fetch-on-enter + pull-to-refresh.
-- **RLS**: Users see only their own row (`user_id = auth.uid()`).
+- **Identity constraint**: `(user_id IS NULL) != (bot_id IS NULL)` — exactly one
+  identity per row.
+- **RLS**: Users see only their own row (`user_id = auth.uid()`). Bot rows
+  (`user_id` NULL) are invisible to clients and Realtime — bots never subscribe;
+  a server bot's row is pushed to its webhook and a local bot's is read by a
+  gated RPC (see §26).
 
 #### `participants`
 
@@ -828,6 +838,22 @@ or `display_name` via `ILIKE` (backed by trigram indexes). Queries
 | `get_lobby_games(cursor, limit)`   | Client | Returns public waiting/ready games with embedded participants. Cursor-paginated by `created_at`. Requires `authenticated` — anonymous browsing is not permitted.                                                                                                                                                                                                                    |
 | `get_friends_games(cursor, limit)` | Client | Returns `friends`-access waiting/ready games created by the caller's accepted friends — plus the caller's own rooms (you are not "friends with yourself", so the relationship check alone would hide them) — with embedded participants and `is_participant` flag. Cursor-paginated by `created_at`. Only games that are not full (participant count < `max_players`) are returned. |
 
+### Bot & Solo Play RPCs
+
+§26 covers the full bot architecture; these are the infra entry points. All are
+`SECURITY DEFINER`.
+
+| RPC                                                                                       | Caller             | Purpose                                                                                                                                                                                                                                          |
+| ----------------------------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `create_solo_game(bot_ids[], schema_version, turn_seconds, budget_seconds, increment_seconds, config)` | Client             | Atomically creates a **sole-human, forced-unrated** game, seats the caller + all bots, and runs `start_game` in one shot (never joinable, so no second human can enter). Validates each bot's schema + config (`game_bot_seatable`); anonymous callers ⇒ local bots only; **server bots ⇒ timed, local bots ⇒ untimed** (one class per game). |
+| `add_bot_to_game(game_id, bot_id)`                                                        | Client (host)      | Creator-only waiting-room fill with a **server** bot. Rejects local bots (invariant 2), guests, schema/config-incompatible bots, and a non-`rated_eligible` bot in a rated game (invariant 3). Wraps `private.seat_server_bot` (which the deferred auto-fill reuses).                                                                          |
+| `submit_bot_action_signed(p_payload, p_signature)`                                        | Server bot (**anon**) | The server bot's only surface. Verifies the per-bot HMAC over `p_payload` in-DB (`private.verify_bot_action_hmac`), checks the claimed seat, then applies the move. The HMAC is the auth gate (no Supabase session).                                                                                                                          |
+| `submit_local_bot_action(game_id, player_index, data, expected_version)`                  | Client             | Drives a **local** bot seat. Gates: caller is a participant, the seat is a local bot, the game is sole-human, and it is that seat's turn at the expected version.                                                                                                                                                                              |
+| `get_local_bot_observation(game_id, player_index)`                                        | Client             | Returns a local bot seat's **full** observation so the client can run the AI. Gated: caller is the sole human and the target is a local bot in the same game — the only place the engine reveals a bot's hidden view to a client.                                                                                                              |
+| `get_bots()`                                                                              | Client             | The bot catalog for the pickers — display-safe columns + `config` (never `webhook_url`), ordered by `display_name`.                                                                                                                                                                                                                          |
+| `seatable_bot_ids(config)`                                                                | Client             | The bot ids seatable into a game with the given `config`, per `game_bot_seatable`. The single source of truth the pickers filter on (no Dart rule).                                                                                                                                                                                           |
+| `preview_game_rating(access, turn_seconds, budget_seconds, increment_seconds, min_players, max_players, config, rated_preference)` | Client | Server-derived `(rated, pool)` for a live "Rated / Casual" badge, via the same `private.derive_rated` that `create_game` uses — no duplicated rule in Dart.                                                                                                                                                                                   |
+
 ### Client Query Patterns (Not RPCs)
 
 The Dart client uses PostgREST embedded selects for efficient single-round-trip
@@ -1181,9 +1207,25 @@ errors), so ratings are never double-applied.
 > window is milliseconds wide and one player cannot realistically finish two
 > games at once.
 
+### Bots & Multi-Seat Results
+
+A single bot identity may hold several seats of one game (see §26). The
+`rating_history` unique index `(game_id, bot_id)` permits **one** history row per
+identity per game, so `update-ratings` must collapse those seats into a **single
+net update**: it chains the seat results in seat order onto a running rating, each
+seat rated only against the *other* distinct identities (never the identity's own
+other seats). Both a strong and a weak seat-result contribute — the right signal
+for a bot's skill. The one accepted caveat is that same-game results are
+correlated, so the identity's σ shrinks slightly faster than from independent
+games — immaterial for bot calibration. Bot rating history is never client-readable
+(RLS).
+
 ### Rating Pools
 
 `private.game_rating_pool()` derives the pool name server-side at game creation.
+The same logic, extracted into `private.derive_rated`, also backs
+`preview_game_rating` so the create dialog can show a live **Rated / Casual** badge
+without duplicating the rule in Dart (see §5).
 Clients pass a `rated_preference` boolean but cannot forge pool names. A `NULL`
 return forces the game unrated regardless of client preference.
 
@@ -2742,7 +2784,7 @@ free-tier limits regardless of notification volume.
 
 | Trigger                 | Table           | Condition                                                                                                                                                     | Notifies                             |
 | ----------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `notify_your_turn`      | `observations`  | INSERT or UPDATE: `player_index` enters `pending_players` (INSERT covers `start_game`'s version-0 rows, so initially-pending players get the first-move push) | `observations.user_id`               |
+| `notify_your_turn`      | `observations`  | INSERT or UPDATE: `player_index` enters `pending_players` (INSERT covers `start_game`'s version-0 rows, so initially-pending players get the first-move push) | Branches on the row's identity: `user_id` → FCM "your turn" push; `bot_id` → `private.send_bot_wake` POSTs the observation to the bot's `webhook_url` (HMAC `x-wake-signature`). See §26. |
 | `notify_game_invite`    | `games`         | INSERT: `access = 'friends'` (public games are lobby-discoverable, not pushed — pushing every public game to all friends would be spam)                       | All accepted friends of `created_by` |
 | `notify_friend_request` | `relationships` | INSERT: `status = 'pending'`                                                                                                                                  | The user who is not `initiated_by`   |
 
@@ -3823,8 +3865,18 @@ A bot is the same pure function the engine already drives for humans —
 `commit_action` → `finish_game` → fan-out → ratings) is reused unchanged. The
 engine ships **no bot logic**; it provides the seats a bot plugs into and a
 stable contract. Adding a bot is a hand `INSERT` into the `bots` table (rare,
-one-time — there is no provisioning RPC). `docs/bot.md` is the canonical design
-doc; this section is the architecture- level summary.
+one-time — there is no provisioning RPC). This section is the **architecture and
+security model**; the implementor how-to (the `LocalBot` Dart contract, the
+reference server, action-data design) lives in the **Game Implementation Guide →
+Adding Bots**.
+
+> **Non-goal: offline play.** "Local bot" means *where the move is computed*, not
+> *offline*. The engine is **server-authoritative** — every transition runs in
+> `game_apply_action`, observations are computed server-side, and
+> identity/outcomes/ratings live in the DB. A local-bot game still needs the
+> server for *every* move (the client picks the move; the server validates,
+> applies, and fans out). True offline solo is a separate, out-of-scope feature —
+> it would mean reimplementing the authoritative rules on-device.
 
 ### Two execution models, one spine
 
@@ -3836,16 +3888,83 @@ doc; this section is the architecture- level summary.
 | Use case     | solo play, incl. hidden-info (no human to cheat) | multiplayer fill, rated games, "play while app closed" |
 
 Both write **observation rows** like humans (the `observations` table is
-generalised with a nullable `user_id`, a `bot_id`, and a `player_index`), so the
-bot wake falls out of the existing `notify_your_turn` trigger and arrives **with
-the observation** — no pull/compute-on-demand call. Three structural invariants
-keep client-driven (local) moves out of any game where they could cheat: (1) a
-local bot ⇒ exactly one human; (2) 2+ humans ⇒ server bots only; (3) rated ⇒
-server bots only. These are enforced at seating, not per move. A fourth,
-**timing** invariant partitions the bot class in a solo game — local ⇒ untimed,
-server ⇒ timed — because a turn deadline is a liveness backstop only a
-possibly-unreachable server bot needs (`create_solo_game` enforces both; see §26
-_Local-bot driving_ and `docs/bot.md`).
+generalised — nullable `user_id`, plus `bot_id` and `player_index`; see §2), so a
+bot's wake falls out of the existing `notify_your_turn` trigger and arrives **with
+the observation** — no pull or compute-on-demand call.
+
+### Authorization invariants (engine-enforced, not per-game)
+
+A local bot's move is **computed and submitted by a human's client**, which is
+untrusted: you cannot prove a client-computed move came from the bot's logic
+rather than a human cherry-picking it (verifying it would mean running the bot's
+policy server-side — i.e. making it a server bot). Three invariants follow,
+enforced structurally by *which* function may seat a bot:
+
+1. **Local bot ⇒ exactly one human.** Two independent reasons, so it holds even
+   for a perfect-information unrated game: *information* — the driving client is
+   handed the bot's secret view, which it must not learn if an opponent could
+   exploit it; *provenance/collusion* — a local bot is an extra seat one human
+   secretly controls, masquerading as neutral AI to the others.
+2. **2+ humans ⇒ server bots only** (corollary of 1).
+3. **Rated ⇒ server bots only, no guests** — a rated result needs trusted move
+   provenance.
+
+A fourth, **timing** invariant partitions the bot class in a solo game: **local ⇒
+untimed, server ⇒ timed.** A turn deadline is a liveness backstop only a
+possibly-unreachable server bot needs; a local bot is driven by the present
+human's client and must not lose a turn because the human navigated away (this is
+also why local + server can't mix — one class per game). The "create a rated game
++ a local bot, then let a human join and cheat" scenario is thus **impossible by
+construction**.
+
+### Seating — two paths
+
+Each path enforces one slice of the invariants (see §5 for signatures):
+
+- **`create_solo_game(bot_ids[], …)`** — the solo constructor, generalised to N
+  bots. Creates the game with the caller as the **sole** human, **forced
+  unrated**, validates each bot (schema + `game_bot_seatable`), requires the
+  timing partition, seats everyone, and runs `start_game` **in one shot**. Because
+  the game is never joinable, no second human can ever enter — invariant 1 holds
+  with no extra guard. Anonymous callers may seat **local bots only** (server bots
+  cost real per-move compute).
+- **`add_bot_to_game(game_id, bot_id)`** — creator-only waiting-room fill (the
+  host's "Add bot" button). Rejects local bots (invariant 2), guests, a
+  schema/config-incompatible bot, and a non-`rated_eligible` bot in a rated game
+  (invariant 3, never downgraded). The seat/guard logic is factored into
+  `private.seat_server_bot` so the **deferred** matchmaking auto-fill can reuse it
+  via service-role without the creator check.
+
+So local bots are reachable **only** via `create_solo_game`; no code path places
+one into a rated or multi-human game.
+
+### Wake & action entry
+
+- **Server bot.** Woken by the `notify_your_turn` trigger → `private.send_bot_wake`
+  `net.http_post`s the seat's observation to `webhook_url` (see §20). The bot
+  replies by calling **`submit_bot_action_signed`** (anon; HMAC-gated). One
+  trigger, two transports; `expire_turn` is the liveness backstop for an
+  unreachable bot (hence server ⇒ timed).
+- **Local bot.** A device can't receive a webhook and must not hold a secret, so
+  it uses what the client already has: its own observation Realtime sub carries
+  `pending_players`. When a bot seat in a **solo** game goes pending, the client
+  pulls that seat's full view via **`get_local_bot_observation`** (gated) and
+  submits via **`submit_local_bot_action`** (see *Local-bot driving*).
+
+Both action RPCs mirror `submit_action` (same `FOR UPDATE`, version, deadline,
+"is it this seat's turn?" checks; same `game_apply_action → commit_action` with
+`'bot'` type) — they differ only in who may call and how the seat is authorized.
+
+### Config-based availability
+
+`schema_version` gates the observation/action **shape**; a separate axis is
+whether a bot supports the **rules variant** chosen in `games.config` (e.g. a
+chess bot that does standard but not misère — same schema). That capability is
+declared in **`bots.config`** and interpreted by the game's
+**`game_bot_seatable(bot_config, game_config)`** hook (§4, default `true`) — the
+**single source of truth**: enforced at seating and exposed to the pickers via
+`seatable_bot_ids(config)` (§5), so the rule is never duplicated in Dart and
+adding or retuning bots needs no app release.
 
 ### Local-bot driving (client-side)
 
@@ -3884,7 +4003,8 @@ from the current observation (re-seeding state via `createState`). Liveness is
 covered without it — an untimed abandoned solo game is reaped by idle-cleanup;
 "keep playing while the app is closed" is, by definition, a _server_ bot. This is
 also why local bots must be **untimed**: nothing drives them while the client is
-away. `docs/bot.md` is the full contract + per-game state reference.
+away. The `LocalBot` reducer contract (pure, commit-on-accept, isolate-sendable)
+and a stateful-bot example are in the Game Implementation Guide → Adding Bots.
 
 ### One identity, many seats
 
@@ -3897,6 +4017,14 @@ the signed action, and `submit_bot_action_signed` acts on exactly that seat. Sea
 fully independent `observation → action` calls — one never sees another's hidden
 state — and ratings treat each as an independent result for the identity (never
 rated against its own other seats; see §8 and `update-ratings`).
+
+Conversely, **many personas can share one implementation** (N:1): point several
+`bots` rows at the same `webhook_url` (server) or register several configured
+instances of one `LocalBot` class (local), each with a distinct `username` and
+`config`. Identity (`username`/`id`) *names* the persona; `bots.config`
+*parameterizes* it — so one implementation backs many separately-rated personas
+with no code change and no behaviour-classifier column. A server wake carries
+`username` and `config`, letting one deployment self-configure per persona.
 
 ### Authentication — one per-bot HMAC, both directions
 
@@ -3926,6 +4054,41 @@ HMAC over an asymmetric signature is that the platform holds a secret that could
 this bot's moves — fine for first-party bots (a full DB compromise can write
 `game_states` directly anyway). The signed wake body is the canonical `jsonb` text,
 exactly the bytes pg_net sends, so the bot verifies without re-serialising.
+
+### Hidden-information local bots
+
+The constraint on a local bot is **not** "perfect information" — it is "**is there
+a human to cheat against?**" In a solo game (one human, the rest bots) there is
+none, so peeking at a bot's hidden state only spoils the player's own unrated
+game, exactly like a single-player offline engine. Thus: perfect-info any roster →
+local OK; **hidden-info, solo, unrated → local OK** (e.g. Stratego); hidden-info
+**with human opponents** → server only. `get_local_bot_observation` is the one
+place the engine reveals a bot's full view to a client, and its gate (caller is
+the sole human; target is a local bot in this game) is what makes that safe.
+
+### Solo play UX — derived, not declared
+
+The solo picker is a first-class one-tap entry, derived entirely from data — no
+`SoloPlaySpec`. It is **shown** iff a playable *(timing, bot-class)* combination
+exists (`soloPlayAvailableProvider`), honouring the partition: an untimed mode
+with a usable local bot, or a timed mode with a usable server bot (never to
+guests). Opponent **counts** come from the game's existing `playersForConfig` /
+`buildCreationConfig`; **opponents** are the usable bots' `display_name`s (these
+are *personas*, not a difficulty ladder, so the copy says "choose your opponent").
+Switching timing re-derives the usable list, so no invalid combination can reach
+`create_solo_game`. The other touchpoint is the host's waiting-room **"Add bot"**
+affordance for a multiplayer human game (offers only `rated_eligible` bots when
+the game is rated; hidden for guest hosts).
+
+### Versioning bot logic
+
+Both kinds reuse the **schema gate** from different "highest supported schema"
+sources — no separate bot-versioning machinery. **Local:** the logic ships in the
+app build, so a build may drive a local bot iff `module.schemaVersion >=
+game.schema_version` **and** `localBots` contains that `username` — an old build
+simply doesn't offer it. **Server:** the logic lives in the operator's deployment,
+versioned independently; the `bots.schema_version` row gates which game schemas it
+may be seated into.
 
 ### Operator setup (server bot)
 
