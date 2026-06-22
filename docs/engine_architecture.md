@@ -250,10 +250,7 @@ via `get_replay` — no action log re-execution needed.
   with its own endpoint. Never inferred from the transport columns, so the
   server-bot auth scheme can evolve independently.
 - `webhook_url` (text, nullable) — where to wake a server-side bot; NULL for
-  local.
-- `public_key` (text, nullable) — a server bot's Ed25519 **public** key; the
-  `bot-gateway` verifies signed actions against it. NULL for local. No private
-  key is ever stored server-side.
+  local. No key material is stored on the row.
 - `rated_eligible` (bool, NOT NULL, default false) — may this bot play rated
   games.
 - `config` (jsonb, NOT NULL, default `'{}'`) — opaque per-bot parameters; lets
@@ -261,14 +258,15 @@ via `get_replay` — no action log re-execution needed.
   travels to the client via `get_bots`; a server bot's config travels only in
   its wake, never to clients.
 - `created_at`
-- **CHECK** (`bot_transport_consistent`): local ⇒ no `webhook_url`/`public_key`;
-  server ⇒ both present.
+- **CHECK** (`bot_transport_consistent`): local ⇒ no `webhook_url`;
+  server ⇒ `webhook_url` present.
 - **RLS**: no direct client SELECT. In-game identity resolves via
   `get_players()`; the pickers use the `get_bots()` RPC (display-safe columns
-  only — never `webhook_url`/`public_key`; server `config` masked). Write/read
+  only — never `webhook_url`; server `config` masked). Write/read
   of the full row is service role only.
-- **Per-bot wake secret** (server bots): a symmetric HMAC secret lives in
-  **Vault** under `bot_wake_secret_<bot_id>` — not on this row. See §26.
+- **Per-bot HMAC secret** (server bots): a single symmetric secret lives in
+  **Vault** under `bot_secret_<bot_id>` — not on this row. It authenticates both
+  the wake (us→bot) and the action (bot→us). See §26.
 
 #### `player_ratings` (Per-Player Per-Pool OpenSkill Rating)
 
@@ -1307,9 +1305,9 @@ Function validation for revelation actions. Push notifications for async games.
 OpenSkill (Bayesian) rating system:
 
 - `bots` table: bot player registry — identity plus the bot lifecycle
-  (`is_local`, `schema_version`, `webhook_url`, `public_key`, `rated_eligible`,
-  `config`). Local and server execution models, asymmetric-action / HMAC-wake
-  auth, and one-identity-many-seats are covered in §26.
+  (`is_local`, `schema_version`, `webhook_url`, `rated_eligible`,
+  `config`). Local and server execution models, the per-bot HMAC auth (both
+  directions), and one-identity-many-seats are covered in §26.
 - `player_ratings` table: per-player per-pool mu/sigma/display_rating, upserted
   after each rated game.
 - `rating_history` table: immutable per-game audit log with before/after
@@ -2898,13 +2896,11 @@ After setting secrets, deploy all functions (see §21).
 | ------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `update-ratings`    | pg_net POST from `notify_rating_update` trigger on rated game finish | Runs OpenSkill, writes `player_ratings` + `rating_history` via `apply_rating_updates` RPC                                                                              |
 | `refresh-fcm-token` | pg_cron every 50 min                                                 | Exchanges `FIREBASE_SERVICE_ACCOUNT_JSON` for a Google OAuth2 token, stores it in `private.app_config` for Postgres triggers to use                                    |
-| `bot-gateway`       | HTTPS POST from a server-side bot                                    | Verifies the bot's Ed25519 signature against `bots.public_key`, then calls the service-role `submit_bot_action` RPC. The only public surface for server bots. See §26. |
 
 `update-ratings` and `refresh-fcm-token` verify the `x-webhook-secret` header
-against `SERVERLESS_SECRET` before doing any work. `bot-gateway` authenticates
-differently — it has **no** shared secret; it verifies the bot's per-action
-signature (the inbound wake that prompts the bot is the one signed with a
-per-bot HMAC, verified by the bot, not by an edge function). See §26.
+against `SERVERLESS_SECRET` before doing any work. Server bots have **no** edge
+function: they call the `submit_bot_action_signed` RPC directly, which verifies a
+per-bot HMAC in-database (see §26).
 
 ### Local development
 
@@ -3761,7 +3757,7 @@ doc; this section is the architecture- level summary.
 | ------------ | ------------------------------------------------ | ------------------------------------------------------ |
 | Who computes | the sole human's own client                      | a remote endpoint the operator runs                    |
 | Wake         | the client's existing observation Realtime sub   | `net.http_post` to `webhook_url` (HMAC-signed)         |
-| Action entry | `submit_local_bot_action` (authenticated)        | `bot-gateway` → `submit_bot_action` (service role)     |
+| Action entry | `submit_local_bot_action` (authenticated)        | `submit_bot_action_signed` (anon; per-bot HMAC)        |
 | Use case     | solo play, incl. hidden-info (no human to cheat) | multiplayer fill, rated games, "play while app closed" |
 
 Both write **observation rows** like humans (the `observations` table is
@@ -3822,48 +3818,52 @@ filling four seats of a 6-player game). Seats are addressed by
 `(game_id,
 player_index)`, never by `bot_id`: each seat has its own observation
 row and its own wake carrying that seat's `player_index`, the bot echoes it in
-the signed action, and `submit_bot_action` acts on exactly that seat. Seats are
+the signed action, and `submit_bot_action_signed` acts on exactly that seat. Seats are
 fully independent `observation → action` calls — one never sees another's hidden
 state — and ratings treat each as an independent result for the identity (never
 rated against its own other seats; see §8 and `update-ratings`).
 
-### Authentication — asymmetric action, HMAC wake
+### Authentication — one per-bot HMAC, both directions
 
-The two directions use the cheapest scheme that fits where it runs. The **action
-is the only security boundary**; the wake is low-stakes because every move is
-re- validated against authoritative state under the `games FOR UPDATE` lock.
+Both directions authenticate with a **single per-bot HMAC secret** in Vault
+(`bot_secret_<bot_id>`) — the cheapest scheme that runs everywhere, including inside
+a Postgres trigger and a stock-Postgres RPC. The **action is the only security
+boundary**; the wake is low-stakes because every move is re-validated against
+authoritative state under the `games FOR UPDATE` lock.
 
-- **bot → us (action) — asymmetric.** The bot signs
-  `{game_id, bot_id,
-  player_index, version, data, iat}` with its **private
-  key**. `bot-gateway` (Deno `SubtleCrypto`, first-class Ed25519 — chosen over
-  in-DB verification because `pgsodium` is pending-deprecation) loads
-  `bots.public_key` and verifies, then calls the service-role-only
-  `submit_bot_action`. The signature authenticates both the actor and the move
-  bytes; replay is bounded by `version`/`iat` + the pending-seat re-check under
-  lock. Only the public half is stored server-side.
-- **us → bot (wake) — HMAC.** A Postgres trigger cannot practically produce an
-  asymmetric signature, so `private.send_bot_wake` HMAC-SHA256s the exact JSON
-  body with the bot's **per-bot wake secret** and sends it base64 in
-  `x-wake-signature`. The bot recomputes the HMAC over the raw request body and
-  compares. The secret is symmetric and **per-bot**, stored in **Vault** as
-  `bot_wake_secret_<bot_id>` (never on the `bots` row, never the global
-  `serverless_secret`); a leak forges wakes to that one bot only — wasted
-  compute, no game effect. The signed body is the canonical `jsonb` text,
-  exactly the bytes pg_net sends, so the bot verifies without re-serialising.
+- **bot → us (action).** The bot HMAC-SHA256s the exact JSON
+  `{game_id, bot_id, player_index, version, data}` it sends, with its secret. The
+  anon-callable `submit_bot_action_signed` RPC verifies the MAC in-database
+  (`extensions.hmac`, via `private.verify_bot_action_hmac`) and applies the move.
+  This authenticates both the actor and the move bytes; replay is handled by the
+  version check + pending-seat re-check under lock (a resubmitted action carries a
+  stale version). HMAC is verified in-DB because `pgsodium` (the only in-DB Ed25519
+  path) is pending-deprecation — which is what removes the need for an edge function.
+- **us → bot (wake).** `private.send_bot_wake` HMAC-SHA256s the exact JSON body with
+  the same secret and sends it base64 in `x-wake-signature`; the bot recomputes over
+  the raw body and compares. A leak forges wakes to that one bot only — wasted
+  compute, no game effect.
+
+One secret signs both directions with **no domain-separation prefix**: a wake carries
+an observation and no move, an action carries a move and no observation, so a MAC
+reflected into the other direction is signature-valid but meaningless. The trade for
+HMAC over an asymmetric signature is that the platform holds a secret that could forge
+this bot's moves — fine for first-party bots (a full DB compromise can write
+`game_states` directly anyway). The signed wake body is the canonical `jsonb` text,
+exactly the bytes pg_net sends, so the bot verifies without re-serialising.
 
 ### Operator setup (server bot)
 
 ```sql
 insert into bots (username, display_name, schema_version,
-                  is_local, webhook_url, rated_eligible, public_key)
+                  is_local, webhook_url, rated_eligible)
 values ('hard_ai', 'Hard AI', 1,
-        false, 'https://my-bot.example/wake', false, '<bot public key>')
+        false, 'https://my-bot.example/wake', false)
 returning id;  -- → <bot_id>
 
-select vault.create_secret('<random wake secret>', 'bot_wake_secret_<bot_id>');
+select vault.create_secret('<random secret>', 'bot_secret_<bot_id>');
 ```
 
-The bot deployment holds its **private key** (to sign actions) and a copy of the
-**wake secret** (to verify wakes). A local bot needs neither — just an
-`is_local` row whose `username` matches a `GameModule.localBots` entry.
+The bot deployment holds a copy of its **HMAC secret** (signs actions, verifies
+wakes). A local bot needs no secret — just an `is_local` row whose `username` matches
+a `GameModule.localBots` entry.

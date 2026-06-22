@@ -701,42 +701,46 @@ they implement no Dart contract. `docs/bot.md` has a ~40-line Node reference ser
 - On the bot's turn the engine `POST`s a **wake** to the row's `webhook_url`,
   carrying the observation: `{ game_id, bot_id, player_index, username, config,
   observation, version, pending_players, turn_deadline }`.
-- The bot computes a move and `POST`s it to the `bot-gateway` edge function as
-  `{ payload, signature }`, where `payload` is the signed JSON `{ game_id, bot_id,
-  player_index, version, data, iat }`.
+- The bot computes a move and `POST`s it to the `submit_bot_action_signed` RPC as
+  `{ p_payload, p_signature }`, where `p_payload` is the signed JSON `{ game_id,
+  bot_id, player_index, version, data }`.
 
-**Authentication** (handled for you; you only provision keys):
+**Authentication** (handled for you; you only provision one secret):
 
-- **Wake (us → bot):** signed with a **per-bot HMAC**. The engine sends
-  `x-wake-signature` = base64 HMAC-SHA256 of the exact request body using the bot's
-  wake secret; your bot recomputes it over the raw body and rejects on mismatch.
-- **Action (bot → us):** signed with the bot's **Ed25519 private key**; `bot-gateway`
-  verifies against `bots.public_key`. This is the real security boundary — the wake
-  never authorizes a move (the server re-validates every action under lock), so a
-  forged wake can at most waste the bot's compute.
+Both directions use the **same per-bot HMAC secret** (in Vault as
+`bot_secret_<bot_id>`):
 
-So the bot deployment holds **two secrets**: its Ed25519 private key (to sign
-actions) and a copy of its wake secret (to verify wakes). Server-bot games must be
-**timed** (the turn deadline is the liveness backstop for an unreachable bot).
+- **Wake (us → bot):** the engine sends `x-wake-signature` = base64 HMAC-SHA256 of
+  the exact request body; your bot recomputes it over the raw body and rejects on
+  mismatch.
+- **Action (bot → us):** your bot sends `p_signature` = base64 HMAC-SHA256 of the
+  exact `p_payload` it posts; `submit_bot_action_signed` verifies it in-database.
+  This is the real security boundary — the wake never authorizes a move (the server
+  re-validates every action under lock), so a forged wake can at most waste the bot's
+  compute.
+
+So the bot deployment holds **one secret** (it signs actions and verifies wakes).
+Server-bot games must be **timed** (the turn deadline is the liveness backstop for an
+unreachable bot).
 
 ### Inserting bot rows (Supabase dashboard — by hand, one-time)
 
 There is no provisioning RPC; you `INSERT` directly. A `CHECK` enforces local ⇒ no
-key/webhook, server ⇒ both.
+webhook, server ⇒ webhook present.
 
 ```sql
--- local bot: no key, no webhook — driven by the human's client
+-- local bot: no webhook, no secret — driven by the human's client
 insert into bots (username, display_name, schema_version, is_local)
 values ('easy_ai', 'Easy AI', 1, true);
 
--- server bot: webhook + public key required, plus a Vault wake secret keyed by id
+-- server bot: webhook required, plus a Vault HMAC secret keyed by id
 insert into bots (username, display_name, schema_version,
-                  is_local, webhook_url, rated_eligible, public_key)
+                  is_local, webhook_url, rated_eligible)
 values ('hard_ai', 'Hard AI', 1,
-        false, 'https://my-bot.example/wake', false, '<bot public key>')
+        false, 'https://my-bot.example/wake', false)
 returning id;  -- → <bot_id>
 
-select vault.create_secret('<random wake secret>', 'bot_wake_secret_<bot_id>');
+select vault.create_secret('<random secret>', 'bot_secret_<bot_id>');
 ```
 
 `schema_version` is the highest game schema the bot supports (mirrors the human

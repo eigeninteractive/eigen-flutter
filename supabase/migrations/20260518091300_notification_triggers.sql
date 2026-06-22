@@ -113,18 +113,17 @@ $$;
 -- bot (is_local) — those are driven by the sole human's client.
 --
 -- The wake is authenticated with a *per-bot* HMAC: the body is signed with that
--- bot's own symmetric wake secret (an asymmetric signature is impractical inside
--- a Postgres trigger, and the wake is the low-stakes direction — the action the
--- bot sends back to the bot-gateway is the real security boundary, authenticated
--- by the bot's Ed25519 signature). The signature is sent in x-wake-signature as
--- base64 HMAC-SHA256 over the exact JSON body bytes; the bot recomputes it over
--- the raw request body with its copy of the same secret and compares. A leaked
--- wake secret only lets someone forge wakes to that one bot (wasted compute), not
--- move any game.
+-- bot's own symmetric secret. The bot recomputes base64 HMAC-SHA256 over the exact
+-- JSON body bytes (sent in x-wake-signature) and compares.
 --
--- The secret lives in Vault under the per-bot name 'bot_wake_secret_<bot_id>',
--- so each bot has its own, set by the operator at insert time. Fire-and-forget
--- via pg_net.
+-- The same per-bot secret authenticates the bot's *action* the other way
+-- (submit_bot_action_signed). Sharing one secret needs no domain-separation prefix:
+-- this wake carries an observation and no move, an action carries a move and no
+-- observation, so a captured MAC reflected into the other direction has nothing to
+-- act on.
+--
+-- The secret lives in Vault under the per-bot name 'bot_secret_<bot_id>', set by
+-- the operator at insert time. Fire-and-forget via pg_net.
 
 CREATE OR REPLACE FUNCTION private.send_bot_wake(
   p_bot_id          uuid,
@@ -156,10 +155,10 @@ BEGIN
   END IF;
 
   SELECT decrypted_secret INTO v_secret
-  FROM vault.decrypted_secrets WHERE name = 'bot_wake_secret_' || p_bot_id;
+  FROM vault.decrypted_secrets WHERE name = 'bot_secret_' || p_bot_id;
 
   IF v_secret IS NULL OR v_secret = '' THEN
-    RAISE WARNING 'Bot wake skipped for %: bot_wake_secret_% not in Vault',
+    RAISE WARNING 'Bot wake skipped for %: bot_secret_% not in Vault',
       p_bot_id, p_bot_id;
     RETURN;
   END IF;

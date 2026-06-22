@@ -1,6 +1,6 @@
 # Bot Support
 
-Status: **implemented** (engine SQL, `bot-gateway` edge function, `LocalBot`
+Status: **implemented** (engine SQL, the `submit_bot_action_signed` RPC, `LocalBot`
 contract + local-bot driver, solo / "Add bot" UI, ratings preview). Pending
 a `supabase db reset` to apply the migrations locally. This doc is the contract
 spec; the stable parts (the wire contract, the `LocalBot` Dart contract) should move
@@ -12,7 +12,7 @@ Let anyone **create and wire up a bot easily**, implemented anywhere — a warm
 server or a cold serverless function, any language. The engine ships **no bot
 logic**; it specifies a stable contract and the seats a bot plugs into. This
 cleanly separates bot development from engine and game development behind a thin
-contract: **a keypair, an endpoint, and the observation→action JSON shape.**
+contract: **a shared secret, an endpoint, and the observation→action JSON shape.**
 
 ## The contract
 
@@ -31,7 +31,7 @@ observation fan-out → ratings` — is reused untouched, identical to a human m
 |                | Server-side bot | Local bot |
 |----------------|-----------------|-----------|
 | **Who computes** | a remote function/server | the human's own client |
-| **Auth** | per-bot **keypair** — bot signs its action, we verify with its stored public key | the human's existing JWT |
+| **Auth** | per-bot **HMAC secret** — signs its action (we verify in-DB) and verifies our wake | the human's existing JWT |
 | **Wake** | webhook to the bot's `webhook_url` (origin-authenticated) | the client's own Realtime observation sub |
 | **Use case** | always-on, ranked, hidden-info vs humans | solo / offline vs AI |
 
@@ -108,66 +108,76 @@ how many bots (see *Solo play UX*).
 
 ## Design
 
-### Identity & authentication (asymmetric action, HMAC wake)
+### Identity & authentication (per-bot HMAC, both directions)
 
 The `bots` table gains: `schema_version` (highest game schema the bot supports —
 mirrors the human join gate), `webhook_url` (where to wake a server-side bot; NULL
-for local), `rated_eligible` (may this bot play rated games), and `public_key` (the
-bot's **public** key — PEM/JWK; NULL for local bots). No private key is ever stored
-server-side; the only per-bot secret we keep is a symmetric **wake secret**, and it
-lives in **Vault** (under `bot_wake_secret_<bot_id>`), never on the `bots` row.
+for local), and `rated_eligible` (may this bot play rated games). No key material is
+stored on the row: a server bot's only credential is a single per-bot **HMAC secret**
+in **Vault** (under `bot_secret_<bot_id>`), never on the `bots` row.
 
-The two directions use the cheapest authentication that fits where it runs:
+Both directions authenticate with that **same** symmetric secret — the cheapest
+scheme that runs everywhere, including inside a Postgres trigger and a stock
+PostgreSQL RPC:
 
-- **bot → us (action) — the security boundary — asymmetric.** The bot signs its
-  action request (a JWS over `{game_id, bot_id, player_index, version, data, exp}`)
-  with **its private key**.
-  The `bot-gateway` loads `bots.public_key` for that `bot_id` and verifies the
-  signature, then calls `submit_bot_action`. This authenticates the *actor*
-  (only the holder of the bot's private key could sign) **and** the *action* (the
-  signature covers `data`, so a MITM cannot alter the move). Replay is blocked by
-  `version`/`exp` and the pending-seat re-check under the `games FOR UPDATE` lock.
-  The private key never leaves the bot; we store only the public half.
-- **us → bot (wake) — low-stakes — HMAC.** The trigger signs the wake body with the
-  bot's per-bot wake secret and sends `x-wake-signature` (see *Wake* below); the bot
-  recomputes the HMAC over the raw body and compares. A Postgres trigger cannot
-  practically produce an *asymmetric* signature, and the wake never authorizes a
-  move (every move must still pass the bot-signed gateway check above), so a
-  symmetric secret is the right trade: a leaked wake secret only lets someone forge
-  wakes to that one bot — wasted compute, no game effect.
+- **bot → us (action) — the security boundary.** The bot signs its action request
+  (HMAC-SHA256 over the exact JSON `{game_id, bot_id, player_index, version, data}`
+  it sends) with its per-bot secret. The `submit_bot_action_signed` RPC verifies the
+  MAC in-database (`extensions.hmac`), then applies the move. This authenticates the
+  *actor* (only a holder of the secret could sign) **and** the *action* (the MAC
+  covers `data`, so a MITM cannot alter the move). Replay is handled by the version
+  check + pending-seat re-check under the `games FOR UPDATE` lock (a resubmitted
+  action carries a stale version).
+- **us → bot (wake) — low-stakes.** The trigger HMACs the wake body with the same
+  secret and sends `x-wake-signature` (see *Wake* below); the bot recomputes over the
+  raw body and compares. A forged wake never authorizes a move (every move still
+  passes the action-MAC check above), so a leaked secret at worst wastes that one
+  bot's compute.
 
-**Manual setup, no UI** (bots are rare, one-time). The operator generates the
-bot's keypair and a random wake secret, inserts one row, and stores the wake secret
-in Vault keyed by the new row's id:
+**One secret, both directions — no domain-separation prefix.** Reusing a single
+secret is safe because the two payloads carry **fundamentally different content**: a
+wake has an `observation` and no move, an action has a move (`data`) and no
+observation. A MAC captured from one direction and reflected into the other is
+signature-valid but meaningless — there is no move to apply, or no observation to act
+on — so there is nothing to exploit.
+
+**Why HMAC, not an asymmetric signature.** In-database Ed25519 verification would
+need `pgsodium`, which Supabase has marked **pending deprecation**; HMAC verifies in
+stock Postgres (`extensions.hmac`), which is exactly what lets the action check live
+in an RPC instead of an edge function. The trade is that we hold a secret that could
+forge this bot's moves — acceptable for **first-party** bots (against a full DB
+compromise an attacker writes `game_states` directly anyway; the only residual is
+secrets-at-rest leaks). If third-party operators ever need "the platform cannot forge
+my moves," reintroduce an asymmetric action signature behind an edge function.
+
+**Manual setup, no UI** (bots are rare, one-time). The operator generates a random
+secret, inserts one row, and stores the secret in Vault keyed by the new row's id:
 
 ```sql
--- server-side bot (is_local = false ⇒ webhook_url + public_key required)
+-- server-side bot (is_local = false ⇒ webhook_url required)
 insert into bots (username, display_name, schema_version,
-                  is_local, webhook_url, rated_eligible, public_key)
+                  is_local, webhook_url, rated_eligible)
 values ('hard_ai', 'Hard AI', 1,
-        false, 'https://my-bot.fly.dev/wake', false, '<bot public key PEM>')
+        false, 'https://my-bot.fly.dev/wake', false)
 returning id;  -- → <bot_id>
 
--- the bot's wake secret, named by that id (used by send_bot_wake's HMAC)
-select vault.create_secret('<random wake secret>', 'bot_wake_secret_<bot_id>');
+-- the bot's HMAC secret, named by that id (signs actions + verifies wakes)
+select vault.create_secret('<random secret>', 'bot_secret_<bot_id>');
 
--- local bot (is_local = true ⇒ no key, no webhook, no wake secret — driven by
--- the human's client)
+-- local bot (is_local = true ⇒ no webhook, no secret — driven by the human's client)
 insert into bots (username, display_name, schema_version, is_local)
 values ('easy_ai', 'Easy AI', 1, true);
 ```
 
-The bot deployment is configured with its **private** key (to sign actions) and a
-copy of its **wake secret** (to verify wakes). `get_bots()`
-exposes the safe display columns for the solo picker. The `username` is the
-stable handle joining the row to its code (local) or deployment (server-side);
-clients never hardcode UUIDs. **`is_local` is the authoritative locality flag** —
-never inferred from `webhook_url`, so the server-bot auth scheme can evolve freely;
-a `CHECK` keeps the transport columns consistent with it (local ⇒ neither
-`webhook_url` nor `public_key`; server ⇒ both). A **local bot** is an `is_local` row
+The bot deployment is configured with a copy of its **HMAC secret** (to sign actions
+and verify wakes). `get_bots()` exposes the safe display columns for the solo picker.
+The `username` is the stable handle joining the row to its code (local) or deployment
+(server-side); clients never hardcode UUIDs. **`is_local` is the authoritative
+locality flag** — never inferred from `webhook_url`, so the server-bot auth scheme can
+evolve freely; a `CHECK` keeps the transport column consistent with it (local ⇒ no
+`webhook_url`; server ⇒ `webhook_url` present). A **local bot** is an `is_local` row
 whose `username` matches a `GameModule.localBots` entry (`LocalBot.username`); a
-**server-side bot** has `is_local = false`. The all-powerful service role never
-leaves the `bot-gateway`.
+**server-side bot** has `is_local = false`.
 
 #### Many personas from one implementation (N:1)
 
@@ -194,7 +204,7 @@ seats of a 6-player game. No duplicate rows, no per-seat usernames.
 
 Seats are addressed by `(game_id, player_index)`, not by `bot_id`: every seat has
 its own observation row and fires its own wake carrying that seat's `player_index`;
-the bot echoes `player_index` in its signed action, and `submit_bot_action`
+the bot echoes `player_index` in its signed action, and `submit_bot_action_signed`
 validates and acts on exactly that seat. The seats are fully independent
 `observation → action` calls — one seat never sees another's hidden state, even
 when they are the same identity.
@@ -268,48 +278,43 @@ seat's turn?" checks; same `game_apply_action → commit_action` with `'bot'` ty
 `p_acting_bot_id`). They differ only in who may call and how the seat is
 authorized:
 
-- **Server-side**: `submit_bot_action(p_game_id, p_bot_id, p_player_index, p_data,
-  p_expected_version)`, `service_role`-only (`REVOKE` from anon/authenticated, like
-  `apply_rating_updates`). The actor is authenticated by the bot's signature, which
-  the gateway verifies against `bots.public_key`; this RPC trusts the
-  gateway-resolved `bot_id` and validates that it holds `p_player_index` (a bot may
-  hold several seats, so the seat is named explicitly rather than resolved from
-  `bot_id`).
+- **Server-side**: `submit_bot_action_signed(p_payload, p_signature)`,
+  **anon**-callable — the per-bot HMAC over `p_payload` is the auth gate (the bot has
+  no Supabase session). It verifies the MAC (`private.verify_bot_action_hmac` against
+  the Vault `bot_secret_<id>`), then validates that the claimed `bot_id` holds the
+  claimed `player_index` (a bot may hold several seats, so the seat is named
+  explicitly rather than resolved from `bot_id`) before the shared `apply_seat_action`.
 - **Local**: `submit_local_bot_action(p_game_id, p_player_index, p_data,
   p_expected_version)`, `authenticated`. Validates `auth.uid()` is a participant,
-  the seat is a **local** bot (`is_local` — a server bot can be driven *only* by the
-  gateway, never a client), the game is **sole-human**, and (in `apply_seat_action`)
+  the seat is a **local** bot (`is_local` — a server bot can be driven *only* by its
+  own HMAC-signed RPC, never a client), the game is **sole-human**, and (in
+  `apply_seat_action`)
   it is that seat's turn at the expected version. The local-bot/sole-human gates are
   the security boundary: without them, a participant in a multi-human or rated game
   containing a server bot could drive — and front-run — the opponent bot. A human
   can thus only move a *local* bot, in their own *solo* game, on its turn.
 
-### `bot-gateway` edge function (server-side bots' only public surface)
+### `submit_bot_action_signed` (server-side bots' only public surface)
 
-A single Deno edge function (same shape as `update-ratings` / `refresh-fcm-token`)
-holding `SUPABASE_SERVICE_ROLE_KEY`. The only thing a remote bot talks to, over
-plain HTTPS (no Supabase client needed → any language, anywhere):
+Server bots talk to **one** endpoint — the `submit_bot_action_signed` PostgREST RPC
+— over plain HTTPS with the project's anon apikey (no Supabase client needed → any
+language, anywhere):
 
-- `POST /action { payload, signature }`, where `payload` is the signed JSON
-  `{ game_id, bot_id, player_index, version, data, iat }`. The gateway loads
-  `bots.public_key` for `bot_id`, **verifies the signature** over the canonical
-  payload (Deno's built-in `SubtleCrypto`, e.g. Ed25519/ES256) — 401 on mismatch —
-  then calls `submit_bot_action`.
+- `POST /rest/v1/rpc/submit_bot_action_signed` with body `{ p_payload, p_signature }`
+  (PostgREST maps body keys to the SQL arg names), where `p_payload` is the signed
+  JSON `{ game_id, bot_id, player_index, version, data }` and `p_signature` is
+  base64 `HMAC-SHA256(p_payload)` under the bot's `bot_secret_<id>`.
+  The RPC verifies the MAC in-database (`extensions.hmac`) — raises `Unauthorized` on
+  mismatch — then applies the move via `apply_seat_action`. Because wakes carry the
+  observation, **no observation endpoint is needed.**
 
-Verification needs no stored secret (only the public key) and covers the action
-payload itself. Because wakes carry the observation, **no `/observation` endpoint
-is needed.**
-
-We verify in the edge function rather than in-database deliberately: in-DB
-Ed25519 verification would need `pgsodium`, which Supabase has marked **pending
-deprecation and discourages for new use** — so the gateway (Deno `SubtleCrypto`,
-first-class Ed25519/ECDSA) is the durable home for verification. **Platform**:
-keep it as a **Supabase Edge Function** for now — it is co-located with the DB (a
-Cloudflare Worker would add a network hop to Supabase per call) and is *not* on a
-human's critical path (the bot calls it, after spending its own compute), so its
-cold start is immaterial. `eigeninteractive-web` (Cloudflare Workers) stays the
-home for any future public surface (e.g. an asymmetric-signed wake), but we do not
-split infra prematurely.
+Verifying in-database (rather than an edge function) is possible because HMAC — unlike
+Ed25519 — is available in stock Postgres (`extensions.hmac`); it removes the extra
+public surface and keeps server bots serverless-friendly (stateless signing, no JWT
+lifecycle). The endpoint is unauthenticated until the MAC check, so it should be
+**rate-limited** at the API gateway (Kong); HMAC-SHA256 itself is cheap. If a future
+"the platform cannot forge my moves" requirement appears (third-party operators),
+reintroduce an asymmetric action signature behind an edge function.
 
 ### Wake — server-side (reuses the turn-notification trigger)
 
@@ -322,8 +327,8 @@ for them too. Branch on identity:
   pending_players, turn_deadline }` (`player_index` names the seat — one identity
   may hold several; `username`/`config` let one deployment serve many personas —
   see N:1 above). The bot verifies the signature (see below), computes from the
-  observation **in the payload**, and calls back `bot-gateway /action` with a
-  signed action.
+  observation **in the payload**, and calls `submit_bot_action_signed` with an
+  HMAC-signed action.
 
 One trigger, two transports. `expire_turn` remains the liveness backstop for an
 unreachable bot (hence the timed-game requirement). No separate poller in v1.
@@ -334,54 +339,55 @@ A server bot is any HTTPS service, in any language. The engine never runs its co
 and imposes no framework — only the two-message protocol below. What it **must
 have**:
 
-- **An Ed25519 keypair.** The private key stays on the server (signs actions); the
-  raw 32-byte **public** key, base64-encoded, goes on the `bots.public_key` row.
-- **A copy of its wake secret** — the same random string stored in Vault as
-  `bot_wake_secret_<bot_id>` (verifies wakes).
-- **Its `bot_id`** (the row's UUID, echoed in every action) and the **gateway URL**:
-  `https://<project-ref>.supabase.co/functions/v1/bot-gateway` (`verify_jwt = false`,
-  so no Supabase auth header is needed).
+- **A single HMAC secret** — the random string stored in Vault as
+  `bot_secret_<bot_id>`; it both signs actions (outgoing) and verifies wakes (incoming).
+- **Its `bot_id`** (the row's UUID, echoed in every action), the project's **anon
+  apikey**, and the **action RPC URL**
+  `https://<project-ref>.supabase.co/rest/v1/rpc/submit_bot_action_signed`. The anon
+  apikey authorizes the PostgREST call; the per-bot HMAC is the real gate.
 - **A public HTTPS endpoint** at the row's `webhook_url`.
 
 What it **must do** on each wake:
 
 1. **Verify the wake.** Read `x-wake-signature`; compute base64 `HMAC-SHA256(rawBody,
-   wake_secret)` over the **raw request bytes** (do not re-serialise the parsed
-   JSON); reject (and stop) on a non-constant-time-equal mismatch.
+   secret)` over the **raw request bytes** (do not re-serialise the parsed JSON);
+   reject (and stop) on a non-constant-time-equal mismatch.
 2. **Parse** the body `{ game_id, bot_id, player_index, version, observation,
    turn_deadline, … }` and **compute a legal move** for `player_index` from
    `observation`. One identity may hold several seats — treat each wake's
    `player_index` independently; never carry state between seats.
 3. **Sign the action.** Build the exact JSON string `payload = {"game_id","bot_id",
-   "player_index","version","data","iat"}` (`data` = your move, `iat` = unix
-   seconds); Ed25519-sign its UTF-8 bytes; base64 the signature.
-4. **Submit** `POST {payload, signature}` to the gateway **before `turn_deadline`**
-   (else the seat times out). Handle the reply: `200` committed; `409` a benign race
-   (the turn was already taken or the version moved) — drop it; `401` your signature
-   or registration is wrong — fix provisioning. The wake itself is fire-and-forget
-   (pg_net ignores your HTTP status), so all that matters is the gateway call.
+   "player_index","version","data"}` (`data` = your move); HMAC-SHA256 its UTF-8
+   bytes with the **same secret**; base64 the MAC.
+4. **Submit** `POST { p_payload, p_signature }` to the action RPC **before
+   `turn_deadline`** (else the seat times out). Handle the reply: `200` committed; a
+   `Stale state`/seat-conflict error is a benign race (the turn was already taken or
+   the version moved) — drop it; `Unauthorized` means your MAC or registration is
+   wrong — fix provisioning. The wake itself is fire-and-forget (pg_net ignores your
+   HTTP status), so all that matters is the action call.
 
 A minimal Node (18+, built-in `crypto`) server — the whole contract in ~40 lines:
 
 ```js
 import { createServer } from "node:http";
-import { createHmac, sign, timingSafeEqual, createPrivateKey } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
-const BOT_ID      = process.env.BOT_ID;
-const WAKE_SECRET = process.env.WAKE_SECRET;                  // matches Vault
-const GATEWAY     = process.env.GATEWAY_URL;                  // …/functions/v1/bot-gateway
-const PRIVATE_KEY = createPrivateKey(process.env.PRIVATE_KEY_PEM); // Ed25519
+const BOT_ID   = process.env.BOT_ID;
+const SECRET   = process.env.BOT_SECRET;             // matches Vault bot_secret_<id>
+const RPC_URL  = process.env.RPC_URL;                // …/rest/v1/rpc/submit_bot_action_signed
+const ANON_KEY = process.env.SUPABASE_ANON_KEY;
+
+const hmac = (s) => createHmac("sha256", SECRET).update(s).digest("base64");
 
 createServer((req, res) => {
   const chunks = [];
   req.on("data", (c) => chunks.push(c));
   req.on("end", async () => {
-    const raw = Buffer.concat(chunks);                        // sign over the RAW bytes
+    const raw = Buffer.concat(chunks);                        // verify over the RAW bytes
 
     // 1. Verify the wake HMAC (constant-time).
-    const expected = createHmac("sha256", WAKE_SECRET).update(raw).digest("base64");
     const got = req.headers["x-wake-signature"] ?? "";
-    const a = Buffer.from(expected), b = Buffer.from(got);
+    const a = Buffer.from(hmac(raw)), b = Buffer.from(got);
     if (a.length !== b.length || !timingSafeEqual(a, b)) {
       res.writeHead(401).end(); return;
     }
@@ -391,47 +397,48 @@ createServer((req, res) => {
     const wake = JSON.parse(raw.toString("utf8"));
     const data = chooseMove(wake.observation, wake.player_index); // your AI
 
-    // 3. Sign the action payload.
+    // 3. Sign the action payload with the SAME secret.
     const payload = JSON.stringify({
       game_id: wake.game_id, bot_id: BOT_ID, player_index: wake.player_index,
-      version: wake.version, data, iat: Math.floor(Date.now() / 1000),
+      version: wake.version, data,
     });
-    const signature = sign(null, Buffer.from(payload), PRIVATE_KEY).toString("base64");
 
-    // 4. Submit before turn_deadline.
-    const r = await fetch(GATEWAY, {
+    // 4. Submit before turn_deadline (PostgREST maps body keys to SQL arg names).
+    const r = await fetch(RPC_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ payload, signature }),
+      headers: {
+        "Content-Type": "application/json",
+        apikey: ANON_KEY,
+        Authorization: `Bearer ${ANON_KEY}`,
+      },
+      body: JSON.stringify({ p_payload: payload, p_signature: hmac(payload) }),
     });
-    if (!r.ok) console.warn("gateway rejected:", r.status, await r.text());
+    if (!r.ok) console.warn("action rejected:", r.status, await r.text());
   });
 }).listen(8080);
 ```
 
-Register the matching public key once (raw 32-byte Ed25519, base64) — e.g. from the
-keypair's JWK `x` (base64url → base64), or `openssl pkey -pubout -outform DER` and
-base64 the trailing 32 bytes — into `bots.public_key`, and store `WAKE_SECRET` in
-Vault as `bot_wake_secret_<bot_id>`. Nothing else is required: no Supabase client,
-no database access, no polling.
+Store the secret once in Vault as `bot_secret_<bot_id>` — it is the bot's only
+credential. Nothing else is required: no keypair, no Supabase client, no database
+access, no polling.
 
-**Wake signature.** The action signature (above) is the security boundary, so the
-wake only needs a low-stakes authentication — a forged wake can at most waste a
-bot's compute. Postgres cannot easily produce an *asymmetric* signature inside the
-trigger, so `send_bot_wake` HMAC-SHA256s the exact JSON body with the bot's
-**per-bot wake secret** (Vault: `bot_wake_secret_<bot_id>`) and sends it base64 in
-the `x-wake-signature` header. The bot recomputes the HMAC over the raw request
-body with its copy of the same secret and rejects on mismatch. The signature covers
-the canonical `jsonb` text, which is exactly the bytes pg_net sends, so there is no
-re-serialisation ambiguity. The secret is per-bot, not global, and never authorizes
-a move; a leak forges wakes to that one bot only. (If zero-shared-secrets is later
-required — e.g. third-party bot authors — sign the wake with a system keypair via a
-thin `bot-wake` edge-function hop and have bots verify with our published public
-key.)
+**Wake signature.** The action MAC (above) is the security boundary, so the wake only
+needs low-stakes authentication — a forged wake can at most waste a bot's compute.
+`send_bot_wake` HMAC-SHA256s the exact JSON body with the bot's **per-bot secret**
+(Vault: `bot_secret_<bot_id>`) and sends it base64 in the `x-wake-signature` header.
+The bot recomputes the HMAC over the raw request body with its copy of the same secret
+and rejects on mismatch. The signature covers the canonical `jsonb` text, which is
+exactly the bytes pg_net sends, so there is no re-serialisation ambiguity. The same
+secret signs the bot's *action* the other way; this is safe without a
+domain-separation prefix because the two carry different content — a wake has an
+observation and no move, an action has a move and no observation — so a reflected MAC
+is meaningless. (If zero-shared-secrets is later required — e.g. third-party bot
+authors — reintroduce an asymmetric action signature behind an edge function and/or
+sign the wake with a system keypair.)
 
 ### Wake — local (the client's own Realtime sub)
 
-A device can't receive a webhook and must not hold a bot's private key, so local
+A device can't receive a webhook and must not hold a bot's secret, so local
 bots use what the human client already has: its own observation subscription
 carries `pending_players`. When a **bot** seat (per `PlayersContext`) appears
 pending in a **solo** game, the client drives it. No new wake infra.
@@ -647,21 +654,19 @@ the rule in Dart.
 ## Implementation plan (PR slicing)
 
 - **PR-1 — Foundation.** `bots` columns (`schema_version`, `webhook_url`,
-  `rated_eligible`, `public_key`); narrow the `bots` RLS / add `get_bots`
+  `rated_eligible`); narrow the `bots` RLS / add `get_bots`
   (safe display columns); generalize the `observations` table; fan-out +
   `start_game` write bot rows (factor `start_game`'s core into a helper
   `create_solo_game` can also call); `derive_rated` extraction +
   `preview_game_rating`; `private.seat_server_bot` + `add_bot_to_game`
   (authenticated, creator-only) + `create_solo_game(bot_ids[])` (atomic seat+start,
   unrated, anonymous⇒local-only); GRANT/REVOKE. (No provisioning RPC — bots are
-  inserted by hand; identity is one row + a public key, plus a Vault wake secret
-  for server bots.)
-- **PR-2 — Server-side bots.** `submit_bot_action` (service-role); the
-  `notify_your_turn` bot wake branch (`net.http_post` + per-bot HMAC
-  `x-wake-signature` header, secret from Vault `bot_wake_secret_<bot_id>`); the
-  `bot-gateway` edge function (verifies the bot's signature against
-  `bots.public_key`) + `config.toml`; the host's waiting-room **"Add bot"** UI
-  (it's only useful once a seated server bot can actually move).
+  inserted by hand; identity is one row, plus a Vault HMAC secret for server bots.)
+- **PR-2 — Server-side bots.** `submit_bot_action_signed` (anon; verifies the per-bot
+  HMAC in-DB via `private.verify_bot_action_hmac`); the `notify_your_turn` bot wake
+  branch (`net.http_post` + per-bot HMAC `x-wake-signature` header, secret from Vault
+  `bot_secret_<bot_id>`); the host's waiting-room **"Add bot"** UI (it's only useful
+  once a seated server bot can actually move).
 - **PR-3 — Local bots.** `submit_local_bot_action` + `get_local_bot_observation`
   (local-bot + sole-human gate); the `LocalBot` contract (engine) + `GameModule.localBots`
   (game package) + barrel export; repository RPC wrappers + providers; the
@@ -673,7 +678,7 @@ Files (engine, dev-phase edit-in-place SQL): `bots` in
 `supabase/migrations/20251212144609_create_users_table.sql`; `observations` in
 `…/20251217122729_create_observations_table.sql`; RPCs/fan-out in
 `…/20260505045425_create_game_infra_functions.sql`; wake in
-`…/20260518091300_notification_triggers.sql`; `supabase/functions/bot-gateway/`;
+`…/20260518091300_notification_triggers.sql`;
 Dart in `lib/core/game/local_bot.dart`, `lib/core/game/game_module.dart`,
 `lib/features/game/data/game_repository.dart`,
 `lib/features/game/providers/game_providers.dart`,

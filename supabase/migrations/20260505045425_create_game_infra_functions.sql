@@ -796,8 +796,8 @@ BEGIN
     RAISE EXCEPTION 'This bot is not eligible for rated games';
   END IF;
 
-  -- A bot identity may hold several seats: the wake and submit_bot_action carry
-  -- player_index, so seats are unambiguous, and the rating pipeline treats each
+  -- A bot identity may hold several seats: the wake and submit_bot_action_signed
+  -- carry player_index, so seats are unambiguous, and the rating pipeline treats each
   -- seat as an independent result for the identity. So no one-seat-per-bot guard —
   -- only the full-game cap below bounds it.
   SELECT COUNT(*) INTO v_count
@@ -919,7 +919,7 @@ BEGIN
 
   -- Both local and server bots may fill several seats: local bots resolve by
   -- player_index, and server bots now carry player_index through the wake and
-  -- submit_bot_action, so the same identity in multiple seats is unambiguous.
+  -- submit_bot_action_signed, so the same identity in multiple seats is unambiguous.
 
   -- Private + unrated; min=max=total so it is full at creation and never accepts
   -- another human. Retry the short_code on the rare collision (UNIQUE NOT NULL).
@@ -1253,7 +1253,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 -- deadline + optimistic version, confirm it is this seat's turn, run
 -- game_apply_action, apply budget deduction, and commit. The acting identity
 -- (user vs bot) and seat index are resolved by the caller, so this is shared by
--- submit_action (human), submit_bot_action (server bot) and
+-- submit_action (human), submit_bot_action_signed (server bot) and
 -- submit_local_bot_action (client-driven bot).
 CREATE OR REPLACE FUNCTION private.apply_seat_action(
   p_game_id          UUID,
@@ -1423,8 +1423,8 @@ BEGIN
   IF v_bot_id IS NULL THEN
     RAISE EXCEPTION 'Seat % is not a bot in this game', p_player_index;
   END IF;
-  -- Local bots only: a server bot acts solely through the gateway (submit_bot_action,
-  -- service-role) and computes remotely, so a client neither drives nor reads it.
+  -- Local bots only: a server bot acts solely through submit_bot_action_signed
+  -- (HMAC-authenticated) and computes remotely, so a client neither drives nor reads it.
   -- Allowing it would let a participant front-run the opponent bot in a multi-human
   -- or rated game.
   IF NOT v_is_local THEN
@@ -1444,31 +1444,94 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '';
 
--- Server-side bot action. service_role-only: the bot-gateway authenticates the
--- bot (Ed25519 signature vs bots.public_key) and then calls this. The action names
--- the exact seat (p_player_index) the bot is moving for — one bot identity may hold
--- several seats, so bot_id alone is ambiguous; the seat is echoed from the wake and
--- validated here. Commits as the bot; all turn/version/deadline checks live in
--- apply_seat_action.
-CREATE OR REPLACE FUNCTION public.submit_bot_action(
-  p_game_id          UUID,
-  p_bot_id           UUID,
-  p_player_index     INT,
-  p_data             JSONB,
-  p_expected_version INT
+-- Verifies a server bot's per-bot HMAC over the exact bytes it signed. The secret
+-- lives in Vault as 'bot_secret_<id>' and authenticates both directions (see
+-- send_bot_wake). Internal helper for submit_bot_action_signed.
+CREATE OR REPLACE FUNCTION private.verify_bot_action_hmac(
+  p_bot_id    UUID,
+  p_payload   TEXT,
+  p_signature TEXT
+)
+RETURNS BOOLEAN AS $$
+DECLARE
+  v_secret TEXT;
+BEGIN
+  SELECT decrypted_secret INTO v_secret
+  FROM vault.decrypted_secrets WHERE name = 'bot_secret_' || p_bot_id;
+  IF v_secret IS NULL OR v_secret = '' THEN
+    RETURN FALSE;
+  END IF;
+  -- Full-length compare of the base64 MAC over the exact signed bytes.
+  RETURN encode(extensions.hmac(p_payload, v_secret, 'sha256'), 'base64')
+       = p_signature;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
+-- Server-side bot action — the only public surface for server bots (replaces the
+-- former bot-gateway edge function). anon-callable: the HMAC over p_payload is the
+-- authentication gate (the bot holds no Supabase session). The bot signs the exact
+-- JSON it sends with its per-bot Vault secret; we verify over those raw bytes, then
+-- parse. The claim names the exact seat (player_index) being moved — one bot
+-- identity may hold several seats, so bot_id alone is ambiguous; the seat is echoed
+-- from the wake and validated here. Commits as the bot; all turn/version/deadline
+-- checks live in apply_seat_action.
+--
+-- The same per-bot secret also signs our wake (see send_bot_wake). Sharing it needs
+-- no domain-separation prefix: a wake carries an observation and no move, an action
+-- carries a move (data) and no observation, so a captured MAC reflected into the
+-- other direction has nothing to act on. Replay is handled by apply_seat_action's
+-- version check + games FOR UPDATE lock (a resubmitted action carries a stale
+-- version), so no separate freshness token is needed.
+CREATE OR REPLACE FUNCTION public.submit_bot_action_signed(
+  p_payload   TEXT,
+  p_signature TEXT
 )
 RETURNS VOID AS $$
+DECLARE
+  v_claim        JSONB;
+  v_bot_id       UUID;
+  v_game_id      UUID;
+  v_player_index INT;
+  v_version      INT;
+  v_data         JSONB;
 BEGIN
+  -- Parse only to read bot_id; verification is over the raw p_payload bytes.
+  BEGIN
+    v_claim := p_payload::jsonb;
+  EXCEPTION WHEN others THEN
+    RAISE EXCEPTION 'Bad request: payload is not JSON';
+  END;
+
+  v_bot_id := (v_claim->>'bot_id')::UUID;
+  IF v_bot_id IS NULL THEN
+    RAISE EXCEPTION 'Bad request: payload missing bot_id';
+  END IF;
+
+  IF NOT private.verify_bot_action_hmac(v_bot_id, p_payload, p_signature) THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  v_game_id      := (v_claim->>'game_id')::UUID;
+  v_player_index := (v_claim->>'player_index')::INT;
+  v_version      := (v_claim->>'version')::INT;
+  v_data         := v_claim->'data';
+
+  IF v_game_id IS NULL OR v_player_index IS NULL OR v_version IS NULL
+     OR v_data IS NULL THEN
+    RAISE EXCEPTION
+      'Bad request: payload needs game_id, bot_id, player_index, version, data';
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1 FROM public.participants
-    WHERE game_id = p_game_id AND bot_id = p_bot_id
-      AND player_index = p_player_index AND type = 'bot'
+    WHERE game_id = v_game_id AND bot_id = v_bot_id
+      AND player_index = v_player_index AND type = 'bot'
   ) THEN
-    RAISE EXCEPTION 'Bot does not hold seat % in this game', p_player_index;
+    RAISE EXCEPTION 'Bot does not hold seat % in this game', v_player_index;
   END IF;
 
   PERFORM private.apply_seat_action(
-    p_game_id, p_player_index, NULL, p_bot_id, 'bot', p_data, p_expected_version
+    v_game_id, v_player_index, NULL, v_bot_id, 'bot', v_data, v_version
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
@@ -1524,9 +1587,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '';
 
--- submit_bot_action is service-role-only (the gateway calls it after verifying
--- the bot's signature); never reachable by anon/authenticated clients.
-REVOKE EXECUTE ON FUNCTION public.submit_bot_action(UUID, UUID, INT, JSONB, INT)
+-- submit_bot_action_signed is anon-callable: the per-bot HMAC over the payload is
+-- the auth gate (the bot has no Supabase session). The verify helper is internal.
+REVOKE EXECUTE ON FUNCTION public.submit_bot_action_signed(TEXT, TEXT) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.submit_bot_action_signed(TEXT, TEXT)
+  TO anon, authenticated;
+REVOKE EXECUTE ON FUNCTION private.verify_bot_action_hmac(UUID, TEXT, TEXT)
   FROM PUBLIC, anon, authenticated;
 
 REVOKE EXECUTE ON FUNCTION public.submit_local_bot_action(UUID, INT, JSONB, INT)

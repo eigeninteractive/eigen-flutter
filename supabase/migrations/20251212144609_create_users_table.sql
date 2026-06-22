@@ -47,17 +47,15 @@ CREATE TABLE public.bots (
   schema_version INT NOT NULL,
   -- Authoritative locality. true ⇒ driven by the sole human's own client (never
   -- woken, no server transport); false ⇒ a server-side bot with its own endpoint.
-  -- This is the source of truth — locality is never inferred from webhook_url or
-  -- public_key, so the server-bot auth scheme can evolve without changing what
-  -- "local" means. The bot_transport_consistent CHECK keeps the transport columns
-  -- in step with it.
+  -- This is the source of truth — locality is never inferred from webhook_url, so
+  -- the server-bot auth scheme can evolve without changing what "local" means. The
+  -- bot_transport_consistent CHECK keeps the transport column in step with it.
   is_local BOOLEAN NOT NULL,
   -- Where to wake a server-side bot when it is its turn. NULL for local bots.
+  -- A server bot authenticates both its wake (incoming) and its action (outgoing)
+  -- with a single per-bot HMAC secret in Vault ('bot_secret_<id>'); no key material
+  -- is stored on this row.
   webhook_url TEXT,
-  -- A server-side bot's Ed25519/ECDSA *public* key (PEM/JWK). The bot-gateway
-  -- verifies the bot's signed action against this. NULL for local bots. Public
-  -- keys are not secret; no private material is ever stored server-side.
-  public_key TEXT,
   -- Whether this bot may participate in rated games. A non-eligible bot can never
   -- be seated into a rated game (see seat_server_bot). Defaults false so
   -- human-vs-bot games are unrated unless a bot is explicitly ranked.
@@ -71,23 +69,23 @@ CREATE TABLE public.bots (
   -- parameterized in code (a local GameBot's constructor) and ignore this.
   config JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  -- A local bot has neither endpoint nor key; a server bot has both. Keyed off the
-  -- authoritative is_local flag, not the reverse.
+  -- A local bot has no endpoint; a server bot has one. Keyed off the authoritative
+  -- is_local flag, not the reverse.
   CONSTRAINT bot_transport_consistent CHECK (
-    (is_local AND webhook_url IS NULL AND public_key IS NULL) OR
-    (NOT is_local AND webhook_url IS NOT NULL AND public_key IS NOT NULL)
+    (is_local AND webhook_url IS NULL) OR
+    (NOT is_local AND webhook_url IS NOT NULL)
   )
 );
 
 ALTER TABLE public.bots ENABLE ROW LEVEL SECURITY;
 
--- No direct table SELECT for clients: webhook_url is operational and public_key
--- need not be exposed. In-game identity resolves through get_players()
--- (SECURITY DEFINER, bypasses RLS); the "Play vs AI" / "Add bot" pickers use the
--- get_bots() RPC (safe columns only). Service role bypasses RLS for the gateway.
+-- No direct table SELECT for clients: webhook_url is operational and need not be
+-- exposed. In-game identity resolves through get_players() (SECURITY DEFINER,
+-- bypasses RLS); the "Play vs AI" / "Add bot" pickers use the get_bots() RPC (safe
+-- columns only).
 
 -- Bot discovery for the "Play vs AI" / "Add bot" pickers. Returns only display-
--- safe columns (never webhook_url / public_key). This is a single-game-per-
+-- safe columns (never webhook_url). This is a single-game-per-
 -- deployment engine, so the whole catalog belongs to this game. is_local lets the
 -- client decide whether it can drive the bot itself (local) or must rely on the
 -- server wake (server); for a local bot, username keys the GameBot implementation.
