@@ -179,7 +179,10 @@ class _PlayVsBotDialogState extends ConsumerState<PlayVsBotDialog> {
     // may still show the stale set — so we never submit a bot the new config is
     // about to filter out (the server enforces it regardless).
     final canPlay =
-        !_creating && freshSeatable != null && usable.isNotEmpty && opponents >= 1;
+        !_creating &&
+        freshSeatable != null &&
+        usable.isNotEmpty &&
+        opponents >= 1;
 
     return AlertDialog(
       title: const Text('New Solo Game'),
@@ -229,7 +232,9 @@ class _PlayVsBotDialogState extends ConsumerState<PlayVsBotDialog> {
                   children: [
                     for (var i = 0; i < opponents; i++)
                       _OpponentRow(
-                        label: opponents == 1 ? 'Opponent' : 'Opponent ${i + 1}',
+                        label: opponents == 1
+                            ? 'Opponent'
+                            : 'Opponent ${i + 1}',
                         value: _seatBot(i, usable),
                         bots: usable,
                         enabled: !_creating,

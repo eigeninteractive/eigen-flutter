@@ -114,7 +114,10 @@ class _AvatarCircle extends StatelessWidget {
     if (isBot) {
       circle = Stack(
         clipBehavior: Clip.none,
-        children: [circle, _BotBadge(radius: radius)],
+        children: [
+          circle,
+          _BotBadge(radius: radius),
+        ],
       );
     }
 

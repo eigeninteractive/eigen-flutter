@@ -247,10 +247,8 @@ class _AddBotDialogState extends ConsumerState<_AddBotDialog> {
       content: switch ((botsAsync, seatableAsync)) {
         (AsyncError(:final error), _) ||
         (_, AsyncError(:final error)) => Text(humanize(error)),
-        (
-          AsyncData(value: final bots),
-          AsyncData(value: final seatable),
-        ) => _picker(bots, seatable),
+        (AsyncData(value: final bots), AsyncData(value: final seatable)) =>
+          _picker(bots, seatable),
         _ => const SizedBox(
           height: 80,
           child: Center(child: CircularProgressIndicator()),
