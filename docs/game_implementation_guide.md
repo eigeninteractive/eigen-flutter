@@ -6,7 +6,7 @@ This guide explains how to implement a new game using the **Eigen Engine**.
 
 ## Overview
 
-Eigen Engine is a **whitelabel game engine** — the core infrastructure (auth, networking, real-time updates, timing) is shared, while each game provides its own rules and UI by implementing five SQL hooks (three core — `game_initial_state`, `game_apply_action`, `game_compute_observation`; two optional — `game_rating_pool`, `game_handle_system_action`) and one Dart `GameModule`.
+Eigen Engine is a **whitelabel game engine** — the core infrastructure (auth, networking, real-time updates, timing) is shared, while each game provides its own rules and UI by implementing six SQL hooks (three core — `game_initial_state`, `game_apply_action`, `game_compute_observation`; three optional — `game_rating_pool`, `game_handle_system_action`, `game_bot_seatable`) and one Dart `GameModule`.
 
 ### Project setup
 
@@ -914,7 +914,7 @@ When you provide custom timing display inside your content widget, the infra hea
 
 ## Database Changes Required
 
-Replacing **five SQL functions** produces a completely different game. All infra RPC functions stay untouched.
+Replacing **six SQL functions** produces a completely different game. All infra RPC functions stay untouched.
 
 Write your hooks as a normal, committed migration in your app's
 `supabase/migrations/YYYYMMDD_my_game.sql`. The engine's **backend** is
@@ -1009,6 +1009,34 @@ $$ LANGUAGE plpgsql IMMUTABLE SET search_path = '';
 2. If the user toggled on → `create_game` is called with `p_rated_preference = true`. The server calls `game_rating_pool()`; if it returns `NULL` the game is forced unrated, otherwise the game is rated with that pool.
 
 The game implementor does not need to expose or validate pool names in Dart — that is fully server-owned.
+
+---
+
+### Hook 0b: `game_bot_seatable(p_bot_config, p_game_config)` → BOOLEAN
+
+Optional. Decides whether a bot may be seated into a game with the chosen `games.config`. Called by `seat_server_bot` (→ `add_bot_to_game`) and `create_solo_game`; return `TRUE` to allow. `p_bot_config` is the bot's `bots.config` (its declared capabilities); `p_game_config` is `games.config`. It is the **single source of truth** for config compatibility: `seat_server_bot` / `create_solo_game` enforce it at seating, and the `seatable_bot_ids(config)` RPC lets the pickers filter the catalog by the same verdict — so the client never offers an opponent that seating would reject, with no rule duplicated in Dart. Gates the variant axis `schema_version` can't (a bot can match the schema but not the rules variant).
+
+**Default implementation** returns `TRUE` (every bot seatable). Override to gate by the capability keys your game stores in `bots.config` — the engine imposes no schema on `config`.
+
+```sql
+CREATE OR REPLACE FUNCTION private.game_bot_seatable(
+  p_bot_config  JSONB,
+  p_game_config JSONB
+)
+RETURNS BOOLEAN AS $$
+BEGIN
+  -- Example: a chess bot lists supported variants in its config; default 'standard'.
+  RETURN COALESCE(p_game_config->>'variant', 'standard') IN (
+    SELECT jsonb_array_elements_text(
+      COALESCE(p_bot_config->'variants', '["standard"]'::jsonb)
+    )
+  );
+END;
+$$ LANGUAGE plpgsql IMMUTABLE SET search_path = '';
+```
+
+The pickers call `seatable_bot_ids(config)` (which runs this hook) and filter the
+cached `get_bots` catalog by the result — no client-side copy of the rule.
 
 ---
 

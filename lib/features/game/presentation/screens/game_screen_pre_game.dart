@@ -153,8 +153,11 @@ class _PreGameContent extends ConsumerWidget {
               onPressed: () => showDialog<void>(
                 context: context,
                 useSafeArea: true,
-                builder: (_) =>
-                    _AddBotDialog(gameId: game.id, rated: game.rated),
+                builder: (_) => _AddBotDialog(
+                  gameId: game.id,
+                  rated: game.rated,
+                  config: game.config,
+                ),
               ),
               icon: const Icon(Icons.smart_toy_outlined),
               label: const Text('Add bot'),
@@ -214,10 +217,15 @@ class _PreGameContent extends ConsumerWidget {
 /// schema-compatible, and rated-eligible when the game is rated. On success it
 /// invalidates the players list so the new seat appears immediately.
 class _AddBotDialog extends ConsumerStatefulWidget {
-  const _AddBotDialog({required this.gameId, required this.rated});
+  const _AddBotDialog({
+    required this.gameId,
+    required this.rated,
+    required this.config,
+  });
 
   final String gameId;
   final bool rated;
+  final Map<String, dynamic> config;
 
   @override
   ConsumerState<_AddBotDialog> createState() => _AddBotDialogState();
@@ -229,49 +237,25 @@ class _AddBotDialogState extends ConsumerState<_AddBotDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final module = ref.watch(currentGameModuleProvider);
     final botsAsync = ref.watch(availableBotsProvider);
+    final seatableAsync = ref.watch(
+      seatableBotIdsProvider(configJson: jsonEncode(widget.config)),
+    );
 
     return AlertDialog(
       title: const Text('Add a bot'),
-      content: botsAsync.when(
-        loading: () => const SizedBox(
+      content: switch ((botsAsync, seatableAsync)) {
+        (AsyncError(:final error), _) ||
+        (_, AsyncError(:final error)) => Text(humanize(error)),
+        (
+          AsyncData(value: final bots),
+          AsyncData(value: final seatable),
+        ) => _picker(bots, seatable),
+        _ => const SizedBox(
           height: 80,
           child: Center(child: CircularProgressIndicator()),
         ),
-        error: (e, _) => Text(humanize(e)),
-        data: (bots) {
-          final usable = bots
-              .where(
-                (b) =>
-                    !b.isLocal &&
-                    b.schemaVersion <= module.schemaVersion &&
-                    (!widget.rated || b.ratedEligible),
-              )
-              .toList();
-          if (usable.isEmpty) {
-            return Text(
-              widget.rated
-                  ? 'No rated-eligible server bots are available.'
-                  : 'No server bots are available.',
-            );
-          }
-          _selectedBotId ??= usable.first.id;
-          return Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: usable.map((b) {
-              return ChoiceChip(
-                label: Text(b.displayName),
-                selected: _selectedBotId == b.id,
-                onSelected: _adding
-                    ? null
-                    : (_) => setState(() => _selectedBotId = b.id),
-              );
-            }).toList(),
-          );
-        },
-      ),
+      },
       actions: [
         TextButton(
           onPressed: _adding ? null : () => Navigator.pop(context),
@@ -288,6 +272,43 @@ class _AddBotDialogState extends ConsumerState<_AddBotDialog> {
               : const Text('Add'),
         ),
       ],
+    );
+  }
+
+  /// Server bots seatable into this game: server-only, schema-compatible, rated
+  /// guard, and in the server's seatable set for the game's fixed config
+  /// (game_bot_seatable). [_selectedBotId] defaults to the first available.
+  Widget _picker(List<BotInfo> bots, Set<String> seatable) {
+    final module = ref.read(currentGameModuleProvider);
+    final usable = bots
+        .where(
+          (b) =>
+              !b.isLocal &&
+              b.schemaVersion <= module.schemaVersion &&
+              (!widget.rated || b.ratedEligible) &&
+              seatable.contains(b.id),
+        )
+        .toList();
+    if (usable.isEmpty) {
+      return Text(
+        widget.rated
+            ? 'No rated-eligible server bots are available.'
+            : 'No server bots are available.',
+      );
+    }
+    _selectedBotId ??= usable.first.id;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: usable.map((b) {
+        return ChoiceChip(
+          label: Text(b.displayName),
+          selected: _selectedBotId == b.id,
+          onSelected: _adding
+              ? null
+              : (_) => setState(() => _selectedBotId = b.id),
+        );
+      }).toList(),
     );
   }
 

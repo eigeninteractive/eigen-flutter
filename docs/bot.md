@@ -192,9 +192,34 @@ code change, and there is no behaviour-classifier string column.
 - **Local bots:** register several configured instances of one `LocalBot` class in
   `localBots`, e.g. `MinimaxBot(username: 'hard_ai', depth: 5)`. The constructor is
   the usual way to parameterize. The DB `config` of the *matching* row is *also*
-  handed to `chooseAction` (for local bots only — a server bot's config never leaves
-  the server), so a single instance can instead be tuned from the row. Each persona
-  still needs its own `bots` row (same `username`) to appear in the catalog.
+  handed to `chooseAction`, so a single instance can instead be tuned from the row.
+  Each persona still needs its own `bots` row (same `username`) to appear in the
+  catalog.
+
+`config` is **public read-only reference data** — `get_bots` exposes it for both
+local and server bots (a server bot's was formerly masked; there's no reason to hide
+it, and clients need it to filter — see *Config-based availability* below). So it may
+hold persona tuning **and** capability declarations, but never secrets.
+
+#### Config-based availability (which bots can play which game config)
+
+`schema_version` gates whether a bot can parse the observation/action **shape**. A
+separate axis is whether a bot supports the **rules variant** chosen in `games.config`
+— e.g. a chess bot that does standard but not misère (same schema, different rules).
+That capability is declared in **`bots.config`** (e.g. `{"variants":["standard"]}`),
+for both local and server bots, and interpreted by the game (the engine imposes no
+schema on it):
+
+- **Single source of truth (server):** the game implements the
+  `game_bot_seatable(bot_config, game_config)` SQL hook (default `true`).
+  `seat_server_bot` / `create_solo_game` call it to reject an incompatible bot at
+  seating, and the `seatable_bot_ids(config)` RPC exposes the same verdict to clients.
+- **Picker filter (UX):** both pickers — the solo `PlayVsBotDialog` (re-filters live
+  as the variant changes) and the waiting-room "Add bot" dialog (against the game's
+  fixed config) — call `seatable_bot_ids` and drop opponents not in the returned set.
+  There is **no Dart compatibility rule**: the hook is the only place the rule lives,
+  so adding or retuning bots — or changing the rule itself (a DB migration) — never
+  needs an app release.
 
 #### One identity, many seats (filling a multiplayer game)
 

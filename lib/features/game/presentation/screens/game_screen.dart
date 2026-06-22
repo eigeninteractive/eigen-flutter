@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,6 +21,7 @@ import 'package:eigen_engine/core/game/game_status.dart';
 import 'package:eigen_engine/core/game/timing_constants.dart';
 import 'package:eigen_engine/core/game/timing_context.dart';
 import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
+import 'package:eigen_engine/features/game/data/models/bot_info.dart';
 import 'package:eigen_engine/features/game/data/models/game.dart';
 import 'package:eigen_engine/features/game/data/models/observation.dart';
 import 'package:eigen_engine/features/game/presentation/widgets/budget_clock.dart';

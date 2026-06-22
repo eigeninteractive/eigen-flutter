@@ -778,11 +778,13 @@ DECLARE
   v_max_players    INT;
   v_min_players    INT;
   v_rated          BOOLEAN;
+  v_game_config    JSONB;
   v_count          INT;
   v_bot            RECORD;
 BEGIN
-  SELECT status, schema_version, max_players, min_players, rated
-  INTO v_status, v_schema_version, v_max_players, v_min_players, v_rated
+  SELECT status, schema_version, max_players, min_players, rated, config
+  INTO v_status, v_schema_version, v_max_players, v_min_players, v_rated,
+       v_game_config
   FROM public.games WHERE id = p_game_id;
 
   IF NOT FOUND THEN RAISE EXCEPTION 'Game not found'; END IF;
@@ -790,7 +792,7 @@ BEGIN
     RAISE EXCEPTION 'Game is not accepting players';
   END IF;
 
-  SELECT schema_version, is_local, rated_eligible
+  SELECT schema_version, is_local, rated_eligible, config
   INTO v_bot
   FROM public.bots WHERE id = p_bot_id;
 
@@ -808,6 +810,12 @@ BEGIN
   -- Rated guard (invariant 3): reject, never downgrade.
   IF v_rated AND NOT v_bot.rated_eligible THEN
     RAISE EXCEPTION 'This bot is not eligible for rated games';
+  END IF;
+  -- Config gate: the game decides whether the bot's declared capabilities
+  -- (bots.config) support this game's config (default true). Single source of
+  -- truth; the seatable_bot_ids RPC exposes the same verdict to the pickers.
+  IF NOT private.game_bot_seatable(v_bot.config, v_game_config) THEN
+    RAISE EXCEPTION 'Bot does not support this game configuration';
   END IF;
 
   -- A bot identity may hold several seats: the wake and submit_bot_action_signed
@@ -903,11 +911,17 @@ BEGIN
 
   -- Validate every bot before creating anything.
   FOREACH v_bot_id IN ARRAY p_bot_ids LOOP
-    SELECT schema_version, is_local INTO v_bot
+    SELECT schema_version, is_local, config INTO v_bot
     FROM public.bots WHERE id = v_bot_id;
     IF NOT FOUND THEN RAISE EXCEPTION 'Bot not found: %', v_bot_id; END IF;
     IF p_schema_version > v_bot.schema_version THEN
       RAISE EXCEPTION 'Bot % does not support schema %', v_bot_id, p_schema_version;
+    END IF;
+    -- Config gate (same hook the picker mirrors): reject a bot that can't play this
+    -- game's config. Applies to local bots too — capability is in bots.config.
+    IF NOT private.game_bot_seatable(v_bot.config, COALESCE(p_config, '{}'::jsonb))
+    THEN
+      RAISE EXCEPTION 'Bot % does not support this game configuration', v_bot_id;
     END IF;
     IF NOT v_bot.is_local THEN
       v_has_server := true;
@@ -973,6 +987,31 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 REVOKE EXECUTE ON FUNCTION public.create_solo_game(UUID[], INT, INT, INT, INT, JSONB) FROM PUBLIC, anon;
 GRANT  EXECUTE ON FUNCTION public.create_solo_game(UUID[], INT, INT, INT, INT, JSONB) TO authenticated;
+
+-- RPC: seatable_bot_ids — which bots may be seated into a game with p_config, per
+-- the game's game_bot_seatable hook (the single source of truth for config
+-- compatibility). The pickers filter the cached get_bots catalog by this set
+-- instead of duplicating the rule in Dart, so adding/retuning bots — or changing
+-- the rule itself (a DB migration) — never needs an app release. The client filter
+-- is UX only; seat_server_bot / create_solo_game enforce the same hook. plpgsql
+-- (late-bound) so it can be created before the app defines game_bot_seatable.
+CREATE OR REPLACE FUNCTION public.seatable_bot_ids(p_config JSONB)
+RETURNS UUID[]
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE
+  v_ids UUID[];
+BEGIN
+  SELECT COALESCE(array_agg(b.id), '{}')
+  INTO v_ids
+  FROM public.bots b
+  WHERE private.game_bot_seatable(b.config, p_config);
+  RETURN v_ids;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.seatable_bot_ids(JSONB) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.seatable_bot_ids(JSONB) TO authenticated;
 
 -- Participants are read directly from the participants table (RLS-gated by game
 -- visibility) — they are ephemeral, per-game data. A bot seat's static reference

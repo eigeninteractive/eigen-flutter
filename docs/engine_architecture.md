@@ -14,9 +14,9 @@ underlying `core` codebase is identical.
   infra RPC functions.
 - **Game Module (The "Implementation")**: The specific rules, board rendering,
   and action validation for this specific app. Communicates with infra through
-  five SQL hooks (`game_initial_state`, `game_apply_action`,
-  `game_compute_observation`, plus optional `game_rating_pool` and
-  `game_handle_system_action`) and one Dart `GameModule`.
+  six SQL hooks (`game_initial_state`, `game_apply_action`,
+  `game_compute_observation`, plus optional `game_rating_pool`,
+  `game_handle_system_action`, and `game_bot_seatable`) and one Dart `GameModule`.
 
 ---
 
@@ -253,16 +253,18 @@ via `get_replay` — no action log re-execution needed.
   local. No key material is stored on the row.
 - `rated_eligible` (bool, NOT NULL, default false) — may this bot play rated
   games.
-- `config` (jsonb, NOT NULL, default `'{}'`) — opaque per-bot parameters; lets
-  one implementation back many separately-rated personas (N:1). Local config
-  travels to the client via `get_bots`; a server bot's config travels only in
-  its wake, never to clients.
+- `config` (jsonb, NOT NULL, default `'{}'`) — per-bot parameters; lets one
+  implementation back many separately-rated personas (N:1), and declares which game
+  configs the bot supports (read server-side by the `game_bot_seatable` hook; the
+  pickers filter via the `seatable_bot_ids` RPC). **Public read-only reference data** — `get_bots` exposes
+  it for both local and server bots; never put secrets here. The engine imposes no
+  schema on it.
 - `created_at`
 - **CHECK** (`bot_transport_consistent`): local ⇒ no `webhook_url`;
   server ⇒ `webhook_url` present.
 - **RLS**: no direct client SELECT. In-game identity resolves via
   `get_players()`; the pickers use the `get_bots()` RPC (display-safe columns
-  only — never `webhook_url`; server `config` masked). Write/read
+  only — never `webhook_url`; `config` is exposed). Write/read
   of the full row is service role only.
 - **Per-bot HMAC secret** (server bots): a single symmetric secret lives in
   **Vault** under `bot_secret_<bot_id>` — not on this row. It authenticates both
@@ -649,9 +651,21 @@ on multi-player-pending phases should be aware of this visual inaccuracy.
 
 ## 4. Game Hooks (Infra ↔ Game Contract)
 
-The entire game-specific surface is **four** PostgreSQL functions in the
+The entire game-specific surface is **six** PostgreSQL functions in the
 `private` schema. Replacing them produces a completely different game with no
 other changes.
+
+### `game_bot_seatable(p_bot_config, p_game_config)` → BOOLEAN
+
+Optional. Called by `seat_server_bot` (→ `add_bot_to_game`) and `create_solo_game`
+to decide whether a bot may be seated into a game with the chosen `games.config`.
+Returns `TRUE` to allow. `p_bot_config` is the bot's `bots.config` (its declared
+capabilities — e.g. supported variants); `p_game_config` is `games.config`. This is
+the **single source of truth** for config compatibility: it is enforced at seating
+and exposed to the pickers via the `seatable_bot_ids(config)` RPC, so the rule is
+never duplicated in Dart. Default implementation returns `TRUE` (every bot is
+seatable). Gates the variant axis that `schema_version` cannot (a bot can match the
+schema yet not support the rules variant).
 
 ### `game_rating_pool(p_access, p_turn_seconds, p_budget_seconds, p_increment_seconds, p_min_players, p_max_players, p_config)` → TEXT
 

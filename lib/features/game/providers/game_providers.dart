@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/experimental/persist.dart';
 import 'package:riverpod_annotation/experimental/json_persist.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -48,7 +50,9 @@ class AvailableBots extends _$AvailableBots {
       ref.watch(storageProvider.future),
       options: const StorageOptions(
         cacheTime: StorageCacheTime.unsafe_forever,
-        destroyKey: '1',
+        // Bumped to '2': config is now required non-null (was nullable; server
+        // rows cached with config:null in the old shape must be discarded).
+        destroyKey: '2',
       ),
     );
 
@@ -62,6 +66,18 @@ class AvailableBots extends _$AvailableBots {
 Future<Map<String, BotInfo>> botCatalogById(Ref ref) async {
   final bots = await ref.watch(availableBotsProvider.future);
   return {for (final bot in bots) bot.id: bot};
+}
+
+/// Ids of bots seatable into a game with the given config, per the server's
+/// `game_bot_seatable` hook — the single source of truth for config
+/// compatibility (no rule duplicated in Dart, so adding/retuning bots or changing
+/// the rule never needs an app release). The pickers intersect this with the
+/// cached catalog. [configJson] is the `games.config` JSON-encoded so the family
+/// key has value-equality; auto-disposed (it tracks the dialog's live config).
+@riverpod
+Future<Set<String>> seatableBotIds(Ref ref, {required String configJson}) {
+  final config = jsonDecode(configJson) as Map<String, dynamic>;
+  return ref.watch(gameRepositoryProvider).seatableBotIds(config);
 }
 
 /// Whether the solo-play entry should be offered for this deployment.

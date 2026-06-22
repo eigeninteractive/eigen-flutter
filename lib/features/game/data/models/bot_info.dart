@@ -10,9 +10,12 @@ part 'bot_info.g.dart';
 /// operational facts only a bot has. [isLocal] true means the bot is driven
 /// client-side (a matching [LocalBot] whose [LocalBot.username] equals this
 /// [username] must ship in this build); false means a server bot, driven by its
-/// webhook. The local-bot driver reads [config] from this catalog (cached) to pass
-/// to `LocalBot.chooseAction`. [config] is null for server bots (their config never
-/// leaves the server) and `{}` for a local bot with none set.
+/// webhook. [config] is exposed for **both** local and server bots (persona tuning
+/// plus capability declaration — what game configs the bot supports, read
+/// server-side by `game_bot_seatable`; the pickers filter via the `seatableBotIds`
+/// RPC, not a client-side rule). The local-bot driver also reads it (cached) to pass
+/// to `LocalBot.chooseAction`. `{}` when none is set; the engine imposes no schema on
+/// it, and it never holds secrets.
 @freezed
 abstract class BotInfo with _$BotInfo {
   const factory BotInfo({
@@ -23,7 +26,8 @@ abstract class BotInfo with _$BotInfo {
     required int schemaVersion,
     required bool isLocal,
     required bool ratedEligible,
-    Map<String, dynamic>? config,
+    // Always supplied by get_bots (bots.config is NOT NULL); empty when unset.
+    required Map<String, dynamic> config,
   }) = _BotInfo;
 
   factory BotInfo.fromJson(Map<String, dynamic> json) =>

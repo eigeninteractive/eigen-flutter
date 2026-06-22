@@ -341,6 +341,17 @@ class GameRepository {
         .toList();
   }
 
+  /// Ids of bots that may be seated into a game with [config], per the server's
+  /// `game_bot_seatable` hook. The pickers filter the cached catalog by this set
+  /// so the compatibility rule lives only server-side (no Dart duplication).
+  Future<Set<String>> seatableBotIds(Map<String, dynamic> config) async {
+    final result = await _client.rpc(
+      'seatable_bot_ids',
+      params: {'p_config': config},
+    );
+    return (result as List).cast<String>().toSet();
+  }
+
   /// Creates a solo game: the caller plus [botIds] (local and/or
   /// server, in seat order), unrated, started atomically. Returns the game ID.
   Future<String> createSoloGame({

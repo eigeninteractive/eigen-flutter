@@ -60,13 +60,16 @@ CREATE TABLE public.bots (
   -- be seated into a rated game (see seat_server_bot). Defaults false so
   -- human-vs-bot games are unrated unless a bot is explicitly ranked.
   rated_eligible BOOLEAN NOT NULL DEFAULT false,
-  -- Opaque per-bot parameters, chosen by the operator. Lets one implementation /
-  -- deployment back many named personas (N:1) without code changes: distinct rows
-  -- share code (a local GameBot class, or a server webhook_url) but differ by
-  -- config. Local bot config travels to the client via get_participants (only for
-  -- local bots) and is handed to GameBot.chooseAction; server bot config travels
-  -- to the bot's endpoint in the wake payload. Empty by default — most bots are
-  -- parameterized in code (a local GameBot's constructor) and ignore this.
+  -- Per-bot parameters, chosen by the operator. Two uses, no schema imposed by
+  -- infra: (1) persona tuning — one implementation backs many named personas (N:1)
+  -- without code changes (distinct rows share a local class or server webhook_url
+  -- but differ by config); (2) capability declaration — what game configs the bot
+  -- supports (e.g. {"variants":["standard"]}), interpreted by the game's
+  -- the game_bot_seatable hook (pickers filter via seatable_bot_ids). Public read-only
+  -- reference data: get_bots exposes it for BOTH local and server bots, so never
+  -- put secrets here (a server bot's wake/action secret lives in Vault). A local
+  -- bot's config is handed to GameBot.chooseAction; a server bot's also travels in
+  -- the wake payload. Empty by default.
   config JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   -- A local bot has no endpoint; a server bot has one. Keyed off the authoritative
@@ -105,10 +108,12 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
          b.schema_version,
          b.is_local,
          b.rated_eligible,
-         -- Local bot config only; a server bot's config stays server-side (it
-         -- travels only in the wake to the bot's own endpoint, never to clients).
-         CASE WHEN b.is_local THEN b.config ELSE NULL END
-  FROM public.bots b;
+         -- Exposed for both local and server bots: persona tuning + capability
+         -- declaration (read server-side by game_bot_seatable). Never secret.
+         b.config
+  FROM public.bots b
+  -- Deterministic order so the pickers' "first available" default is stable.
+  ORDER BY b.display_name;
 $$;
 
 REVOKE EXECUTE ON FUNCTION public.get_bots() FROM PUBLIC, anon;
