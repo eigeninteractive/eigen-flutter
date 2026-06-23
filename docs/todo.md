@@ -1,6 +1,6 @@
 # P0
 
-- [ ] Add thorough docs
+- [ ] Add thorough docs and tests
 - [ ] Monetization Flows
 - [ ] Replay Support
 - [ ] Spectating Support
