@@ -10,3 +10,7 @@
 - Set Card Game
 - RPS
 - Exploding Kittens
+
+# Much Much Later
+
+- Consider Cloudflare Durable Objects per game (Actor Model)
