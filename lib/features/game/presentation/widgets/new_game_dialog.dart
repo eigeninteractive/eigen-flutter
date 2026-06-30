@@ -123,8 +123,7 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
                   ),
                 ],
                 selected: {_access},
-                onSelectionChanged: (s) =>
-                    setState(() => _access = s.first),
+                onSelectionChanged: (s) => setState(() => _access = s.first),
               ),
               const SizedBox(height: 16),
 

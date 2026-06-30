@@ -7,7 +7,8 @@ import 'package:eigen_engine/core/game/game_outcome.dart';
 import 'package:eigen_engine/core/game/game_status.dart';
 import 'package:eigen_engine/core/game/players_context.dart';
 import 'package:eigen_engine/core/game/timing_context.dart';
-import 'package:eigen_engine/features/game/data/models/game.dart' show GameAccess;
+import 'package:eigen_engine/features/game/data/models/game.dart'
+    show GameAccess;
 
 /// Everything [GameModule.buildContent] needs, bundled into one object.
 ///
