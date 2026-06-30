@@ -40,3 +40,5 @@
 - How isolated it the contract with supabase as the backend in the engine
   flutter side? If required, can we cleanly swap out to another backend or a DB
   by just touching the repository layer?
+- Instead of BaseEngine taking schemaVersion, should we have different engine
+  classes for different schema versions? Same thing for Typescript?
