@@ -17,7 +17,7 @@ PlayerRepository playerRepository(Ref ref) {
 
 /// Globally cached public player identity by ID, persisted to SQLite.
 ///
-/// Works for both human users and bots — `get_players` covers both via a UNION.
+/// Works for both human users and bots — `app_players` covers both via a UNION.
 /// `keepAlive: true` keeps the result in memory for the session lifetime.
 /// `@JsonPersist()` adds SQLite persistence so cold-start lookups resolve
 /// from cache (~5 ms) before the network response arrives, eliminating

@@ -23,8 +23,8 @@ and this project adheres to
 ## [0.1.0] - 2026-06-15
 
 Initial standalone release. Versioning + backward-compatibility policy:
-[`docs/versioning.md`](docs/versioning.md). Pre-1.0 — the API may change in
-MINOR bumps until `1.0.0`.
+[README → Versioning & backward compatibility](README.md#versioning--backward-compatibility).
+Pre-1.0 — the API may change in MINOR bumps until `1.0.0`.
 
 ### Added
 

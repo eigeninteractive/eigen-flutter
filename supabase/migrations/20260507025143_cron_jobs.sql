@@ -1,11 +1,9 @@
 -- ============================================
 -- CRON JOBS
 -- ============================================
--- pg_cron is pre-installed in both the Supabase local Docker image and
--- Supabase Cloud. CREATE EXTENSION is idempotent via IF NOT EXISTS.
+-- Schedules the private.cron_* sweeps. The pg_cron extension is created in the
+-- foundation migration.
 -- ============================================
-
-CREATE EXTENSION IF NOT EXISTS pg_cron;
 
 -- Unschedule first so this migration is idempotent on re-runs
 -- (e.g. supabase db reset re-applies every migration from scratch).
@@ -14,9 +12,9 @@ WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'expire-turns');
 
 SELECT cron.schedule(
   'expire-turns',
-  '* * * * *',   -- every minute; sub-minute accuracy is client-side
+  '* * * * *',   -- every minute; sub-minute accuracy is the client expiry nudge
   $cron$
-    SELECT private.expire_all_turns();
+    SELECT private.cron_expire_turns();
   $cron$
 );
 
@@ -27,7 +25,7 @@ SELECT cron.schedule(
   'cleanup-idle-games',
   '0 3 * * *',   -- daily at 03:00 UTC
   $cron$
-    SELECT private.cleanup_idle_games();
+    SELECT private.cron_cleanup_idle_games();
   $cron$
 );
 
@@ -38,6 +36,6 @@ SELECT cron.schedule(
   'cleanup-stale-anon-users',
   '30 3 * * *',   -- daily at 03:30 UTC, after idle-game cleanup
   $cron$
-    SELECT private.cleanup_stale_anonymous_users();
+    SELECT private.cron_cleanup_stale_guests();
   $cron$
 );

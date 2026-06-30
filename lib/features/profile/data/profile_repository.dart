@@ -70,7 +70,7 @@ class ProfileRepository {
   /// Throws on validation or uniqueness errors.
   Future<String> updateUsername(String newUsername) async {
     final response = await _client.rpc(
-      'update_username',
+      'app_update_username',
       params: {'new_username': newUsername},
     );
     return response as String;

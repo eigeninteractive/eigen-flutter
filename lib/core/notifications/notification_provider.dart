@@ -1,3 +1,4 @@
+import 'package:firebase_app_installations/firebase_app_installations.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -13,6 +14,7 @@ part 'notification_provider.g.dart';
 FirebaseNotificationService notificationService(Ref ref) =>
     FirebaseNotificationService(
       messaging: FirebaseMessaging.instance,
+      installations: FirebaseInstallations.instance,
       supabase: ref.watch(supabaseClientProvider),
       localNotifications: FlutterLocalNotificationsPlugin(),
       activeGameId: () {

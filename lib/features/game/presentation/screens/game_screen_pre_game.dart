@@ -238,17 +238,12 @@ class _AddBotDialogState extends ConsumerState<_AddBotDialog> {
   @override
   Widget build(BuildContext context) {
     final botsAsync = ref.watch(availableBotsProvider);
-    final seatableAsync = ref.watch(
-      seatableBotIdsProvider(configJson: jsonEncode(widget.config)),
-    );
 
     return AlertDialog(
       title: const Text('Add a bot'),
-      content: switch ((botsAsync, seatableAsync)) {
-        (AsyncError(:final error), _) ||
-        (_, AsyncError(:final error)) => Text(humanize(error)),
-        (AsyncData(value: final bots), AsyncData(value: final seatable)) =>
-          _picker(bots, seatable),
+      content: switch (botsAsync) {
+        AsyncError(:final error) => Text(humanize(error)),
+        AsyncData(value: final bots) => _picker(bots),
         _ => const SizedBox(
           height: 80,
           child: Center(child: CircularProgressIndicator()),
@@ -274,9 +269,10 @@ class _AddBotDialogState extends ConsumerState<_AddBotDialog> {
   }
 
   /// Server bots seatable into this game: server-only, schema-compatible, rated
-  /// guard, and in the server's seatable set for the game's fixed config
-  /// (game_bot_seatable). [_selectedBotId] defaults to the first available.
-  Widget _picker(List<BotInfo> bots, Set<String> seatable) {
+  /// guard, and accepted by the game's own botSeatable rule for the game's fixed
+  /// config (the Dart twin of the server's GameEngine.botSeatable, which enforces
+  /// it at seating). [_selectedBotId] defaults to the first available.
+  Widget _picker(List<BotInfo> bots) {
     final module = ref.read(currentGameModuleProvider);
     final usable = bots
         .where(
@@ -284,7 +280,7 @@ class _AddBotDialogState extends ConsumerState<_AddBotDialog> {
               !b.isLocal &&
               b.schemaVersion <= module.schemaVersion &&
               (!widget.rated || b.ratedEligible) &&
-              seatable.contains(b.id),
+              module.botSeatable(widget.config, b.config),
         )
         .toList();
     if (usable.isEmpty) {

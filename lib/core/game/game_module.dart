@@ -7,6 +7,7 @@ import 'package:eigen_engine/core/game/game_outcome.dart';
 import 'package:eigen_engine/core/game/game_status.dart';
 import 'package:eigen_engine/core/game/players_context.dart';
 import 'package:eigen_engine/core/game/timing_context.dart';
+import 'package:eigen_engine/features/game/data/models/game.dart' show GameAccess;
 
 /// Everything [GameModule.buildContent] needs, bundled into one object.
 ///
@@ -108,7 +109,7 @@ abstract class GameModule {
   ///
   /// Override when valid player counts depend on a config choice made at
   /// creation time (e.g. a game supporting 4 or 6 players lets the host pick
-  /// upfront, then sets min = max = chosen count so [join_game] flips to
+  /// upfront, then sets min = max = chosen count so [app_join_game] flips to
   /// `ready` at exactly the right threshold).
   ///
   /// The default returns [creationSpec.minPlayers] and [creationSpec.maxPlayers].
@@ -159,10 +160,36 @@ abstract class GameModule {
   /// This is the *entire* bot contract surface: a non-empty list is what
   /// "supports local bots" means. Empty by default — adding bots is never
   /// required. Server bots need nothing here (they are deployment data,
-  /// discovered at runtime via `get_bots`). Whether solo play is offered, and
+  /// discovered at runtime via `app_bots`). Whether solo play is offered, and
   /// with which opponents, is **derived** from this plus the registered bots —
   /// never declared separately.
   List<LocalBot> get localBots => const [];
+
+  /// The rating pool a game with these settings would fall into, or `null` if it
+  /// is unrated (casual). Drives the create dialog: the Rated toggle is shown only
+  /// when this returns non-null. **Display only** — the server recomputes the
+  /// authoritative pool (the TS `GameEngine.ratingPool` twin) at creation and a
+  /// guest is always forced unrated, so a wrong value here only affects the UI,
+  /// never the stored rating. Keep this in sync with the TS twin.
+  String? ratingPool({
+    required GameAccess access,
+    int? turnSeconds,
+    int? budgetSeconds,
+    int? incrementSeconds,
+    required int minPlayers,
+    required int maxPlayers,
+    required Map<String, dynamic> config,
+  });
+
+  /// Whether a bot whose declared capabilities are [botConfig] can play a game
+  /// with [gameConfig]. Used to filter the bot pickers locally (no network call).
+  /// **UX only** — the server enforces the same rule (the TS `GameEngine.botSeatable`
+  /// twin) before seating. Both configs are opaque, game-owned JSON. Keep this in
+  /// sync with the TS twin.
+  bool botSeatable(
+    Map<String, dynamic> gameConfig,
+    Map<String, dynamic> botConfig,
+  );
 }
 
 /// Thrown when a game's `games.schema_version` exceeds the running build's

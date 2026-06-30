@@ -34,7 +34,7 @@ CREATE TABLE public.games (
   -- Minimum players required to transition the game to 'ready' status.
   -- Game-specific — no default; create_game requires it from the game module.
   min_players INT NOT NULL,
-  -- Maximum players allowed to join. join_game rejects once full. Game-specific
+  -- Maximum players allowed to join. app_join_game rejects once full. Game-specific
   -- — no default.
   max_players INT NOT NULL,
   config JSONB NOT NULL DEFAULT '{}'::jsonb,

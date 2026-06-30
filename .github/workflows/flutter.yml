@@ -1,4 +1,4 @@
-name: CI
+name: Flutter
 
 on:
   pull_request:
@@ -6,9 +6,11 @@ on:
   push:
     branches: [main]
 
-# Validates the engine package in isolation so `main` stays green for the apps
-# that depend on it. No secrets needed — the engine reads no Env/Firebase/Supabase
-# config itself (apps inject runtime config via EngineConfig).
+# Validates the Flutter/Dart engine package in isolation so `main` stays green for
+# the apps that depend on it. No secrets needed — the engine reads no
+# Env/Firebase/Supabase config itself (apps inject runtime config via
+# EngineConfig). The Supabase backend (edge functions, DB types) is validated
+# separately in supabase.yml.
 
 jobs:
   analyze:

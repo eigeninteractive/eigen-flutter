@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 
+import 'package:firebase_app_installations/firebase_app_installations.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -56,17 +57,20 @@ enum _NotificationCategory {
 class FirebaseNotificationService {
   FirebaseNotificationService({
     required FirebaseMessaging messaging,
+    required FirebaseInstallations installations,
     required SupabaseClient supabase,
     required FlutterLocalNotificationsPlugin localNotifications,
     required String? Function() activeGameId,
     String? vapidKey,
   }) : _messaging = messaging,
+       _installations = installations,
        _supabase = supabase,
        _localNotifications = localNotifications,
        _activeGameId = activeGameId,
        _vapidKey = vapidKey;
 
   final FirebaseMessaging _messaging;
+  final FirebaseInstallations _installations;
   final SupabaseClient _supabase;
   final FlutterLocalNotificationsPlugin _localNotifications;
   final String? Function() _activeGameId;
@@ -76,6 +80,10 @@ class FirebaseNotificationService {
 
   final StreamController<String> _nav = StreamController<String>.broadcast();
   bool _initialized = false;
+
+  /// SharedPreferences key holding the last-registered `userId:fid`, used to
+  /// skip redundant upserts on app start.
+  static const _registeredKey = 'notifications_registered_installation';
 
   Stream<String> get navigationStream => _nav.stream;
 
@@ -120,16 +128,23 @@ class FirebaseNotificationService {
       await _messaging.requestPermission(alert: true, badge: true, sound: true);
     }
 
-    final token = await _messaging.getToken(
-      vapidKey: kIsWeb ? _vapidKey : null,
-    );
-    if (token != null) await _upsertToken(token);
-    _messaging.onTokenRefresh.listen((t) async {
+    // FCM v1 targets the Firebase Installation ID (FID), not the registration
+    // token. We still call getToken() to force this install to register with
+    // FCM — a FID only resolves to a live registration once the device has one —
+    // but its result is no longer stored. On web the token drives service-worker
+    // registration, so the vapidKey call is required there regardless.
+    await _messaging.getToken(vapidKey: kIsWeb ? _vapidKey : null);
+
+    // The FID→user row is written by [registerInstallation], driven by auth
+    // events (sign-in), not here: the FID stream is user-agnostic and fires at
+    // FID birth, before any user is signed in. The FID rarely changes, but when
+    // it does we re-register the current user (a no-op when signed out).
+    _installations.onIdChange.listen((_) async {
       try {
-        await _upsertToken(t);
+        await _register();
       } catch (e, stack) {
         developer.log(
-          'Token refresh upsert failed',
+          'Installation id change registration failed',
           name: 'notifications',
           error: e,
           stackTrace: stack,
@@ -144,20 +159,47 @@ class FirebaseNotificationService {
     if (initial != null) _handleTap(initial);
   }
 
-  /// Deletes the current device token on sign-out so this install stops
-  /// receiving notifications immediately. Errors are logged but never thrown —
-  /// sign-out must succeed regardless of token cleanup status.
-  Future<void> deleteCurrentToken() async {
+  /// Registers the currently signed-in user on this install so the server can
+  /// target it. Driven by auth state (sign-in / restored session), because the
+  /// row maps a *user* to this device's FID and the FID stream knows nothing
+  /// about who is logged in. A no-op when signed out or when the current
+  /// (user, FID) pair is already registered (tracked in [SharedPreferences]),
+  /// so a returning user writes nothing. Errors are logged, never thrown.
+  Future<void> registerInstallation() async {
     try {
-      final token = await _messaging.getToken(
-        vapidKey: kIsWeb ? _vapidKey : null,
-      );
-      if (token == null) return;
-      await _supabase.rpc('delete_device_token', params: {'p_token': token});
-      await _messaging.deleteToken();
+      await _register();
     } catch (e, stack) {
       developer.log(
-        'Failed to delete device token on sign-out',
+        'Installation registration failed',
+        name: 'notifications',
+        error: e,
+        stackTrace: stack,
+      );
+    }
+  }
+
+  /// Removes this install's notification registration on sign-out so the server
+  /// stops targeting it immediately. Errors are logged but never thrown —
+  /// sign-out must succeed regardless of cleanup status.
+  ///
+  /// Deletes only the DB row; it deliberately leaves the FCM registration and
+  /// the Firebase installation intact. Dropping the FCM token here would not be
+  /// re-established until the next process start (registration runs once in
+  /// [initialize]), breaking same-session re-sign-in; and deleting the
+  /// installation would reset Crashlytics / Remote Config / A&B identity. The
+  /// row delete alone stops the server targeting this user on this device.
+  Future<void> deleteCurrentInstallation() async {
+    try {
+      final fid = await _installations.getId();
+      await _supabase.rpc(
+        'app_delete_device_installation',
+        params: {'p_fid': fid},
+      );
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_registeredKey);
+    } catch (e, stack) {
+      developer.log(
+        'Failed to delete device installation on sign-out',
         name: 'notifications',
         error: e,
         stackTrace: stack,
@@ -184,7 +226,23 @@ class FirebaseNotificationService {
     await android?.createNotificationChannel(_socialChannel);
   }
 
-  Future<void> _upsertToken(String token) async {
+  /// Upserts the `(current user, FID)` row, skipping the write when that exact
+  /// pair is already the last one registered on this install. The guard makes a
+  /// returning user's app start a no-op rather than a redundant write; a new
+  /// sign-in (user changes) or a FID rotation (FID changes) both miss the guard
+  /// and re-register.
+  Future<void> _register() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+    final fid = await _installations.getId();
+    final prefs = await SharedPreferences.getInstance();
+    final registered = '$userId:$fid';
+    if (prefs.getString(_registeredKey) == registered) return;
+    await _upsertInstallation(fid);
+    await prefs.setString(_registeredKey, registered);
+  }
+
+  Future<void> _upsertInstallation(String fid) async {
     final platform = kIsWeb
         ? 'web'
         : switch (defaultTargetPlatform) {
@@ -195,8 +253,8 @@ class FirebaseNotificationService {
             ),
           };
     await _supabase.rpc(
-      'upsert_device_token',
-      params: {'p_token': token, 'p_platform': platform},
+      'app_upsert_device_installation',
+      params: {'p_fid': fid, 'p_platform': platform},
     );
   }
 

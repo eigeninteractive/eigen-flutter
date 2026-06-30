@@ -12,7 +12,7 @@ part 'observation.g.dart';
 ///
 /// Exactly one of [userId] / [botId] is set: a human's own row carries [userId]
 /// (and RLS hides everyone else's), while a bot seat's row carries [botId] and is
-/// returned only via `get_local_bot_observation` for the sole human of a solo game.
+/// returned only via `app_local_bot_observation` for the sole human of a solo game.
 @freezed
 abstract class Observation with _$Observation {
   const factory Observation({

@@ -107,7 +107,7 @@ CREATE TRIGGER update_user_profiles_updated_at
 -- display_name is non-null for both branches:
 --   humans: user_profiles.display_name NOT NULL (defaulted to username on signup)
 --   bots:   bots.display_name NOT NULL
-CREATE OR REPLACE FUNCTION public.get_players(p_ids UUID[])
+CREATE OR REPLACE FUNCTION public.app_players(p_ids UUID[])
 RETURNS TABLE(id UUID, username TEXT, display_name TEXT, avatar_url TEXT)
 LANGUAGE sql
 STABLE
@@ -124,14 +124,13 @@ AS $$
   WHERE b.id = ANY(p_ids);
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.get_players(UUID[]) FROM PUBLIC, anon;
-GRANT  EXECUTE ON FUNCTION public.get_players(UUID[]) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.app_players(UUID[]) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.app_players(UUID[]) TO authenticated;
 
 -- ============================================
 -- Relationships table (Friends)
 -- ============================================
-CREATE TYPE public.relationship_status AS ENUM ('pending', 'accepted', 'blocked');
-
+-- relationship_status enum is created in the foundation migration.
 CREATE TABLE public.relationships (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id_1 UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,

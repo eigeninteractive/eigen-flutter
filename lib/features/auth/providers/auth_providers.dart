@@ -140,7 +140,7 @@ class AuthController extends _$AuthController {
         // resulting signedIn event re-identifies and re-tags account_type via
         // app_startup; no guestUpgraded event — the guest's data was not kept.
         if (guestId != null) await deleteUserData(ref, guestId);
-        await ref.read(notificationServiceProvider).deleteCurrentToken();
+        await ref.read(notificationServiceProvider).deleteCurrentInstallation();
         await authService.switchToExistingGoogleAccount();
         state = const AsyncData(null);
         return UpgradeOutcome.switchedToExisting;
@@ -169,10 +169,10 @@ class AuthController extends _$AuthController {
     state = await AsyncValue.guard(() async {
       final userId = ref.read(currentUserProvider)?.id;
       if (userId != null) await deleteUserData(ref, userId);
-      // Delete the FCM token before clearing the session so the server stops
-      // delivering notifications to this install immediately. Errors are caught
-      // inside deleteCurrentToken and never block sign-out.
-      await ref.read(notificationServiceProvider).deleteCurrentToken();
+      // Remove this install's notification registration before clearing the
+      // session so the server stops delivering notifications immediately. Errors
+      // are caught inside deleteCurrentInstallation and never block sign-out.
+      await ref.read(notificationServiceProvider).deleteCurrentInstallation();
       await ref.read(authServiceProvider).signOut();
     });
   }

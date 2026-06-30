@@ -38,11 +38,7 @@ CREATE POLICY "game_outcomes_select" ON public.game_outcomes
         AND (
           g.access = 'public'
           OR g.created_by = (SELECT auth.uid())
-          OR EXISTS (
-            SELECT 1 FROM public.participants p
-            WHERE p.game_id = game_id
-              AND p.user_id = (SELECT auth.uid())
-          )
+          OR private.is_game_participant(game_id, (SELECT auth.uid()))
         )
     )
   );

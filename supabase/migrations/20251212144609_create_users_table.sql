@@ -1,17 +1,5 @@
--- Create private schema (not exposed via Supabase API)
-CREATE SCHEMA IF NOT EXISTS private;
-
--- ============================================
--- Shared enum types
--- ============================================
-CREATE TYPE game_status AS ENUM ('waiting', 'ready', 'active', 'finished', 'aborted');
-CREATE TYPE game_access AS ENUM ('public', 'private', 'friends');
-CREATE TYPE action_type AS ENUM ('user', 'bot', 'system');
-CREATE TYPE game_result AS ENUM ('win', 'loss', 'draw', 'eliminated');
--- Infra-defined system event subtypes. Game implementors handle these in
--- game_handle_system_action but never add new values — only infra does.
-CREATE TYPE system_action_type AS ENUM ('timeout', 'forfeit', 'auto_forfeit');
-CREATE TYPE participant_type AS ENUM ('human', 'bot');
+-- The private schema, extensions, and shared enum types are created in the
+-- foundation migration (20251212144600_foundation.sql), which runs first.
 
 -- Users table (system/immutable)
 CREATE TABLE public.users (
@@ -53,8 +41,9 @@ CREATE TABLE public.bots (
   is_local BOOLEAN NOT NULL,
   -- Where to wake a server-side bot when it is its turn. NULL for local bots.
   -- A server bot authenticates both its wake (incoming) and its action (outgoing)
-  -- with a single per-bot HMAC secret in Vault ('bot_secret_<id>'); no key material
-  -- is stored on this row.
+  -- with a per-bot HMAC key the edge function derives on demand as
+  -- HMAC(BOT_SIGNING_SECRET, bot_id) (see _engine/bot_auth.ts); no key material is
+  -- stored on this row or in Vault.
   webhook_url TEXT,
   -- Whether this bot may participate in rated games. A non-eligible bot can never
   -- be seated into a rated game (see seat_server_bot). Defaults false so
@@ -65,9 +54,12 @@ CREATE TABLE public.bots (
   -- without code changes (distinct rows share a local class or server webhook_url
   -- but differ by config); (2) capability declaration — what game configs the bot
   -- supports (e.g. {"variants":["standard"]}), interpreted by the game's
-  -- the game_bot_seatable hook (pickers filter via seatable_bot_ids). Public read-only
-  -- reference data: get_bots exposes it for BOTH local and server bots, so never
-  -- put secrets here (a server bot's wake/action secret lives in Vault). A local
+  -- botSeatable hook — in TypeScript on the server (GameEngine.botSeatable, the
+  -- seating authority) and its Dart twin (GameModule.botSeatable) for local picker
+  -- filtering. Public read-only
+  -- reference data: app_bots exposes it for BOTH local and server bots, so never
+  -- put secrets here (a server bot's wake/action key is derived from
+  -- BOT_SIGNING_SECRET, never stored). A local
   -- bot's config is handed to GameBot.chooseAction; a server bot's also travels in
   -- the wake payload. Empty by default.
   config JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -83,8 +75,8 @@ CREATE TABLE public.bots (
 ALTER TABLE public.bots ENABLE ROW LEVEL SECURITY;
 
 -- No direct table SELECT for clients: webhook_url is operational and need not be
--- exposed. In-game identity resolves through get_players() (SECURITY DEFINER,
--- bypasses RLS); the "Play vs AI" / "Add bot" pickers use the get_bots() RPC (safe
+-- exposed. In-game identity resolves through app_players() (SECURITY DEFINER,
+-- bypasses RLS); the "Play vs AI" / "Add bot" pickers use the app_bots() RPC (safe
 -- columns only).
 
 -- Bot discovery for the "Play vs AI" / "Add bot" pickers. Returns only display-
@@ -92,7 +84,7 @@ ALTER TABLE public.bots ENABLE ROW LEVEL SECURITY;
 -- deployment engine, so the whole catalog belongs to this game. is_local lets the
 -- client decide whether it can drive the bot itself (local) or must rely on the
 -- server wake (server); for a local bot, username keys the GameBot implementation.
-CREATE OR REPLACE FUNCTION public.get_bots()
+CREATE OR REPLACE FUNCTION public.app_bots()
 RETURNS TABLE(
   id             UUID,
   username       TEXT,
@@ -109,21 +101,21 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
          b.is_local,
          b.rated_eligible,
          -- Exposed for both local and server bots: persona tuning + capability
-         -- declaration (read server-side by game_bot_seatable). Never secret.
+         -- declaration (read by GameEngine/GameModule.botSeatable). Never secret.
          b.config
   FROM public.bots b
   -- Deterministic order so the pickers' "first available" default is stable.
   ORDER BY b.display_name;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.get_bots() FROM PUBLIC, anon;
-GRANT  EXECUTE ON FUNCTION public.get_bots() TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.app_bots() FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.app_bots() TO authenticated;
 
 -- Enable RLS
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 
 -- Only the owner can read their own row.
--- Cross-user reads go through get_players() (defined in the
+-- Cross-user reads go through app_players() (defined in the
 -- user_profiles migration, which depends on this table).
 CREATE POLICY "users_select_self" ON public.users
   FOR SELECT
@@ -165,7 +157,7 @@ $$;
 
 -- Function to handle new user signup. For a normal signup, derives the username
 -- from the email prefix, sanitised to the same charset/length rules
--- update_username enforces (^[a-zA-Z0-9_.]{3,20}$). Anonymous (guest) users have
+-- app_update_username enforces (^[a-zA-Z0-9_.]{3,20}$). Anonymous (guest) users have
 -- no email, so they get a generated `player_NNNNN` handle instead. On collision,
 -- retries with a random suffix — a plain unique violation here would roll back
 -- the entire signup.
@@ -231,7 +223,7 @@ CREATE TRIGGER update_users_updated_at
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 -- RPC to update username with validation (SECURITY DEFINER)
-CREATE OR REPLACE FUNCTION public.update_username(new_username TEXT)
+CREATE OR REPLACE FUNCTION public.app_update_username(new_username TEXT)
 RETURNS TEXT AS $$
 DECLARE
   current_user_id UUID;
@@ -266,54 +258,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
-REVOKE EXECUTE ON FUNCTION public.update_username(text) FROM PUBLIC, anon;
-GRANT  EXECUTE ON FUNCTION public.update_username(text) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.app_update_username(text) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.app_update_username(text) TO authenticated;
 
 -- ============================================
 -- Search optimizations
 -- ============================================
-
-CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA extensions;
+-- pg_trgm is created in the foundation migration.
 CREATE INDEX IF NOT EXISTS users_username_trgm_idx ON public.users USING gist (username extensions.gist_trgm_ops);
 
--- ============================================
--- Account deletion
--- ============================================
--- Deletes the caller's row from auth.users. Cascade behaviour:
---
---   Via public.users (ON DELETE CASCADE from auth.users):
---     • user_profiles, relationships, player_ratings, rating_history,
---       observations — deleted automatically.
---     • participants.user_id, game_outcomes.user_id, games.created_by,
---       actions.user_id — SET NULL; game history is preserved but anonymised.
---
---   Direct from auth.users (ON DELETE CASCADE):
---     • device_tokens — deleted automatically.
---
--- Avatar file in the storage bucket is deleted client-side before this RPC
--- is called. If the client fails mid-flow the file becomes orphaned (no
--- user_profiles row will reference it, so it is invisible to other users).
---
--- The graceful teardown (cancel created lobbies, leave joined lobbies, forfeit
--- active games) then the final delete lives in private.purge_user (defined in
--- the game-infra migration), shared with cleanup_stale_anonymous_users.
-CREATE OR REPLACE FUNCTION public.delete_account()
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-  v_user_id UUID;
-BEGIN
-  v_user_id := auth.uid();
-  IF v_user_id IS NULL THEN
-    RAISE EXCEPTION 'Not authenticated';
-  END IF;
-
-  PERFORM private.purge_user(v_user_id);
-END;
-$$;
-
-REVOKE EXECUTE ON FUNCTION public.delete_account() FROM PUBLIC, anon;
-GRANT  EXECUTE ON FUNCTION public.delete_account() TO authenticated;

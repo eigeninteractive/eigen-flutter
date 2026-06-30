@@ -22,7 +22,7 @@ CREATE UNIQUE INDEX idx_participants_unique
   ON public.participants(game_id, user_id)
   WHERE user_id IS NOT NULL;
 
--- Unique constraint: one participant per seat per game (covers race condition in join_game)
+-- Unique constraint: one participant per seat per game (covers race condition in app_join_game)
 CREATE UNIQUE INDEX idx_participants_player_index
   ON public.participants(game_id, player_index);
 

@@ -39,7 +39,7 @@ import 'package:eigen_engine/core/game/base_engine.dart';
 ///   in the result — never a global RNG — so a re-run is reproducible.
 /// - The observation must be a full-enough seat snapshot to advance an
 ///   accumulated belief from any earlier committed state in one step (true for
-///   this engine's seat-view observations — `get_local_bot_observation`), since a
+///   this engine's seat-view observations — `app_local_bot_observation`), since a
 ///   rejected/superseded action means the next call resumes from the last
 ///   *accepted* state against a newer observation.
 ///

@@ -118,10 +118,11 @@ class AuthService {
 
   /// Permanently deletes the current user's account.
   ///
-  /// Removes the avatar from storage (best-effort), then calls the
-  /// `delete_account` RPC which deletes the auth row and cascades to all
-  /// application data. Signs out locally so the auth state stream transitions
-  /// to signed-out and the router navigates to the login screen.
+  /// Removes the avatar from storage (best-effort), then invokes the
+  /// `game/delete-account` edge-function route, which forfeits the caller's
+  /// active games before deleting the auth row and cascading to all application
+  /// data. Signs out locally so the auth state stream transitions to signed-out
+  /// and the router navigates to the login screen.
   Future<void> deleteAccount() async {
     try {
       final userId = currentUser?.id;
@@ -137,7 +138,10 @@ class AuthService {
         }
       }
 
-      await _supabase.rpc('delete_account');
+      // Account teardown moved to the game function: it forfeits the
+      // caller's active games via the TS gameEngine, then purges (cancel/leave +
+      // delete the auth user).
+      await _supabase.functions.invoke('game/delete-account');
 
       // Clear the local session. The auth row is already gone so the server-
       // side invalidation call may fail — swallow any error here so a network

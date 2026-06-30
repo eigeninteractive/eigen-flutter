@@ -11,7 +11,7 @@ enum OutcomeResult { win, loss, draw, eliminated, unknown }
 
 /// One participant's outcome from the [game_outcomes] table.
 ///
-/// Written server-side by [submit_action] when the game ends. One row per
+/// Written server-side by `engine_commit_action` when the game ends. One row per
 /// participant per completed game. Supports multi-winner games (team wins),
 /// score-based ELO, and placement-based ELO for N-player games.
 @freezed

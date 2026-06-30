@@ -26,7 +26,7 @@ class GameFrame {
   final List<int> pendingPlayers;
 
   /// Mirrored from [game_states.version] via the observation row. Passed back
-  /// to [submit_action] as the optimistic lock key.
+  /// to `engine_commit_action` as the optimistic lock key.
   final int version;
 
   /// Timing metadata for the current turn, derived from the observation row.

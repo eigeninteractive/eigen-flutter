@@ -2,8 +2,8 @@ import 'dart:math' as math;
 
 /// Client-side timing constants for the deadline/grace system.
 ///
-/// The server is the sole authority on deadlines (see `submit_action`,
-/// `expire_turn`, and `private.deadline_grace_ms()` in the SQL migrations).
+/// The server is the sole authority on deadlines (see `engine_commit_action`,
+/// `cron_expire_turns`, and `private.deadline_grace_ms()` in the SQL migrations).
 /// These constants only shape what the client *displays* and *when it nudges*
 /// the server — they can never cause a wrong rejection or timeout on their own.
 
@@ -20,11 +20,12 @@ const Duration kServerDeadlineGrace = Duration(milliseconds: 750);
 const Duration kExpiryTriggerEpsilon = Duration(milliseconds: 250);
 
 /// Delay past the true deadline before the client nudges the server to process
-/// a timeout (`trigger_turn_expiry`).
+/// a timeout (via `GameRepository.triggerTurnExpiry`, the `expire` route).
 ///
 /// Derived as [kServerDeadlineGrace] + [kExpiryTriggerEpsilon] so it always
-/// sits beyond the server's abstain window — otherwise `expire_turn` no-ops and
-/// the timeout slips to the next (coarse, every-minute) pg_cron sweep. Only
+/// sits beyond the server's abstain window — otherwise `engine_commit_action`
+/// (timeout mode) no-ops and the timeout slips to the next (coarse,
+/// every-minute) `cron_expire_turns` sweep. Only
 /// affects the AFK/timeout path; a player who acts is never delayed by it.
 final Duration kExpiryTriggerDelay =
     kServerDeadlineGrace + kExpiryTriggerEpsilon;

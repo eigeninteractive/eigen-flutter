@@ -1,5 +1,21 @@
 # Eigen Engine — System Design
 
+> **Architecture at a glance.** The game's **rules are TypeScript** — a
+> `GameEngine` (six methods, §4) the engine's **edge function** invokes at its
+> commit chokepoint; the client carries a Dart `GameModule` (rendering, action
+> validation, local twins of `ratingPool`/`botSeatable`) but never decides rules.
+> There are **four edge functions** (`game`, `social`, `internal`, `bot`, §21).
+> Every state-changing operation goes through an edge-function route that runs the
+> rules and commits through a **gated, service-role `engine_*` SQL RPC** — a thin
+> atomic writer that keeps only the lock/transaction work, with policy (validation,
+> guest gating from the JWT, the rating decision) in TypeScript and integrity
+> backstopped by `games` CHECK/`UNIQUE`/FK constraints (§5). Ratings (OpenSkill)
+> are computed in the EF and written **in the finishing transaction** (§8); FCM
+> pushes are emitted by the EF post-commit and from the `social` routes (§20);
+> server-bot auth is a derived `HMAC(BOT_SIGNING_SECRET, bot_id)` (§26); the PRNG
+> is `_engine/prng.ts`. A residual tier of **client-direct** RPCs (lobby joins,
+> discovery, search — §5) the Dart client still calls over PostgREST under RLS.
+
 ## 1. Vision & Architecture
 
 The goal is to build a **reusable "whitelabel" game engine**. Each app instance
@@ -10,13 +26,36 @@ underlying `core` codebase is identical.
 
 - **Core Engine (The "Framework")**: Auth, user management, game networking,
   rating system, settings. Owns the `users`, `games`, `game_states`,
-  `observations`, `participants`, `actions`, and `game_outcomes` tables plus all
-  infra RPC functions.
+  `observations`, `participants`, `actions`, and `game_outcomes` tables, the
+  gated SQL RPCs, and the **edge function** that orchestrates every game
+  transition.
 - **Game Module (The "Implementation")**: The specific rules, board rendering,
-  and action validation for this specific app. Communicates with infra through
-  six SQL hooks (`game_initial_state`, `game_apply_action`,
-  `game_compute_observation`, plus optional `game_rating_pool`,
-  `game_handle_system_action`, and `game_bot_seatable`) and one Dart `GameModule`.
+  and action validation for this specific app. It supplies the rules as a
+  **TypeScript `GameEngine`** — six methods (`initialState`, `applyAction`,
+  `computeObservation`, plus optional `ratingPool`, `handleEvent`,
+  `botSeatable`) the edge function invokes — and a **Dart `GameModule`** for the
+  client (rendering, action validation, and local twins of `ratingPool` /
+  `botSeatable`). The pure game logic is platform-shared TypeScript run on the
+  server; the client never decides rules.
+
+### Design target — game variety
+
+The contract above is deliberately shaped to span a wide range of turn-based
+games, each stressing a different generality dimension:
+
+- **Chess** — classic single-piece-move board game (the baseline).
+- **Dama** — actions with **multiple steps** (a chained capture is one action).
+- **Hive** — **boardless**, hexagonal-grid placement with no fixed coordinates.
+- **Literature (Canadian Fish)** — **hidden-information** team play (see §6).
+- **Poker** / **dice-roll games** — **chance** and hidden state per player.
+- **Set** — simultaneous pattern-spotting over a shared tableau.
+- **RPS** — **simultaneous** moves rather than strictly alternating turns.
+- **Exploding Kittens** — deck/hand state with reactive, event-driven effects.
+
+These are design inputs, not a roadmap: the opaque-JSONB state, the
+`computeObservation` per-seat hidden-information slice, and the
+`applyAction`/`handleEvent` split exist so games this varied can plug in without
+changing the framework.
 
 ---
 
@@ -65,20 +104,21 @@ lifecycle.
 - `min_players` (int, default 2) — minimum participants required to transition
   the game to `ready` status. The host can start once this threshold is met.
 - `max_players` (int, default 2) — maximum participants allowed to join.
-  `join_game` rejects once this is reached.
+  `app_join_game` rejects once this is reached.
 - `config` (jsonb) — game-specific configuration passed through to the three
   game hooks. Infra never reads this.
 - `rated` (boolean, default false) — true if this game affects player ratings.
-  Set by `create_game` server-side via `private.game_rating_pool()`; the client
-  only sends a preference boolean.
+  The client sends a concrete `rated` assertion; the `game/create` route
+  recomputes eligibility (`ratingPool` non-null and a non-guest caller) and
+  **validates** it, rejecting a mismatch rather than coercing. See §5, §8.
 - `rating_pool` (text, nullable) — the pool this game's results will be counted
   in (e.g. `'rapid'`, `'daily'`). Always `NULL` when `rated = false`. Derived by
-  the server; clients cannot forge it.
+  the `ratingPool` hook server-side; clients cannot forge it.
 - `short_code` (varchar(6), unique, not null) — human-readable join code
-  generated at game creation. Used by `join_game_by_code` for invite-by-code
+  generated at game creation. Used by `app_join_game_by_code` for invite-by-code
   joining. Generated via `upper(substring(md5(random()::text) from 1 for 6))`
-  with a retry loop on unique violations. Always set — `create_game` loops until
-  a unique code is found.
+  with a retry loop on unique violations. Always set — `engine_create_game` loops
+  until a unique code is found.
 - `created_at`, `finished_at`, `updated_at`
 - **Constraints**: `turn_seconds IS NULL OR budget_seconds IS NULL` (timing mode
   exclusive); `increment_seconds IS NULL OR budget_seconds IS NOT NULL`
@@ -115,7 +155,7 @@ A scalar winner column can't express team wins (Literature), multiple placements
 
 One row is INSERTed per state transition; rows are never UPDATEd. Current state
 = `ORDER BY version DESC LIMIT 1`. The full history enables zero-compute replay
-via `get_replay` — no action log re-execution needed.
+via the `game/replay` route — no action log re-execution needed.
 
 - `game_id` (uuid, fk to games, composite PK with `version`)
 - `version` (int, composite PK) — monotonically incrementing counter starting at
@@ -125,20 +165,20 @@ via `get_replay` — no action log re-execution needed.
   carry whose-turn or winner info — those are first-class infra columns.
 - `pending_players` (int[]) — 0-based indices allowed to act now. Singleton for
   sequential games; full set for any-player games; empty when no one may act
-  (game over / paused). Stored here (not only in observations) so `get_replay`
-  can call `game_compute_observation` for each historical row without re-running
+  (game over / paused). Stored here (not only in observations) so replay
+  can call `computeObservation` for each historical row without re-running
   game logic.
 - `rng_seed` (bigint) — xorshift64 PRNG seed. Advanced inside
-  `game_apply_action`. Never exposed to clients. Must be non-zero.
+  `applyAction`. Never exposed to clients. Must be non-zero.
 - `turn_deadline` (timestamptz, nullable) — absolute deadline for the current
   pending player(s). Set by infra after every action using the timing precedence
-  chain (see §3). Null for untimed games. Used by `submit_action` (expiry guard)
-  and `expire_turn` (cron).
+  chain (see §3). Null for untimed games. Used by the commit RPC (expiry guard)
+  and the `internal/expire` sweep (cron).
 - `player_times` (bigint[], nullable) — remaining bank in **milliseconds** per
   player, 1-indexed (`player_times[player_index + 1]`). Null for non-budget
   games. Infra-owned: updated on every bank-consuming action.
 - `turn_started_at` (timestamptz, nullable) — timestamp when the current turn
-  began, set to transaction time after every action. Used by `submit_action` to
+  began, set to transaction time after every action. Used by the commit RPC to
   compute elapsed time for bank deduction. Null for untimed games.
 - `created_at` — when this version was committed. Useful for audit and replay
   timeline.
@@ -156,13 +196,13 @@ via `get_replay` — no action log re-execution needed.
 - `user_id` (uuid, nullable fk to users, ON DELETE CASCADE) — set for a human seat
 - `bot_id` (uuid, nullable fk to bots, ON DELETE CASCADE) — set for a bot seat
 - `data` (jsonb) — game-specific state slice computed by
-  `game_compute_observation`. Perfect-info games see the full state; hidden-info
+  `computeObservation`. Perfect-info games see the full state; hidden-info
   games see only their permitted slice.
 - `pending_players` (int[]) — per-player pending array. For perfect-info games
   mirrors `game_states.pending_players`; hidden-info games may narrow it (e.g.
   Exploding Kittens Nope window).
 - `version` (int) — mirror of `game_states.version`. Clients pass this back as
-  the optimistic lock key on `submit_action`.
+  the optimistic lock key on `game/action`.
 - `turn_deadline` (timestamptz, nullable) — mirror of
   `game_states.turn_deadline`. Clients use this to display countdown timers
   without a separate query.
@@ -199,9 +239,9 @@ via `get_replay` — no action log re-execution needed.
   `(game_id, player_index)`
 - **Identity constraint**: `NOT (user_id IS NOT NULL AND bot_id IS NOT NULL)` —
   at most one identity is set. Both may be NULL after account deletion on a
-  finished game. `delete_account` explicitly removes the participant row for
-  waiting/ready games (via `cancel_game` / `leave_game`) so this null state only
-  ever occurs on finished games.
+  finished game. The `game/delete-account` route explicitly removes the
+  participant row for waiting/ready games (cancel/leave inside `engine_purge_user`)
+  so this null state only ever occurs on finished games.
 
 #### `actions` (Audit Log — Service Role Only)
 
@@ -213,20 +253,29 @@ via `get_replay` — no action log re-execution needed.
 - `bot_id` (uuid, nullable fk to bots) — set for bot actions; null for
   human/system actions
 - `type` (enum: `user`, `bot`, `system`)
-- **Constraint** `actions_identity_check`: `user` → `bot_id IS NULL` (user_id
-  may be null after deletion); `bot` → `bot_id NOT NULL, user_id NULL`; `system`
-  → at most one identity (forfeit carries the initiating player's id;
-  timeout/auto_forfeit carry neither)
+- **Identity model.** The identity columns (`user_id`, `bot_id`, `player_index`)
+  record **who performed the action and from which seat**. A `system` action has
+  no performer, so all three are NULL; what it *did* lives in `data` (the
+  `event_type`) and its *consequences* in the resulting state /
+  `game_outcomes`. A **voluntary resign is a `user` action** (the user performed
+  it); only an **engine-driven forfeit** (account deletion) is a `system` action,
+  logged with `data.type = 'auto_forfeit'`.
+- **Constraint** `actions_identity_check`: `user` → `bot_id IS NULL` (user_id may
+  be null after deletion); `bot` → `bot_id NOT NULL, user_id NULL`; `system` →
+  `user_id`, `bot_id`, **and `player_index` all NULL** (no performer).
 - `data` (jsonb)
-- `player_index` (int, nullable) — **denormalized seat index of the acting
-  player**, written at commit time from the participant row. Survives user
-  deletion. Used by `get_replay` to attribute each action to a seat without
-  joining `participants`. NULL only for anonymous system actions (timeout,
-  auto_forfeit) where no single player initiated the event; forfeits always
-  carry the forfeiting player's index.
+- `player_index` (int, nullable) — **denormalized seat of the performer**,
+  written at commit time from the participant row. Survives user deletion; lets
+  replay attribute an action to a seat without joining `participants`. Set for
+  user moves, bot moves, and a user resign; **NULL for every system action**
+  (timeout, engine-driven forfeit), which has no performer.
 - `version_after` (int, NOT NULL) — the `game_states.version` produced by this
-  action. Links each action to its resulting state snapshot;
-  `WHERE version_after = N` joins the action to the row it created.
+  action, a **composite FK** `(game_id, version_after) → game_states(game_id,
+  version)` with a **UNIQUE** on the same pair. Every action produces exactly one
+  new state (1:1); the only state without an action is the initial state
+  (`engine_commit_start`). The FK enforces referential integrity and pins the
+  write order (state row before its action); the UNIQUE makes it a *to-one* so
+  PostgREST embeds the producing action under its state for the replay read.
 - `created_at`
 
 #### `relationships` (Friends)
@@ -265,20 +314,20 @@ via `get_replay` — no action log re-execution needed.
   games.
 - `config` (jsonb, NOT NULL, default `'{}'`) — per-bot parameters; lets one
   implementation back many separately-rated personas (N:1), and declares which game
-  configs the bot supports (read server-side by the `game_bot_seatable` hook; the
-  pickers filter via the `seatable_bot_ids` RPC). **Public read-only reference data** — `get_bots` exposes
+  configs the bot supports (read server-side by the `botSeatable` hook; the
+  pickers filter client-side via the Dart `botSeatable` twin). **Public read-only reference data** — `app_bots` exposes
   it for both local and server bots; never put secrets here. The engine imposes no
   schema on it.
 - `created_at`
 - **CHECK** (`bot_transport_consistent`): local ⇒ no `webhook_url`;
   server ⇒ `webhook_url` present.
 - **RLS**: no direct client SELECT. In-game identity resolves via
-  `get_players()`; the pickers use the `get_bots()` RPC (display-safe columns
+  `app_players()`; the pickers use the `app_bots()` RPC (display-safe columns
   only — never `webhook_url`; `config` is exposed). Write/read
   of the full row is service role only.
-- **Per-bot HMAC secret** (server bots): a single symmetric secret lives in
-  **Vault** under `bot_secret_<bot_id>` — not on this row. It authenticates both
-  the wake (us→bot) and the action (bot→us). See §26.
+- **Per-bot HMAC key** (server bots): derived in the edge function as
+  `HMAC(BOT_SIGNING_SECRET, bot_id)` — no per-bot secret on this row or in Vault.
+  It authenticates both the wake (us→bot) and the action (bot→us). See §26.
 
 #### `player_ratings` (Per-Player Per-Pool OpenSkill Rating)
 
@@ -295,7 +344,7 @@ via `get_replay` — no action log re-execution needed.
 - **Unique indexes**: `(user_id, pool)` where `user_id IS NOT NULL`;
   `(bot_id, pool)` where `bot_id IS NOT NULL`
 - **RLS**: any authenticated user can read. Writes are service role only
-  (upserted by the `update-ratings` edge function).
+  (upserted in the finishing transaction by the commit RPC; see §8).
 
 Display rating formula — new player (mu=25, sigma=25/3 ≈ 8.33): display ≈ 0.
 Established player (mu=30, sigma=2): display ≈ 960.
@@ -335,15 +384,15 @@ Established player (mu=30, sigma=2): display ≈ 960.
 ### Views
 
 **`friends_view`** is the only view in the public schema (see below). The former
-`public_players` view has been replaced by the `get_players` RPC — see §7.
+`public_players` view has been replaced by the `app_players` RPC — see §7.
 
-### `get_players` RPC
+### `app_players` RPC
 
-**`public.get_players(p_ids uuid[])`** — unified identity lookup for both humans
+**`public.app_players(p_ids uuid[])`** — unified identity lookup for both humans
 and bots:
 
 ```sql
-CREATE FUNCTION public.get_players(p_ids UUID[])
+CREATE FUNCTION public.app_players(p_ids UUID[])
 RETURNS TABLE(id UUID, username TEXT, display_name TEXT, avatar_url TEXT)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
 AS $$
@@ -356,8 +405,8 @@ AS $$
   WHERE b.id = ANY(p_ids);
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.get_players(UUID[]) FROM PUBLIC, anon;
-GRANT  EXECUTE ON FUNCTION public.get_players(UUID[]) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.app_players(UUID[]) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.app_players(UUID[]) TO authenticated;
 ```
 
 **Why a function, not a view?** The Supabase linter flags `SECURITY DEFINER`
@@ -405,7 +454,7 @@ Trigram indexes (`pg_trgm`) are enabled for fuzzy user search:
 - `user_profiles_display_name_trgm_idx` — GiST trigram index on
   `user_profiles.display_name`
 
-These power the `search_users` RPC's `ILIKE` queries efficiently.
+These power the `app_search_users` RPC's `ILIKE` queries efficiently.
 
 ---
 
@@ -439,8 +488,8 @@ infra-owned.
 
 ### Deadline Precedence Chain
 
-Applied in `submit_action`, `start_game`, and `expire_turn` after every state
-change:
+Applied in `engine_commit_action`, `engine_commit_start`, and the expire path
+after every state change:
 
 ```
 1. Game is over (outcome ≠ null)  →  deadline = NULL, turn_started_at = NULL
@@ -452,7 +501,8 @@ change:
 
 ### Bank Deduction (Budget Mode)
 
-On every `submit_action` where the hook did **not** return `turn_seconds`:
+On every commit (`engine_commit_action`) where the hook did **not** return
+`turn_seconds`:
 
 1. Compute `elapsed_ms = NOW() - turn_started_at` (transaction time — consistent
    within the call).
@@ -475,24 +525,39 @@ arrive after the deadline and be rejected — and then the timeout path
 forfeits/skips the player who actually acted on time.
 
 To prevent this, **every deadline comparison adds a fixed grace window** of
-`private.deadline_grace_ms()` (currently 750 ms), applied symmetrically in all
-three places a deadline is compared to `NOW()`:
+`private.deadline_grace_ms()` (currently 750 ms). The comparison is defined once,
+in `private.deadline_expired(deadline, now)`, and called from all three places a
+deadline is tested so the window can never drift between them:
 
-- `submit_action` — accepts an action while `turn_deadline + grace >= NOW()`.
-- `expire_turn` — abstains (returns without acting) while
-  `turn_deadline + grace >= NOW()`.
-- `expire_all_turns` (cron sweep) — only enqueues games where
-  `turn_deadline + grace < NOW()`.
+- `engine_commit_action` — accepts an action while `NOT deadline_expired` (i.e.
+  `turn_deadline + grace >= now`).
+- The expire commit (`internal/expire`) — abstains (returns without acting) while
+  `NOT deadline_expired`.
+- `cron_expire_turns` (cron sweep) — only enqueues games where `deadline_expired`.
 
-The symmetry is essential: grace in `submit_action` alone would still lose the
+The symmetry is essential: grace in the commit alone would still lose the
 race to the timeout path. With grace on all three, the timeout path stays
-dormant for exactly as long as `submit_action` stays lenient, so an
+dormant for exactly as long as the commit stays lenient, so an
 on-time-but-latent submit reliably wins the `FOR UPDATE` lock.
 
 **Budget mode fairness.** The grace forgives *acceptance*, not *time charged* —
 the elapsed bank deduction (floored at 0) still runs, so a player cannot gain
 free thinking time by exploiting the window. In per-action mode the grace is a
 genuine small extension, so it is kept small relative to typical `turn_seconds`.
+
+**Budget-mode flag-fall (accepted behaviour).** When a bank reaches 0 the
+deadline is `now`, so the grace lets a player overrun their bank by up to the
+grace window and still have that final move *accepted* (counted) rather than
+timed out. This is an intentional, irreducible consequence of arrival-time
+enforcement: with the server clock as the only trusted source, an honest move
+delayed in transit is indistinguishable from a genuine overrun, and a
+client-supplied submit timestamp cannot be trusted (it would be the obvious way
+to steal time). So forgiving transit latency necessarily forgives a bounded
+overrun. The leak is small and self-limiting — at most one move, and the floored
+deduction means no *future* time is gained — which is acceptable for casual play.
+A competitive/rated budget mode that needs absolute flag-fall would add a
+per-game opt-in that zeroes the acceptance grace once a bank is exhausted, while
+keeping full grace on every non-flag turn.
 
 #### Client Soft-Deadline Margin
 
@@ -516,17 +581,26 @@ are hardcoded to mirror `deadline_grace_ms()` — keep the two in sync.
 
 ### Timeout Handling
 
-`private.expire_turn(game_id)` is called by pg_cron for any game where
-`turn_deadline + grace < NOW()`. It:
+The pg_cron sweep `cron_expire_turns` selects any game where
+`turn_deadline + grace < NOW()` and `pg_net`-wakes the `internal/expire` route
+with the batch. For each game the EF:
 
-1. Acquires a `FOR UPDATE` lock and re-checks the deadline against the same
-   grace window (guards against a concurrent `submit_action`, which would win
-   the lock during the grace window).
-2. In budget mode, zeroes the timed-out player's bank
-   (`player_times[player_index + 1] := 0`).
-3. Calls `game_apply_action` with `{"type": "timeout"}` — the hook decides the
-   consequence (forfeit, skip, fold, etc.).
+1. Reads the state and runs `handleEvent({"type":"timeout"})` **once**.
+   Every pending seat shares the single deadline, so all of them timed out; the
+   hook resolves the whole set holistically (eliminate, skip, fold, or even a
+   draw) and returns one envelope.
+2. Commits that single **identity-less `system` transition** through
+   `engine_commit_action` (`p_mode = 'timeout'`), which acquires a `FOR UPDATE`
+   lock and re-checks expiry via `private.deadline_expired` against the same
+   grace window (guards against a concurrent commit that wins the lock during the
+   grace window — the commit abstains and leaves the turn live).
+3. In budget mode, zeroes **every** pending seat's bank
+   (`player_times[seat + 1] := 0`).
 4. Applies the same deadline precedence chain for the next turn.
+
+The action row carries no performer identity (`user_id`/`bot_id`/`player_index`
+all NULL); which seats were affected is recoverable from the `pending_players`
+diff. There is no per-seat batch — one timeout event is one state version.
 
 ### Budget Mode Requires Sequential Pending
 
@@ -536,16 +610,16 @@ spends deliberating before they commit. This only has meaning when players act
 one at a time. It does not have a clean meaning when multiple players are
 pending simultaneously, for two reasons:
 
-**Timeout cannot be partial.** `expire_turn` fires when the deadline passes
-(i.e. when the first player's bank runs dry). At that point, some pending
-players may be timed out while others still have remaining bank. Handling this
-correctly would require `expire_turn` to partition pending players into "timed
-out" and "still live" groups, call `game_apply_action` only for timed-out
-players, eagerly deduct elapsed from the remaining players' banks, and reset the
-deadline from the new minimum. The hook contract has no clean way to express
-"one player timed out but others are still pending in the same simultaneous
-round," and the sequential calling of the hook for logically simultaneous
-timeouts would produce arbitrary, ordering-dependent outcomes.
+**One deadline cannot meter many independent clocks.** A state carries a single
+`turn_deadline`, but a budget clock is a per-player countdown that drains only
+while that player acts. With multiple simultaneous pending players there is no
+single deadline that faithfully represents N independently-draining banks: when
+it fires, some players may be out of time while others still have bank, and the
+elapsed charge differs per player. (The holistic timeout *resolution* is fine —
+the hook sees the whole pending set and decides fairly — but the *bank
+accounting* still has no clean meaning, which is why budget mode is restricted to
+one pending seat at a time. `compute_next_deadline` keeps a best-effort
+MIN-over-pending safeguard for the misconfigured case.)
 
 **The pairing doesn't occur in real games.** Accumulated clocks exist in
 deliberative sequential games (chess, correspondence Go) where thinking time is
@@ -578,7 +652,7 @@ final remaining = obs.playerTimes![myPlayerIndex] - elapsed;
 > **Known limitation — device clock skew.** All countdowns compare server
 > timestamps (`turn_deadline`, `turn_started_at`) against `DateTime.now()`. A
 > device with a skewed clock displays a wrong countdown and may fire
-> `trigger_turn_expiry` early (harmless — the server re-validates under lock and
+> the `game/expire` nudge early (harmless — the server re-validates under lock and
 > abstains during the grace window) or late (the pg_cron backstop catches it).
 > Enforcement is never affected; only the displayed value is. The server grace
 > window and client soft margin (above) absorb modest skew on the submit path;
@@ -595,7 +669,7 @@ itself would hit the server while it is still abstaining, the nudge would
 no-op, and the timeout would slip to the coarse pg_cron sweep. The delay only
 affects the AFK/timeout path; a player who acts is never delayed by it.
 
-On fire it calls `trigger_turn_expiry` — a safe, idempotent nudge that lets the
+On fire it calls the `game/expire` route — a safe, idempotent nudge that lets the
 server process the timeout before pg_cron runs (which may fire on a coarse
 schedule). The server re-validates under `FOR UPDATE` lock, so concurrent calls
 from multiple active clients are safe.
@@ -661,198 +735,202 @@ on multi-player-pending phases should be aware of this visual inaccuracy.
 
 ## 4. Game Hooks (Infra ↔ Game Contract)
 
-The entire game-specific surface is **six** PostgreSQL functions in the
-`private` schema. Replacing them produces a completely different game with no
-other changes.
+The entire game-specific rules surface is **six methods on a TypeScript
+`GameEngine`** (the app's rules module, vendored into the edge function).
+Replacing them produces a completely different game with no other changes. The
+interface and its argument/return types live in
+`supabase/functions/_types/engine.types.ts`; the edge function calls them at its
+commit chokepoint and persists the result atomically via the gated SQL RPCs.
 
-### `game_bot_seatable(p_bot_config, p_game_config)` → BOOLEAN
+All hooks receive a `HookContext` (`config`: the opaque game blob; `schemaVersion`:
+the game row's schema, so a build can branch on either). `initialState`,
+`applyAction`, and `handleEvent` return an **`Envelope`**; `applyAction`
+returns a `Result<Envelope>` so an illegal move is data, not an exception.
 
-Optional. Called by `seat_server_bot` (→ `add_bot_to_game`) and `create_solo_game`
-to decide whether a bot may be seated into a game with the chosen `games.config`.
-Returns `TRUE` to allow. `p_bot_config` is the bot's `bots.config` (its declared
-capabilities — e.g. supported variants); `p_game_config` is `games.config`. This is
-the **single source of truth** for config compatibility: it is enforced at seating
-and exposed to the pickers via the `seatable_bot_ids(config)` RPC, so the rule is
-never duplicated in Dart. Default implementation returns `TRUE` (every bot is
-seatable). Gates the variant axis that `schema_version` cannot (a bot can match the
-schema yet not support the rules variant).
+The **`Envelope`** is `{ state, pending_players, outcome?, rng_seed, turn_seconds? }`:
+- `state`: pure game payload (board, deck, fog…). Never whose-turn or winner info
+  — those are infra columns.
+- `pending_players`: 0-based seats that may act next. Empty ⇒ game over.
+- `outcome?`: **omit while ongoing** (infra treats absent as SQL `NULL`); present
+  only when the game ends, as `OutcomeEntry[]` (see below).
+- `rng_seed`: **required, non-zero `bigint`.** Advance via `_engine/prng.ts` for
+  every random value consumed; threaded for replay reproducibility.
+- `turn_seconds?`: per-action deadline override for **this action only** (does not
+  touch any bank). Omit to use the game's configured timing.
 
-### `game_rating_pool(p_access, p_turn_seconds, p_budget_seconds, p_increment_seconds, p_min_players, p_max_players, p_config)` → TEXT
+### `botSeatable(args: BotSeatableArgs): boolean`
 
-Called by `create_game` to decide whether and how a game affects ratings.
-Returns `NULL` (unrated) or a pool name string (e.g. `'rapid'`, `'daily'`).
+Optional. The edge function calls this before seating a bot (the `add-bot` and
+`create-solo` routes) to decide whether a bot may join a game with the chosen
+`config`. `args` carries `botConfig` (the bot's declared capabilities) and
+`gameConfig`. Return `true` to allow. This is the **single source of truth** for
+config compatibility; the Dart `GameModule` keeps a **twin** that filters the bot
+pickers locally, so the rule is never re-encoded by hand. Default: `true`. Gates
+the variant axis `schema_version` cannot (a bot can match the schema yet not
+support the rules variant).
 
-This is purely server-side logic — clients pass a `rated_preference BOOLEAN` but
-can never forge a pool name. If the hook returns `NULL`, the game is forced
-unrated even if the client requested rated. See the Game Implementation Guide
-§Hook 0 for the full contract and an example TicTacToe override.
+### `ratingPool(args: RatingPoolArgs): string | null`
 
-### `game_initial_state(p_seed, p_config, p_player_count)` → envelope
+Decides whether — and in which pool — a game with these settings is rated.
+Returns a pool name (e.g. `'rapid'`, `'daily'`) or `null` for unrated.
 
-Returns the starting envelope:
+The edge function computes `canBeRated = pool != null && !guest` and validates
+the client's concrete **`rated` assertion** against it — **rejecting a mismatch
+(422)** rather than coercing. There is no *forced-rated* mode (only forced-unrated
+and toggle). The Dart `GameModule` keeps a **twin** so the create dialog gates the
+Rated/Casual toggle and sends the same value the server will compute. See the Game
+Implementation Guide §Hook 0 for the full contract and an example override.
 
-```json
-{
-  "state": {/* game-specific starting payload */},
-  "pending_players": [0],
-  "rng_seed": 12345678901234567
-}
+### `initialState(args: InitialStateArgs): Envelope`
+
+`args`: `seed` (`bigint`), `playerCount`, plus the `HookContext`. Returns the
+starting envelope, e.g.:
+
+```jsonc
+{ "state": {/* starting payload */}, "pending_players": [0], "rng_seed": "12345678901234567" }
 ```
 
-- `state`: pure game payload (board, deck, fog map…). Never put whose-turn or
-  winner info here.
-- `pending_players`: 0-based indices that may act first.
-- `rng_seed`: **required, non-zero.** Return the advanced seed after consuming
-  any setup randomness (`private.prng_next`). Infra raises if null or zero.
-- `turn_seconds` (optional): fixed deadline for the very first action only
-  (overrides budget/default). Omit to use the game's configured timing mode.
+`pending_players` are the seats that may act first; advance `rng_seed` past any
+setup randomness; `turn_seconds` optionally fixes the first action's deadline.
 
-### `game_apply_action(p_state, p_pending, p_data, p_player_index, p_rng_seed, p_config)` → envelope
+### `applyAction(args: ApplyActionArgs): Result<Envelope>`
 
-Called by `submit_action` and `expire_turn`. Returns the updated envelope.
+`args`: `state`, `pending`, `data` (the move), `playerIndex`, `seed`, plus the
+`HookContext`. The infra has **already** confirmed it is this seat's turn at the
+expected version under the row lock, so do **not** re-check turn order — only
+validate move legality. Return `{ ok: false, error: { code: 'illegal_move', … } }`
+for a rejected move (→ 400) or `{ ok: true, value: envelope }`.
 
-Ongoing move — `outcome` key absent:
+When the game ends, include `outcome` as an array of `OutcomeEntry`:
 
-```json
-{
-  "state": {/* updated payload */},
-  "pending_players": [1],
-  "rng_seed": 98765432109876543
-}
+```jsonc
+[
+  { "player_index": 0, "result": "win",  "placement": 1, "team_index": 0 },
+  { "player_index": 1, "result": "loss", "placement": 2, "team_index": 1 }
+]
 ```
 
-Game over — `outcome` key present:
+Required: `player_index`, `result` (`"win"`|`"loss"`|`"draw"`|`"eliminated"`),
+`placement` (1 = best, ties share a value), `team_index` (use `player_index` for
+individual games). Optional `score`. Infra writes these to `game_outcomes`, sets
+`games.status = 'finished'`, and — if rated — applies rating updates in the same
+transaction. See §8 for team examples.
 
-```json
-{ "state": { /* updated payload */ }, "pending_players": [], "outcome": [ … ], "rng_seed": 98765432109876543 }
-```
+### `handleEvent(args: EventArgs): Envelope`
 
-- `state`: new game payload.
-- `pending_players`: who acts next. Empty array = game over.
-- `outcome`: **Omit this key when the game is ongoing.** Infra treats an absent
-  key as SQL `NULL` — no JSONB null needed. Include it only when the game ends,
-  as an array of per-player results:
-  ```json
-  [
-    { "player_index": 0, "result": "win", "placement": 1, "team_index": 0 },
-    { "player_index": 1, "result": "loss", "placement": 2, "team_index": 1 }
-  ]
-  ```
-  Required keys: `player_index` (int), `result` (`"win"` | `"loss"` | `"draw"` |
-  `"eliminated"`), `placement` (int, 1 = best, ties share the same value),
-  `team_index` (int, use `player_index` for individual games). Optional:
-  `"score"` (numeric). Infra writes these to `game_outcomes` and sets
-  `games.status = 'finished'`. See §8 for team game examples.
-- `rng_seed`: **required, non-zero.** Advance via `private.prng_next` for every
-  random value consumed.
-- `turn_seconds` (optional): fixed deadline for **this action only** — does not
-  touch any player's bank. Use this for phase-specific timing (Nope window,
-  betting round). Omit to let infra apply the game's configured timing mode.
+`args`: `state`, `pending`, `type` (`'forfeit'` | `'timeout'`), `data`,
+`seed`, plus the `HookContext`. Decides the consequence of a system event; unlike
+`applyAction` it **cannot be illegal** — it always resolves to an envelope (the
+game decides whether a forfeit/timeout ends the game or just advances past the
+seat). Called by the forfeit/expire routes and the account-deletion / stale-guest
+purge paths.
 
-The infra layer has already gated on `pending_players` before calling this hook,
-so you do **not** need to re-check whose turn it is for the sequential case.
+### `computeObservation(args: ComputeObservationArgs): ObservationSlice`
 
-### `game_compute_observation(p_state, p_pending, p_player_index, p_participant_count, p_config, p_is_replay)` → envelope
+`args`: `state`, `pending`, `playerIndex`, `participantCount`, `isReplay`, plus
+the `HookContext`. Returns `{ data, pending_players }` — this seat's permitted
+view, with `pending_players` optionally narrowed for hidden-info games (e.g. a
+Nope window). The edge function fans this out per participant after every
+transition, and per historical version for replay. `isReplay` is `true` only when
+projecting a **finished** game for replay, so hidden-info games may reveal opponent
+state post-game.
 
-Called once per participant by `update_all_observations` and `start_game`. Also
-called by `get_replay` for every historical version. Returns:
-
-```json
-{
-  "data": {/* this player's view of the state */},
-  "pending_players": [0, 1]
-}
-```
-
-- `data`: what this specific player is allowed to see.
-- `pending_players`: may be narrowed from the true pending set for hidden-info
-  games (e.g. only expose Nope eligibility to players who hold the card).
-- `p_is_replay` (`BOOLEAN DEFAULT FALSE`): `TRUE` when called from `get_replay`
-  on a finished game. Hidden-info games can use this flag to reveal opponent
-  state post-game (e.g. show all hole cards in Poker replay). Live calls always
-  pass `FALSE`.
-
-**Perfect-info games do not override this** — the default passthrough is already
-implemented by infra.
+**Perfect-info games do not override this** — a `passthroughObservation` helper
+provides the identity projection.
 
 ---
 
-## 5. RPC Functions (Infra — Do Not Modify)
+## 5. Entry Points — Edge Function Routes & RPCs
 
-| RPC                                                                                                                        | Caller               | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| -------------------------------------------------------------------------------------------------------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `create_game(access, turn_seconds, budget_seconds, increment_seconds, min_players, max_players, config, rated_preference)` | Client               | Creates the `games` row with a unique `short_code` (retry loop on collision) and adds the creator as participant 0. Validates timing exclusivity and player count range. Calls `private.game_rating_pool()` to derive `rated` and `rating_pool` server-side; `rated_preference` is overridden to false if the hook returns `NULL`.                                                                                                                                                                                                                                                                  |
-| `join_game(game_id, client_schema_version)`                                                                                | Client               | Adds a participant; rejects if already at `max_players`; transitions to `ready` when count ≥ `min_players`. For `friends` access games, validates that the caller is an accepted friend of the game creator via `relationships`. Refuses to seat the caller when `games.schema_version` exceeds the client's `client_schema_version` (the build's `GameModule.schemaVersion`), under the same `FOR UPDATE` lock — so a client never becomes a participant in a game it cannot render. The parameter is required (not defaulted): omitting it fails rather than silently skipping the gate. See §24. |
-| `join_game_by_code(code, client_schema_version)`                                                                           | Client               | Looks up a game by `short_code`, then delegates to `join_game` (forwarding the schema gate, since the by-code/deep-link paths cannot inspect the game client-side before joining). Returns the game ID. Raises if not found.                                                                                                                                                                                                                                                                                                                                                                        |
-| `leave_game(game_id)`                                                                                                      | Client (non-creator) | Removes the calling participant from a `waiting` or `ready` game. Transitions game back to `waiting` if count drops below `min_players`. Creator cannot leave — they must cancel instead.                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `start_game(game_id)`                                                                                                      | Client (host)        | Calls `game_initial_state`, creates `game_states` and per-player `observations` rows (via `game_compute_observation`), initialises `player_times` if budget mode, sets `turn_started_at`, marks game `active`.                                                                                                                                                                                                                                                                                                                                                                                      |
-| `cancel_game(game_id)`                                                                                                     | Client (host)        | Aborts a `waiting` or `ready` game. Sets `games.status = 'aborted'`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `forfeit_game(game_id)`                                                                                                    | Client               | Forfeits an `active` game. No version check — forfeiting is an unconditional intent; the `FOR UPDATE` row lock serialises it against concurrent actions. Calls `game_handle_system_action` with `p_action_type = 'forfeit'`. The hook decides the consequence (typically: forfeiting player loses, opponent wins).                                                                                                                                                                                                                                                                                  |
-| `submit_action(game_id, data, expected_version)`                                                                           | Client               | Row-locks `games` (serializes all concurrent writers for this game), validates version and deadline, gates on `pending_players`, calls `game_apply_action`, deducts bank if budget mode, applies deadline precedence chain, fans out per-player observations, writes `game_outcomes` on game end.                                                                                                                                                                                                                                                                                                   |
-| `trigger_turn_expiry(game_id)`                                                                                             | Client               | Client-side nudge: calls `expire_turn` immediately when the client detects the deadline has passed. Safe to call from any active participant — server re-validates under `FOR UPDATE` lock. Errors are expected and swallowed when the game has already advanced.                                                                                                                                                                                                                                                                                                                                   |
-| `expire_turn(game_id)`                                                                                                     | pg_cron              | Backstop cron: row-locks `games`, re-validates deadline, zeroes timed-out player's bank (budget mode), calls `game_handle_system_action` with `p_action_type = 'timeout'`, fans out observations.                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `get_replay(game_id)`                                                                                                      | Client               | Returns the caller's observation slice at every historical version as a JSONB array. Only available for finished games; caller must be a participant. Projects each `game_states` row through `game_compute_observation` — never exposes raw state. Post-game reveal rules (hidden-info games) are defined entirely in the hook.                                                                                                                                                                                                                                                                    |
+There are **two tiers** of server entry point:
+
+1. **Edge-function routes** — the primary surface for everything that needs the
+   game rules or an un-forgeable policy gate. The Dart client calls them across
+   the four edge functions (`game`, `social`, `internal`, `bot` — see §21). Each
+   route runs in TypeScript: it verifies the caller, runs the relevant
+   `GameEngine` hook(s), and calls a **service-role, gated `engine_*` SQL RPC**
+   for the atomic write. **Policy lives in TS** (input validation, guest gating
+   from the JWT `is_anonymous` claim, the rating decision); the `engine_*` RPCs
+   are **thin atomic writers** that keep only the lock/transaction work, backed by
+   the `games` CHECK / `UNIQUE` / FK constraints. These RPCs are `REVOKE`d from
+   `authenticated` — only the edge function (service role) may call them.
+2. **Client-direct RPCs** — latency-sensitive reads and lobby state operations the
+   Dart client calls **straight over PostgREST** under its own JWT (`auth.uid()`
+   + RLS). There is **no edge function in the loop**, so the SQL function *is* the
+   server-side gate and its policy stays in SQL.
+
+**Function naming (by tier).** The prefix tells you who may call it:
+
+- **`engine_*`** — service-role, **edge-function-only** gated RPCs (`REVOKE`d from
+  `authenticated`); the EF's atomic-writer surface.
+- **`app_*`** — **client-direct** RPCs the Dart app calls over PostgREST under
+  RLS/auth.
+- **`cron_*`** — `private`, pg_cron-scheduled sweeps (scheduled in the `cron_jobs`
+  migration).
+- **`do_*`** / other `private.*` — internal helpers; `do_*` are parameterized cores
+  shared by an `app_*` wrapper (binds `auth.uid()`) and an internal caller (e.g.
+  `engine_purge_user`).
+
+Clients only ever call `app_*` RPCs; views (e.g. `private.open_games_with_participants`)
+stay private implementation details behind them. Triggers (`handle_new_user`, …)
+carry no tier prefix. The infra SQL is split by tier across dependency-ordered
+migrations (`…_engine_helpers`, `…_engine_commit`, `…_engine_games`,
+`…_engine_lifecycle`, `…_app_lobby`, `…_app_social`), with cross-cutting types and
+extensions defined first in `…_foundation.sql`.
+
+### Edge-function routes
+
+| Route | RPC it commits through | Purpose |
+| ----- | ---------------------- | ------- |
+| `game/create` | `engine_create_game` | Creates the `games` row (unique `short_code` retry) + seats the creator as participant 0. EF validates timing/players/access, blocks guests from `friends` access, derives the pool (`ratingPool`), and **validates the client's `rated` assertion** (rejects a mismatch). |
+| `game/create-solo` | `engine_create_solo_game` | Atomic **sole-human, unrated, private** game; seats caller + bots full at creation (never joinable). EF gates bot class: `botSeatable`, schema compat, guests ⇒ local bots only, **server ⇒ timed / local ⇒ untimed**. |
+| `game/add-bot` | `engine_add_bot_to_game` | Creator-only waiting-room fill with a **server** bot. EF rejects guests + checks `botSeatable`; SQL holds the `FOR UPDATE` lock for the creator check, seat-count cap, and the server-only/schema/`rated_eligible` invariants (`seat_server_bot`). |
+| `game/start` | `engine_commit_start` | `initialState` → writes `game_states` v0 + per-seat `observations`, inits banks (budget mode), sets `turn_started_at`, marks `active`. Creator-only, under lock. |
+| `game/action` | `engine_commit_action` | The move chokepoint. EF runs `applyAction`; SQL row-locks `games`, validates version + deadline under lock, gates on `pending_players`, deducts bank, fans out observations, and on finish writes `game_outcomes` + rating updates **in the same transaction**. |
+| `game/forfeit` | `engine_commit_action` (`resign`) | A user resign → `handleEvent('forfeit')`, logged as a `user` action (carries the resigning user + seat). No deadline/pending guard (resign any time, even off-turn); version-checked under the lock and retried on stale. |
+| `game/expire` | `engine_commit_action` (`timeout`) | Client nudge when it detects the deadline passed → `handleEvent('timeout')` over the whole pending set, one identity-less `system` action. The server re-validates expiry under lock (abstains if a real action won the race). Same core as the cron backstop (`internal/expire`). |
+| `game/replay` | *(typed SDK read)* | The caller's observation slice at every version, projected through `computeObservation` — never raw state. The EF reads `game_states` with each producing `action` embedded (via the `actions→game_states` FK) and applies the finished-only + participant gate **in TS**. |
+| `game/local-bot-action` | `engine_commit_action` (`bot`) | Drives a **local** bot seat. EF gates in TS against the roster it read (`assertLocalBotSeat`: caller is a participant, seat is a local bot, sole-human game). |
+| `game/delete-account` | `engine_purge_user` (+ per-game forfeits) | Self-service account teardown — see §22. |
+| `social/friend-request` · `social/accept` · `social/remove` | `engine_send_friend_request` · `engine_accept_friend_request` · `engine_remove_friend` | Friend writes. EF gates the **caller** (registered-only, no self-request) from the JWT and pushes the FCM notification directly; SQL keeps the atomic relationship write and the **target**-anonymity check (needs the target's row). |
+| `internal/expire` · `internal/purge-users` | `engine_commit_action` · `engine_purge_user` | Batched cron paths (webhook-secret auth) — timeout sweep and stale-guest forfeit-then-purge. See §21 / §22. |
+| `bot/action` | `engine_commit_action` (`bot`) | A **server** bot's only surface. The per-bot HMAC over the payload is verified in TS (`_engine/bot_auth.ts`, keyed by `HMAC(BOT_SIGNING_SECRET, bot_id)`); then the claimed seat is checked and the move applied. |
+
+### Client-direct RPCs (PostgREST, `authenticated`)
+
+| RPC | Purpose |
+| --- | ------- |
+| `app_join_game(game_id, client_schema_version)` | Seats a human under `FOR UPDATE`: rejects at `max_players`, transitions to `ready` at `min_players`, enforces the `friends`-access relationship check, and refuses to seat when `games.schema_version` exceeds the client's `client_schema_version` (so a client never joins a game it cannot render). The schema parameter is required. Rejects a guest joining a rated game. See §24. |
+| `app_join_game_by_code(code, client_schema_version)` | Resolves a `short_code`, then delegates to `app_join_game` (forwarding the schema gate). |
+| `app_cancel_game(game_id)` | Creator aborts a `waiting`/`ready` game (`status = 'aborted'`). |
+| `app_leave_game(game_id)` | Non-creator leaves a `waiting`/`ready` game; compacts higher `player_index`es under the lock; demotes `ready` → `waiting` below `min_players`. Creator must cancel instead. |
+| `app_lobby_games(cursor, limit)` | Public waiting/ready games with embedded participants, cursor-paginated by `created_at`. `authenticated` only. |
+| `app_friends_games(cursor, limit)` | `friends`-access waiting/ready games created by the caller's accepted friends, plus the caller's own rooms; not-full only; cursor-paginated. |
+| `app_search_users(query)` | Up to 20 human-only results matching `username`/`display_name` (trigram `ILIKE`). **Registered-only** (`require_permanent_user`); excludes anonymous accounts. |
+| `app_local_bot_observation(game_id, player_index)` | A local bot seat's **full** observation so the sole human's client can run the AI. Gated (sole human + local-bot seat) — the only place the engine reveals a bot's hidden view to a client. |
+| `app_bots()` | The bot catalog for the pickers — display-safe columns + `config` (never `webhook_url`). |
+| `app_players(...)` | Embedded participant identity for a set of games. |
+| `app_update_username(new_username)` | Validates format + case-insensitive uniqueness, updates `users.username`. |
+
+> The Dart `GameModule` keeps **local twins** of `ratingPool` and `botSeatable`,
+> so the create dialog gates the Rated/Casual toggle and the bot pickers filter
+> their lists without any extra RPC (the old `preview_game_rating` /
+> `seatable_bot_ids` RPCs are gone). The server remains authoritative — it
+> recomputes and validates on the write.
 
 ### Version Conflicts
 
-`submit_action` is guarded by an optimistic lock: the client passes the
-`version` it last observed, and `private.validate_version` raises
-`Stale state: expected version X, current Y` if another writer committed first.
-The client does not retry automatically — it surfaces the conflict as a
-humanized "board updated — try again" message (`error_messages.dart`), letting
-the player re-act against the state the Realtime stream has by then delivered.
+`engine_commit_action` is guarded by an optimistic lock: the client passes the
+`version` it last observed, and the RPC raises `Stale state: …` under the row
+lock if another writer committed first. (The `action` route also does a
+non-authoritative fast-fail against the state it already read, to skip a doomed
+commit.) The client does not retry automatically — it surfaces a humanized "board
+updated — try again" message (`error_messages.dart`), letting the player re-act
+against the state the Realtime stream has by then delivered.
 
 > Simultaneous games (multiple players pending in one round) will hit this
 > routinely with spurious conflicts; handling that is tracked in
 > `future_plans.md`.
-
-### Account Management RPCs
-
-| RPC                             | Caller | Purpose                                                                       |
-| ------------------------------- | ------ | ----------------------------------------------------------------------------- |
-| `delete_account()`              | Client | Permanently deletes the caller's account. See §22 for the full deletion flow. |
-| `update_username(new_username)` | Client | Validates format and uniqueness (case-insensitive), updates `users.username`. |
-
-### Social RPCs
-
-| RPC                                                                                                                              | Caller | Purpose |
-| -------------------------------------------------------------------------------------------------------------------------------- | ------ | ------- |
-| All social RPCs are **registered-only** — they call `private.require_permanent_user()` and raise for anonymous guests (see §25). |        |         |
-
-| `send_friend_request(target_user_id)` | Client | Creates a `pending`
-relationship. If the target already has a pending request to the caller,
-auto-accepts it (mutual add). Self-requests raise. `ON CONFLICT DO NOTHING`
-prevents duplicates. | | `accept_friend_request(target_user_id)` | Client |
-Transitions a `pending` relationship to `accepted`. Only the recipient
-(non-initiator) can accept. | | `remove_friend(target_user_id)` | Client |
-Deletes the relationship row entirely — works for both accepted friendships and
-pending requests. | | `search_users(query)` | Client | Returns up to 20
-human-only results (id, username, display_name, avatar_url) matching `username`
-or `display_name` via `ILIKE` (backed by trigram indexes). Queries
-`users`/`user_profiles` directly — bots never appear in search results. |
-
-### Game Discovery RPCs
-
-| RPC                                | Caller | Purpose                                                                                                                                                                                                                                                                                                                                                                             |
-| ---------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `get_lobby_games(cursor, limit)`   | Client | Returns public waiting/ready games with embedded participants. Cursor-paginated by `created_at`. Requires `authenticated` — anonymous browsing is not permitted.                                                                                                                                                                                                                    |
-| `get_friends_games(cursor, limit)` | Client | Returns `friends`-access waiting/ready games created by the caller's accepted friends — plus the caller's own rooms (you are not "friends with yourself", so the relationship check alone would hide them) — with embedded participants and `is_participant` flag. Cursor-paginated by `created_at`. Only games that are not full (participant count < `max_players`) are returned. |
-
-### Bot & Solo Play RPCs
-
-§26 covers the full bot architecture; these are the infra entry points. All are
-`SECURITY DEFINER`.
-
-| RPC                                                                                       | Caller             | Purpose                                                                                                                                                                                                                                          |
-| ----------------------------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `create_solo_game(bot_ids[], schema_version, turn_seconds, budget_seconds, increment_seconds, config)` | Client             | Atomically creates a **sole-human, forced-unrated** game, seats the caller + all bots, and runs `start_game` in one shot (never joinable, so no second human can enter). Validates each bot's schema + config (`game_bot_seatable`); anonymous callers ⇒ local bots only; **server bots ⇒ timed, local bots ⇒ untimed** (one class per game). |
-| `add_bot_to_game(game_id, bot_id)`                                                        | Client (host)      | Creator-only waiting-room fill with a **server** bot. Rejects local bots (invariant 2), guests, schema/config-incompatible bots, and a non-`rated_eligible` bot in a rated game (invariant 3). Wraps `private.seat_server_bot` (which the deferred auto-fill reuses).                                                                          |
-| `submit_bot_action_signed(p_payload, p_signature)`                                        | Server bot (**anon**) | The server bot's only surface. Verifies the per-bot HMAC over `p_payload` in-DB (`private.verify_bot_action_hmac`), checks the claimed seat, then applies the move. The HMAC is the auth gate (no Supabase session).                                                                                                                          |
-| `submit_local_bot_action(game_id, player_index, data, expected_version)`                  | Client             | Drives a **local** bot seat. Gates: caller is a participant, the seat is a local bot, the game is sole-human, and it is that seat's turn at the expected version.                                                                                                                                                                              |
-| `get_local_bot_observation(game_id, player_index)`                                        | Client             | Returns a local bot seat's **full** observation so the client can run the AI. Gated: caller is the sole human and the target is a local bot in the same game — the only place the engine reveals a bot's hidden view to a client.                                                                                                              |
-| `get_bots()`                                                                              | Client             | The bot catalog for the pickers — display-safe columns + `config` (never `webhook_url`), ordered by `display_name`.                                                                                                                                                                                                                          |
-| `seatable_bot_ids(config)`                                                                | Client             | The bot ids seatable into a game with the given `config`, per `game_bot_seatable`. The single source of truth the pickers filter on (no Dart rule).                                                                                                                                                                                           |
-| `preview_game_rating(access, turn_seconds, budget_seconds, increment_seconds, min_players, max_players, config, rated_preference)` | Client | Server-derived `(rated, pool)` for a live "Rated / Casual" badge, via the same `private.derive_rated` that `create_game` uses — no duplicated rule in Dart.                                                                                                                                                                                   |
 
 ### Client Query Patterns (Not RPCs)
 
@@ -863,10 +941,10 @@ queries:
   `participants!inner(user_id, player_index)` and
   `observations(pending_players, turn_deadline)` — derives `myPlayerIndex`,
   `pendingPlayers`, and `turnDeadline` in one query.
-- **Public lobby**: `get_lobby_games(cursor)` RPC returns public waiting/ready
+- **Public lobby**: `app_lobby_games(cursor)` RPC returns public waiting/ready
   games with embedded participants. Cursor-paginated by `created_at` with page
   size 50.
-- **Friends lobby**: `get_friends_games(cursor)` RPC returns friends-access
+- **Friends lobby**: `app_friends_games(cursor)` RPC returns friends-access
   games. The lobby screen uses a swipeable `TabBar` + `TabBarView` to switch
   between public and friends modes; each tab widget uses
   `AutomaticKeepAliveClientMixin` so the paged list is retained on tab switch
@@ -884,7 +962,7 @@ queries:
 
 `game_states` is service-role only. Clients never see the ground truth directly.
 Each player receives only their personal `observations` row, which is computed
-by `game_compute_observation` after every state change. This makes hidden-info
+by `computeObservation` after every state change. This makes hidden-info
 games (Poker, Literature, Exploding Kittens, Mafia) structurally secure — the
 server computes each player's slice and Realtime pushes only that slice to the
 right subscriber.
@@ -902,17 +980,17 @@ redundant network calls.
 
 ### Scope: Game Identity vs Social Identity
 
-|                  | Game identity (`get_players` RPC)                                                                                                                               | Social identity (base tables)                |
+|                  | Game identity (`app_players` RPC)                                                                                                                               | Social identity (base tables)                |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
 | **Covers**       | Humans and bots                                                                                                                                                 | Humans only                                  |
-| **Used by**      | `playerInfoCacheProvider`, `gamePlayers`, lobby/game display                                                                                                    | `search_users`, friend RPCs, relationship UI |
+| **Used by**      | `playerInfoCacheProvider`, `gamePlayers`, lobby/game display                                                                                                    | `app_search_users`, friend RPCs, relationship UI |
 | **Source**       | UNION of `users`+`user_profiles` and `bots`                                                                                                                     | `users` and `user_profiles` directly         |
 | **Why separate** | In a game, the seat holder may be a bot — it needs a name and avatar. In social contexts, bots are not people and cannot be friended, searched for, or invited. |                                              |
 
 ### Data Flow
 
 ```
-get_players(uuid[]) RPC (DB) ← unified UNION of users+bots
+app_players(uuid[]) RPC (DB) ← unified UNION of users+bots
        ↓
 playerInfoCacheProvider(id)  ← keepAlive + SQLite persist, works for any player UUID
        ↓
@@ -934,7 +1012,7 @@ player identity for both humans and bots:
 
 The bot/human distinction is carried by `GamePlayer.type`
 (`ParticipantType.human` or `ParticipantType.bot`), not by the identity model.
-`get_players` returns the same columns for both branches of its UNION, so
+`app_players` returns the same columns for both branches of its UNION, so
 `PlayerInfo.fromJson` parses both identically.
 
 **`GamePlayer`** (`core/game/game_player.dart`) — unified game-level player
@@ -958,7 +1036,7 @@ state JSON, interpreted by the game module.)
 ### Provider Architecture
 
 `playerInfoCacheProvider(id)` is `keepAlive: true` + `@JsonPersist()`. Works for
-both human and bot IDs — `get_players` covers both via a UNION. On cold start,
+both human and bot IDs — `app_players` covers both via a UNION. On cold start,
 resolves from SQLite cache (~5 ms) while the network fetch runs in background.
 Held in memory for the entire session after first access. See §23 for the full
 persistence design.
@@ -1156,62 +1234,58 @@ SELECT vault.update_secret(
 
 ### Update Pipeline
 
-When a rated game transitions to `finished`, a pg_net trigger fires the edge
-function asynchronously:
+Ratings are computed and persisted **inline in the finishing transition** — there
+is no rating trigger, no separate function, and no async hop:
 
 ```
-games.status → 'finished'  (rated = true)
-        ↓  AFTER UPDATE trigger
-private.notify_rating_update()
-        ↓  pg_net async HTTP POST
-update-ratings edge function  (Deno — pure computation, no DB reads)
-        ↓  OpenSkill rate()
-public.apply_rating_updates RPC  (service_role only)
-        ↓  single atomic transaction
-player_ratings (upsert) + rating_history (insert)
+applyAction / handleEvent returns an outcome  (rated game)
+        ↓  edge function (game/action, forfeit, expire, …)
+readRatingsForSeats   → each seat's current (mu, sigma) for the pool
+   (typed player_ratings fetch; identities from the in-hand roster,
+    never-rated seats default to openskill rating())
+        ↓
+_engine/ratings.ts          → OpenSkill rate(teams, {rank: placements})
+        ↓  RatingUpdate[] threaded onto the commit transition
+engine_commit_action → private.persist_transition
+        ↓  SAME transaction as the finish
+player_ratings (upsert) + rating_history (insert)   (private.apply_rating_updates)
 ```
 
-1. **`private.notify_rating_update()`** fires on the first `finished` transition
-   of a rated game. Bundles each player's current `mu`/`sigma`/`display_rating`
-   from `player_ratings` (LEFT JOIN — defaults to new-player values if no prior
-   row) alongside `placement` and `team_index` from `game_outcomes`. Skips with
-   `RAISE WARNING` if `serverless_base_url` is absent from `private.app_config`
-   or `serverless_secret` is absent from Vault.
-
-2. **`update-ratings` edge function** is a stateless computation service.
-   Receives the self-contained payload, groups players by `team_index`, calls
-   OpenSkill's `rate(teams, {rank: placements})`, and returns `RatingUpdate[]`
-   with before/after snapshots to the RPC. Never reads the database.
-
-3. **`public.apply_rating_updates`** performs the atomic write — upserts
-   `player_ratings` and inserts into `rating_history`. Restricted to
-   `service_role` via `REVOKE EXECUTE FROM anon, authenticated`; clients cannot
-   call it directly.
+1. On a finishing transition of a **rated** game (`outcome` present, ≥ 2 players),
+   the edge function fetches each participant's `(mu, sigma)` for the pool from
+   `player_ratings` (`readRatingsForSeats`) — a typed query keyed on the
+   identities already in the in-hand roster, defaulting a never-rated seat to
+   openskill `rating()`.
+2. `_engine/ratings.ts` groups players by `team_index`, calls OpenSkill's
+   `rate(teams, {rank: placements})`, and returns `RatingUpdate[]` with
+   before/after snapshots. Pure computation.
+3. The updates ride the commit transition into `engine_commit_action`, and
+   `private.persist_transition` writes `player_ratings` + `rating_history` in the
+   **same transaction as the finish** (via the now-private
+   `private.apply_rating_updates`). Same "EF computes, the commit RPC persists
+   atomically" pattern as observations.
 
 ### Idempotency
 
-The trigger's `OLD.status = 'finished'` guard prevents double-fire in normal
-operation. `rating_history` unique partial indexes — `(game_id, user_id)` and
-`(game_id, bot_id)` — ensure duplicate edge function calls for the same game are
-harmless at the DB level: the duplicate call's insert is rejected (the call
-errors), so ratings are never double-applied.
+`rating_history` unique partial indexes — `(game_id, user_id)` and
+`(game_id, bot_id)` — ensure ratings are never double-applied: a second write for
+the same game is rejected at the DB level. Because the write rides the same
+transaction as the `finished` transition (which is itself guarded by the
+optimistic version/lock in `engine_commit_action`), a game can only finish once.
 
-> **Known limitation — concurrent rated finishes.** `notify_rating_update`
-> snapshots each player's `mu`/`sigma` at trigger time. If two rated games
-> involving the same player finish near-simultaneously, both payloads carry the
-> same "before" rating and the later `apply_rating_updates` overwrites the
-> earlier — one game's rating effect is lost. Closing this would require
-> `apply_rating_updates` to lock `player_ratings` rows and recompute from the
-> stored values instead of trusting the payload, at the cost of the edge
-> function's "pure computation, no DB reads" design. Accepted for now: the
-> window is milliseconds wide and one player cannot realistically finish two
-> games at once.
+> **Known limitation — concurrent rated finishes.** The `(mu, sigma)` inputs are
+> read just before the finishing commit, not under a lock on `player_ratings`. If
+> two rated games involving the same player finish near-simultaneously, both can
+> read the same "before" rating and the later write overwrites the earlier — one
+> game's rating effect is lost. Closing this would require locking and recomputing
+> from the stored values at write time. Accepted for now: the window is
+> milliseconds wide and one player cannot realistically finish two games at once.
 
 ### Bots & Multi-Seat Results
 
 A single bot identity may hold several seats of one game (see §26). The
 `rating_history` unique index `(game_id, bot_id)` permits **one** history row per
-identity per game, so `update-ratings` must collapse those seats into a **single
+identity per game, so `_engine/ratings.ts` collapses those seats into a **single
 net update**: it chains the seat results in seat order onto a running rating, each
 seat rated only against the *other* distinct identities (never the identity's own
 other seats). Both a strong and a weak seat-result contribute — the right signal
@@ -1222,12 +1296,15 @@ games — immaterial for bot calibration. Bot rating history is never client-rea
 
 ### Rating Pools
 
-`private.game_rating_pool()` derives the pool name server-side at game creation.
-The same logic, extracted into `private.derive_rated`, also backs
-`preview_game_rating` so the create dialog can show a live **Rated / Casual** badge
-without duplicating the rule in Dart (see §5).
-Clients pass a `rated_preference` boolean but cannot forge pool names. A `NULL`
-return forces the game unrated regardless of client preference.
+The `GameEngine.ratingPool` hook (§4) derives the pool name — a string like
+`'rapid'`, or `null` for unrated. The Dart `GameModule` keeps a **twin** of it so
+the create dialog can show a live **Rated / Casual** badge and gate the toggle
+locally, with no extra RPC. `rated` is a **validated assertion**: the client
+computes it from the twin plus its guest status and sends it; the edge function
+recomputes `canBeRated = pool != null && !guest` and **rejects a mismatch** (422)
+rather than coercing. There is no *forced-rated* mode — only forced-unrated
+(ineligible pool or guest) and toggle (eligible). Pool names are
+server-authoritative; the client can never forge one.
 
 ---
 
@@ -1237,15 +1314,19 @@ return forces the game unrated regardless of client preference.
 transition (including version 0 for the initial state), so the full game history
 is always available at zero extra cost — no action log re-execution needed.
 
-### Replay via `get_replay`
+### Replay via the `game/replay` route
 
-The `get_replay(game_id)` RPC returns the caller's observation slice at every
-version:
+The `game/replay` route returns the caller's observation slice at every version.
+The EF reads it as a single typed query — `game_states` with each row's producing
+`action` **embedded** through the `(game_id, version_after) → game_states` FK (the
+UNIQUE makes it a to-one) — then applies the gate in TS:
 
 ```
-get_replay(game_id)
-  → for each row in game_states LEFT JOIN actions ON version_after = version:
-       game_compute_observation(state, pending_players, player_index, …, is_replay=true)
+game/replay { game_id }
+  → games.select(…, game_states(…, actions(type, data, player_index)))  // FK embed
+  → gate in TS: finished only + caller is a participant
+  → for each game_states row (ordered by version):
+       computeObservation(state, pending_players, player_index, …, is_replay=true)
   → [{version, data, pending_players, created_at,
       action_type, action_data, action_player_index}, …]
 ```
@@ -1254,27 +1335,26 @@ Each frame:
 
 - `version` — 0-based state index (version 0 is the initial state)
 - `data` — game-specific observation for the caller (output of
-  `game_compute_observation`)
+  `computeObservation`)
 - `pending_players` — who was pending at this version (post-hook narrowing
   applied)
 - `created_at` — when this state was committed
 - `action_type` — `"user"` / `"system"` / `"bot"`; `null` for version 0 (no
   action produced it)
-- `action_data` — raw action payload (e.g. `{"position": 4}` or
-  `{"type":"timeout","player_index":1}`); `null` for version 0
-- `action_player_index` — 0-based seat index of the player who **chose** to act,
-  read directly from `actions.player_index` (denormalized at write time —
-  survives user deletion). `null` for version 0 and for anonymous system events
-  (timeout, auto_forfeit) where no single player initiated the action. Set for
-  user moves, bot moves, and forfeits (player voluntarily initiated). Flutter
-  reads `action_data->>'player_index'` when it needs to know which player a
-  timeout _affected_.
+- `action_data` — raw action payload (e.g. `{"position": 4}`, `{"type":"timeout"}`,
+  or `{"type":"forfeit","player_index":1}`); `null` for version 0
+- `action_player_index` — 0-based seat of the **performer**, taken from the
+  embedded action's `player_index` (denormalized at write time — survives user
+  deletion). Set for user moves, bot moves, and a user resign; `null` for version
+  0 and for **every system action** (timeout, engine-driven forfeit), which has
+  no performer. A timeout resolves the whole pending set at once, so the seats it
+  _affected_ are derived from the `pending_players` diff between this frame and
+  the previous one — not from `action_data`.
 
-- Only finished games are replayable. `get_replay` raises if
-  `status != 'finished'`.
+- Only finished games are replayable. The EF gate rejects `status != 'finished'`.
 - The caller must be a participant. Non-participants (spectators) cannot replay.
 - Raw state is **never** exposed — every version is projected through
-  `game_compute_observation`. Post-game hidden-info reveal (e.g. a poker
+  `computeObservation`. Post-game hidden-info reveal (e.g. a poker
   hand-history that still hides folded hands) is controlled entirely by the
   hook. If the hook reveals full state when `pending_players` is empty, the
   replay shows it; if it doesn't, the replay doesn't.
@@ -1284,33 +1364,37 @@ Each frame:
 
 ### What the action log gives you
 
-- **Timeouts as actions**: `expire_turn` inserts a system action
-  (`type = 'system'`, `data = {"type":"timeout","player_index":N}`), so timeouts
-  appear in the log alongside the resulting state row.
-- **Forfeits as actions**: `forfeit_game` inserts a system action
-  (`type = 'system'`, `data = {"type":"forfeit","player_index":N}`).
+- **Timeouts as actions**: the timeout commit inserts one identity-less system
+  action (`type = 'system'`, all identity NULL, `data = {"type":"timeout"}`), so
+  timeouts appear in the log alongside the resulting state row; the affected
+  seats are read from the `pending_players` diff.
+- **Resigns / forfeits as actions**: a user resign (`game/forfeit`) logs as a
+  `user` action carrying the resigning seat (`data = {"type":"forfeit",...}`); an
+  engine-driven forfeit (account-deletion purge) logs as an identity-less system
+  action (`data.type = "auto_forfeit"`).
 - **Correlation**: `actions.version_after` = `game_states.version` for the state
-  snapshot the action produced. A JOIN on this column reconstructs "which action
+  snapshot the action produced — an enforced **FK + UNIQUE**, so the join is
+  guaranteed 1:1 and embeddable. A JOIN on this column reconstructs "which action
   caused this state" for any audit or cheat-detection tool.
 
 ---
 
 ## 10. Security Model
 
-- **Optimistic locking**: clients pass `expected_version`; `submit_action`
-  rejects stale versions. `forfeit_game` deliberately has no version check —
+- **Optimistic locking**: clients pass `expected_version`; `engine_commit_action`
+  rejects stale versions. A forfeit commit deliberately has no version check —
   forfeiting is an unconditional intent, and the row lock alone keeps the
   action/state history ordered.
-- **Row lock**: `FOR UPDATE` on `games` serializes all concurrent writers
-  (`submit_action`, `forfeit_game`, `expire_turn`, `trigger_turn_expiry`) for
+- **Row lock**: `FOR UPDATE` on `games` serializes all concurrent writers —
+  every move, forfeit, and timeout commits through `engine_commit_action` for
   the same game. Because `game_states` is append-only (no single mutable row to
   lock), the lock migrated to `games`. `FOR UPDATE` acquires a row lock without
   writing, so no Realtime events fire on `games` during normal gameplay — only
   `finish_game()` writes to `games`, and that write was already there.
-- **TOCTOU-free status check**: `submit_action` and `forfeit_game` merge the
-  game-status check into the same `FOR UPDATE` read. There is no separate
-  pre-lock status read that could race with a concurrent `finish_game`.
-- **Deadline guard**: `submit_action` rejects any action where
+- **TOCTOU-free status check**: `engine_commit_action` merges the game-status
+  check into the same `FOR UPDATE` read. There is no separate pre-lock status
+  read that could race with a concurrent `finish_game`.
+- **Deadline guard**: `engine_commit_action` rejects any action where
   `turn_deadline < NOW()` (checked after the lock).
 - **`expire_all_turns` isolation**: the pg_cron sweep uses
   `DISTINCT ON (game_id) ORDER BY version DESC` to select only the latest
@@ -1343,7 +1427,7 @@ GRANT  EXECUTE ON FUNCTION public.<fn>(…) TO authenticated;
 - Permissions are explicit: `REVOKE EXECUTE FROM PUBLIC, anon` +
   `GRANT TO authenticated` — no implicit public access.
 - Internal utility functions (`private.require_auth`, `private.get_participant`,
-  `private.notify_rating_update`, etc.) remain in the `private` schema. They are
+  `private.persist_transition`, etc.) remain in the `private` schema. They are
   called by the public `SECURITY DEFINER` functions and are never exposed via
   PostgREST.
 
@@ -1376,7 +1460,7 @@ Client features:
 - Game screen with Realtime observation stream, pre-game waiting room
   (join/leave/cancel/start), in-game board, forfeit with confirmation dialog.
 - History screen with paginated finished games and per-game outcome result.
-- Client-side expiry trigger (`trigger_turn_expiry`) fired when the client
+- Client-side expiry trigger (the `game/expire` route) fired when the client
   detects `turn_deadline` has passed.
 - Timing widget system: `TurnTimerBuilder`, `PlayerTimerBuilder` (headless
   builder widgets), `TurnCountdown`, `BudgetClock` (infra-owned styled shells),
@@ -1384,16 +1468,16 @@ Client features:
 
 ### Phase 2.5 ✓ — Social & Friends
 
-Friends system (`relationships` table, `friends_view`), friend RPCs
-(`send_friend_request`, `accept_friend_request`, `remove_friend`), user search
+Friends system (`relationships` table, `friends_view`), friend routes on the
+`social` function (`friend-request`, `accept`, `remove`), user search
 with trigram indexes.
 
 Game discovery:
 
-- Short codes on games for invite-by-code joining (`join_game_by_code`).
-- `friends` access enforcement in `join_game` (validates accepted friendship
+- Short codes on games for invite-by-code joining (`app_join_game_by_code`).
+- `friends` access enforcement in `app_join_game` (validates accepted friendship
   with creator).
-- Friends lobby (`get_friends_games` RPC) with Public/Friends segmented toggle
+- Friends lobby (`app_friends_games` RPC) with Public/Friends segmented toggle
   in lobby screen.
 - Join-by-code flow: `/join/:code` route, `JoinGameScreen`, join code dialog on
   home screen.
@@ -1426,28 +1510,22 @@ OpenSkill (Bayesian) rating system:
   after each rated game.
 - `rating_history` table: immutable per-game audit log with before/after
   snapshots.
-- `private.game_rating_pool()`: 4th game hook — server derives the pool name
-  from game config; clients cannot forge pool names.
-- `private.notify_rating_update()` pg_net trigger: fires when a rated game
-  finishes. Bundles `placement`, `team_index`, and each player's current
-  `mu`/`sigma`/`display_rating` into the webhook payload so the edge function is
-  a pure computation service with no DB dependency.
-- `supabase/functions/update-ratings`: Deno 2 edge function using `openskill`
-  (MIT). Groups players by `team_index`, calls
-  `rate(teams, {rank: placements})`, returns computed deltas to
-  `apply_rating_updates`. No DB reads — all inputs arrive in the payload.
-  Idempotent via unique partial indexes on `rating_history`.
-- `public.apply_rating_updates`: SECURITY DEFINER RPC restricted to
-  `service_role`. Upserts `player_ratings` and inserts `rating_history`
-  atomically.
-- Config: `serverless_base_url` stored in `private.app_config`;
-  `serverless_secret` stored in Supabase Vault. Local dev values seeded via
-  `seed.sql`. Edge function env var: `SERVERLESS_SECRET`.
+- `ratingPool`: a game hook — the server derives the pool name from game
+  config; clients cannot forge pool names. (See §8 for the rating pipeline.)
+- `supabase/functions/_engine/ratings.ts`: OpenSkill computation (`openskill`,
+  MIT) run **inside the commit** when a rated game finishes. Groups players by
+  `team_index`, calls `rate(teams, {rank: placements})` on the rating inputs the
+  commit already read, and hands the deltas to the finishing transaction. No
+  separate function, no pg_net trigger, no webhook.
+- `private.apply_rating_updates`: SECURITY DEFINER, service-role only. Called
+  from `private.persist_transition` in the **same** finishing transaction —
+  upserts `player_ratings` and inserts `rating_history` atomically. Idempotent
+  via the unique `(game, identity)` indexes on `rating_history`.
 
 Client:
 
 - `PlayerInfo` is the unified identity model for both humans and bots — no
-  separate BotInfo type. `get_players(uuid[])` RPC covers both via a UNION.
+  separate BotInfo type. `app_players(uuid[])` RPC covers both via a UNION.
   `playerInfoCacheProvider(id)` works for any player UUID.
 - `PlayerInfo` does not carry a rating field — detailed per-pool ratings are
   fetched separately via `myRatingsProvider` (own profile) or
@@ -1519,7 +1597,7 @@ lib/
 │   ├── data/
 │   │   ├── models/
 │   │   │   └── player_info.dart          # PlayerInfo — unified identity for humans and bots (freezed)
-│   │   └── player_repository.dart        # Fetches via get_players() RPC (unified humans + bots)
+│   │   └── player_repository.dart        # Fetches via app_players() RPC (unified humans + bots)
 │   ├── providers/
 │   │   └── player_providers.dart         # playerInfoCacheProvider(id) — keepAlive + @JsonPersist, humans and bots
 │   └── widgets/
@@ -1580,7 +1658,7 @@ lib/
 │       ├── data/
 │       │   ├── models/
 │       │   │   └── friendship.dart       # Friendship model (freezed) + RelationshipStatus enum
-│       │   └── social_repository.dart    # Friend RPCs + search_users
+│       │   └── social_repository.dart    # Friend RPCs + app_search_users
 │       ├── presentation/
 │       │   ├── widgets/
 │       │   │   ├── friend_actions.dart        # FriendActions widget — routes on FriendStatus, compact/full modes
@@ -1892,10 +1970,10 @@ This automatically records a `screen_view` event on every route transition.
 | `gameCreated`       | `game_created`        | `game_id`, `access`, `timing_mode`, `rated` (int 0/1) | `new_game_dialog.dart` after `createGame()` succeeds               |
 | `gameStarted`       | `game_started`        | `game_id`, `player_count`                             | `game_screen.dart` when game transitions to `active`               |
 | `gameFinished`      | `game_finished`       | `game_id`                                             | `game_screen.dart` when outcomes first arrive (non-empty)          |
-| `forfeit`           | `forfeit`             | —                                                     | `game_screen.dart` after `forfeit_game` RPC succeeds               |
-| `joinByCode`        | `join_by_code`        | —                                                     | `join_game_screen.dart` after `join_game_by_code` RPC succeeds     |
-| `friendRequestSent` | `friend_request_sent` | —                                                     | `social_providers.dart` after `send_friend_request` RPC succeeds   |
-| `friendAccepted`    | `friend_accepted`     | —                                                     | `social_providers.dart` after `accept_friend_request` RPC succeeds |
+| `forfeit`           | `forfeit`             | —                                                     | `game_screen.dart` after the `game/forfeit` route succeeds         |
+| `joinByCode`        | `join_by_code`        | —                                                     | `join_game_screen.dart` after `app_join_game_by_code` RPC succeeds     |
+| `friendRequestSent` | `friend_request_sent` | —                                                     | `social_providers.dart` after the `social/friend-request` route succeeds |
+| `friendAccepted`    | `friend_accepted`     | —                                                     | `social_providers.dart` after the `social/accept` route succeeds   |
 
 **Note:** Firebase Analytics does not accept raw `bool` parameters. `rated` is
 sent as `int` (0 or 1).
@@ -2670,9 +2748,12 @@ system Settings.
 3. Initialises `flutter_local_notifications` for foreground banners.
 4. Requests OS permission once, gated by a `SharedPreferences` flag — dialog
    appears only on first launch.
-5. Gets the FCM token (passing `vapidKey` on web) and upserts it via
-   `upsert_device_token(p_token, p_platform)` RPC.
-6. Subscribes to `onTokenRefresh` to re-upsert when FCM rotates the token.
+5. Calls `getToken` (passing `vapidKey` on web) to force FCM registration —
+   the result is discarded; the device's Firebase Installation ID (FID) is the
+   stored identity. Reads it via `FirebaseInstallations.getId()` and upserts via
+   `app_upsert_device_installation(p_fid, p_platform)` RPC.
+6. Subscribes to `FirebaseInstallations.onIdChange` to re-upsert if the FID
+   changes.
 7. `FirebaseMessaging.onMessage` → shows a local notification banner, except
    `your_turn` notifications for the game the user is currently viewing: the
    handler reads `goRouterProvider`'s current URI and suppresses the banner if
@@ -2711,44 +2792,48 @@ Three Android channels give users per-category system-level control. iOS uses
 system-delivered background notifications fall back to it when no `channelId` is
 specified.
 
-### `device_tokens` table
+### `device_installations` table
 
-| Column       | Type             | Notes                                           |
-| ------------ | ---------------- | ----------------------------------------------- |
-| `user_id`    | uuid             | FK → `auth.users`, cascade delete               |
-| `token`      | text             | FCM registration token (unique per install)     |
-| `platform`   | text             | `'ios'`, `'android'`, or `'web'`                |
-| `updated_at` | timestamptz      | Refreshed on every upsert                       |
-| PK           | (user_id, token) | Composite — multiple devices per user supported |
+| Column       | Type        | Notes                                              |
+| ------------ | ----------- | -------------------------------------------------- |
+| `fid`        | text        | **PK** — Firebase Installation ID (FCM v1 target)  |
+| `user_id`    | uuid        | FK → `auth.users`, cascade delete; indexed         |
+| `platform`   | text        | `'ios'`, `'android'`, or `'web'`                   |
+| `updated_at` | timestamptz | Refreshed on every upsert                          |
 
-Multiple devices for the same user each get their own row. All rows are notified
-on every event.
+The FCM v1 API deprecated the registration `token` target in favour of the
+`fid`. The PK is `fid` (one physical install → exactly one current user): signing
+in claims the device from any prior owner via `ON CONFLICT (fid) DO UPDATE SET
+user_id = auth.uid()`, so account-switching on a shared device can't leave a
+stale association. A user with several devices has one row per FID; `_engine/fcm.ts`
+fans out by `user_id` (hence the index) and notifies all of them.
 
-### Token lifecycle
+### Installation lifecycle
 
-**Registration**: `initialize()` upserts the current token on every app start.
-`onTokenRefresh` re-upserts on rotation — the old row remains until the monthly
-cleanup removes it.
+**Registration**: driven by **auth state**, not app start. On `signedIn` /
+`initialSession` (`app_startup._onAuthStateChange`), `registerInstallation()`
+upserts the `(current user, FID)` row. It's auth-driven because the row maps a
+*user* to the device's FID, and `FirebaseInstallations.onIdChange` is
+user-agnostic (it fires at FID birth, before sign-in) — so a FID event can never
+carry "who just logged in". A `SharedPreferences` guard stores the last-registered
+`userId:fid` and skips the write when unchanged, so a returning user's launch
+costs nothing. `initialize()` still calls `getToken` once to force FCM
+registration (a FID only resolves to a live registration once the device has
+one); `onIdChange` re-registers the current user on the rare FID rotation.
 
-**Sign-out**: `AuthController.signOut` calls `deleteCurrentToken()` before
-clearing the session — the token is deleted from `device_tokens` and invalidated
-with FCM so the install stops receiving notifications immediately.
+**Sign-out**: `AuthController.signOut` calls `deleteCurrentInstallation()` before
+clearing the session — it deletes only the DB row (and clears the local guard) so
+the server stops targeting this user on this device. It deliberately leaves the
+FCM registration intact (dropping it wouldn't re-establish until the next process
+start, breaking same-session re-sign-in) and never deletes the Firebase
+installation (that would reset Crashlytics/Remote Config/A&B identity).
 
-**Uninstall**: Undetectable client-side. The monthly pg_cron job (see below)
-removes tokens not refreshed in 90 days. FCM rotates active-app tokens
-periodically, so a 90-day-stale token reliably means the app is gone or the
-account is abandoned. Failed FCM calls to stale tokens are silent no-ops — no
-cost, no error surfaced.
-
-**Monthly cleanup** (defined in the migration):
-
-```sql
-SELECT cron.schedule(
-  'cleanup-stale-device-tokens',
-  '0 3 1 * *',   -- 3 am on the 1st of each month
-  $$DELETE FROM public.device_tokens WHERE updated_at < now() - interval '90 days'$$
-);
-```
+**Cleanup**: There is no scheduled job. Unlike an FCM token, a FID does not
+rotate, so there is no staleness heartbeat to age out. Rows are removed by three
+authoritative signals: sign-out (above), account deletion (CASCADE from
+`auth.users`), and send-time pruning — `_engine/fcm.ts` drops any FID FCM reports
+permanently invalid (`UNREGISTERED` / `SENDER_ID_MISMATCH`). A dead FID never
+targeted again lingers harmlessly until the next send prunes it.
 
 ### FCM message data payload
 
@@ -2759,51 +2844,38 @@ SELECT cron.schedule(
 
 ### Server-side notification dispatch
 
-Postgres triggers call FCM directly via `pg_net` using a **cached OAuth token**,
-avoiding a per-notification edge function invocation.
+The **edge function** emits every notification — there are no Postgres notify
+triggers and no `pg_net` calls to FCM. After a commit (or after the relevant
+route), the EF looks up the recipient's devices and sends directly. The two
+modules involved:
 
-**Token-cache pattern**
+- `_engine/fcm.ts` — the pure FCM HTTP v1 sender. It **mints and caches its own
+  Google OAuth2 access token in-process** from the `FIREBASE_*` secrets
+  (`FIREBASE_CLIENT_EMAIL` + `FIREBASE_PRIVATE_KEY` → RS256-signed JWT → token
+  exchange), refreshing it before expiry. This replaces the former
+  `refresh-fcm-token` function + `pg_cron` + `app_config` token cache. It does no
+  database access.
+- `_engine/notify.ts` — the Supabase side. `pushToUser` loads the target's
+  `device_installations` rows, calls `fcm.ts` to fan out by FID, and prunes any
+  FID FCM reports permanently invalid (`UNREGISTERED` / `SENDER_ID_MISMATCH`).
+  Zero rows = no HTTP calls; if FCM is not configured it logs and returns early
+  (graceful in local dev).
 
-FCM HTTP v1 requires a short-lived Google OAuth2 bearer token (JWT/RS256).
-Postgres cannot sign RS256 natively, so a lightweight edge function refreshes
-the token on a schedule and stores it in `private.app_config`:
+**Sources** (all EF-side, post-commit or in-route):
 
-```
-pg_cron every 50 min → refresh-fcm-token edge function
-  → exchanges FIREBASE_SERVICE_ACCOUNT_JSON for a Google access token
-  → stores token and project ID in private.app_config
-      ('fcm_access_token', 'firebase_project_id')
-Postgres triggers → read cached token → pg_net POST to FCM HTTP v1
-```
+| Source                                  | When                                                                                                                                  | Notifies                                                                                                  |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `notifyTransition` (post-commit)        | A seat newly enters `pending_players` (covers the version-0 start, so initially-pending players get the first-move push)               | Human seat → FCM "your turn" push; server-bot seat → signed wake POST to `webhook_url` (HMAC `x-wake-signature`, carrying the observation). See §26. |
+| `notifyGameInvite` (`/game/create`)     | A `friends`-access game is created (public games are lobby-discoverable, not pushed — pushing every public game to all friends is spam) | All accepted friends of the creator                                                                       |
+| social route handlers (`friend-request`/`accept`) | A friend request is sent or accepted                                                                                        | The other party                                                                                           |
 
-Google access tokens live 60 minutes; refreshing every 50 minutes keeps the
-cached token valid. At ~30 edge function calls/day this is well within Supabase
-free-tier limits regardless of notification volume.
-
-**Triggers**
-
-| Trigger                 | Table           | Condition                                                                                                                                                     | Notifies                             |
-| ----------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `notify_your_turn`      | `observations`  | INSERT or UPDATE: `player_index` enters `pending_players` (INSERT covers `start_game`'s version-0 rows, so initially-pending players get the first-move push) | Branches on the row's identity: `user_id` → FCM "your turn" push; `bot_id` → `private.send_bot_wake` POSTs the observation to the bot's `webhook_url` (HMAC `x-wake-signature`). See §26. |
-| `notify_game_invite`    | `games`         | INSERT: `access = 'friends'` (public games are lobby-discoverable, not pushed — pushing every public game to all friends would be spam)                       | All accepted friends of `created_by` |
-| `notify_friend_request` | `relationships` | INSERT: `status = 'pending'`                                                                                                                                  | The user who is not `initiated_by`   |
-
-`private.send_push_notification` loops over `device_tokens` for the target user
-and fires one `net.http_post` per device. Zero rows = no HTTP calls. If the
-cached token is absent (FCM not configured), it emits a `WARNING` and returns
-early — all sends degrade gracefully in local dev.
-
-**Trigger type and performance**
-
-All three triggers are `AFTER … FOR EACH ROW`. They fire after the row is
-durably written but still within the same transaction — the write call doesn't
-return to the client until the trigger body finishes. This is not a concern in
-practice because `pg_net`'s `net.http_post` is non-blocking: it enqueues the
-HTTP request in a background worker and returns a `request_id` immediately
-without waiting for FCM to respond. The trigger body is a few indexed `SELECT`s
-plus the non-blocking enqueue — a few milliseconds, not a meaningful hit to game
-write throughput. `AFTER` (not `BEFORE`) is correct: there is no point notifying
-a player before the write has committed.
+**Why EF-side, not triggers.** The EF already holds the committed transition (the
+roster, the previous/final pending sets, the observation payloads), so it can
+decide recipients without any extra DB read a trigger would need. Sends are
+best-effort and fired after the commit returns, so notification latency never
+extends the game write path. The earlier design routed these through
+`AFTER … FOR EACH ROW` triggers + `pg_net`; collapsing them into the EF removed
+the token cache, the cron, and a class of trigger-ordering concerns.
 
 **`pg_net` extension**
 
@@ -2817,21 +2889,14 @@ own `cron` schema).
 
 ### Security
 
-`public.store_fcm_access_token` must live in the `public` schema because
-`supabase.rpc()` in the edge function only reaches PostgREST-exposed functions —
-`private` schema functions are invisible to the API. It is protected by:
-
-```sql
-REVOKE EXECUTE ON FUNCTION public.store_fcm_access_token(text, text)
-  FROM PUBLIC, anon, authenticated;
-```
-
-`service_role` (the role the edge function authenticates as) retains `EXECUTE`
-and is unaffected by this revoke. Clients using `anon` or `authenticated` cannot
-invoke it. This is the same pattern as `public.apply_rating_updates` in the
-rating system. Internal helpers (`private.send_push_notification`, the trigger
-functions) live in the `private` schema and are never exposed via PostgREST — no
-REVOKE needed for those.
+Notification dispatch has **no PostgREST surface**: there is no public RPC for
+token storage or sending, so nothing for a client to invoke. The Google service
+account credentials (`FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` /
+`FIREBASE_PROJECT_ID`) live only as edge-function environment secrets, and
+`_engine/fcm.ts` mints the OAuth token in-process — the
+credential never touches the database. `pushToUser` reads `device_installations`
+with the service-role client inside the EF; clients can only read their **own**
+device rows under RLS and never see another user's FIDs.
 
 ### Android notification icon
 
@@ -2917,24 +2982,19 @@ missing notifications.
 ### OAuth token lifetime
 
 Google access tokens obtained via the JWT bearer grant (RFC 7523) are
-**contractually** 3600 seconds. The edge function requests `exp: now + 3600`;
-Google always honors it for service accounts. The 50-minute cadence provides a
-10-minute buffer and is not an assumption — the 3600-second limit is documented
-by Google and enforced by their token endpoint.
-
-**Failure mode**: if a pg_cron invocation fails (edge function crash, network
-error), the next retry fires 50 minutes later. Two consecutive failures leave
-the cached token ~100 minutes old — stale. `send_push_notification` does not
-check token freshness, so FCM calls made with a stale token will be rejected by
-Google silently (pg_net is fire-and-forget; errors are not surfaced).
-Notifications are lost until the next successful refresh. In practice this is
-rare — a pg_cron miss is a Supabase infrastructure event, not application logic.
+**contractually** 3600 seconds. `_engine/fcm.ts` requests `exp: now + 3600` and
+caches the resulting access token in process memory, refreshing it lazily a
+little before expiry — so an actively-serving function holds at most one live
+token and re-mints only when needed. There is no cron, no shared token cache,
+and no cross-request staleness window: a cold function simply mints on first
+send. A failed mint surfaces as a logged error on that send (the push is lost,
+not retried); the next send re-attempts.
 
 ### Supabase edge function secrets
 
-`refresh-fcm-token` requires three secrets. These are edge function environment
-variables, not Vault secrets — they are set once per project via the CLI or
-Dashboard and are invisible to client code.
+The `_engine/fcm.ts` sender requires three Firebase secrets. These are edge
+function environment variables, not Vault secrets — they are set once per project
+via the CLI or Dashboard and are invisible to client code.
 
 Only two fields from the service account are used — `client_email` (the JWT
 issuer) and `private_key` (for RS256 signing). The full JSON blob is never
@@ -2973,19 +3033,22 @@ supabase secrets set FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----
 supabase secrets set FIREBASE_PROJECT_ID=<your-project-id>
 ```
 
-**Local dev**: `refresh-fcm-token` will not work without real Firebase
-credentials. This is expected — `send_push_notification` degrades gracefully
-with a `WARNING` when the cached token is absent, so local play is unaffected.
-Do not add placeholder Firebase values to `seed.sql`.
+**Local dev**: FCM sends will not work without real Firebase credentials. This is
+expected — `pushToUser` checks `getFirebaseEnv()` and degrades gracefully with a
+warning when the `FIREBASE_*` secrets are absent, so local play is unaffected.
+Do not add placeholder Firebase values to `.env.local`.
 
 After setting secrets, deploy all functions (see §21).
 
-| Secret                  | Used by                                                                                                           |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `FIREBASE_CLIENT_EMAIL` | `refresh-fcm-token` — JWT issuer claim for Google OAuth2 token exchange                                           |
-| `FIREBASE_PRIVATE_KEY`  | `refresh-fcm-token` — RS256 signing key for the JWT                                                               |
-| `FIREBASE_PROJECT_ID`   | `refresh-fcm-token` — stored in `private.app_config` so triggers can build the FCM endpoint URL                   |
-| `SERVERLESS_SECRET`     | `refresh-fcm-token` — same shared secret as `update-ratings`; Postgres reads it from Vault as `serverless_secret` |
+All secrets below are set on the single `game` function (see migration §12).
+
+| Secret                  | Used by                                                                                                  |
+| ----------------------- | -------------------------------------------------------------------------------------------------------- |
+| `FIREBASE_CLIENT_EMAIL` | `game` (`_engine/fcm.ts`) — JWT issuer claim for the Google OAuth2 token exchange                        |
+| `FIREBASE_PRIVATE_KEY`  | `game` (`_engine/fcm.ts`) — RS256 signing key for the JWT                                                |
+| `FIREBASE_PROJECT_ID`   | `game` (`_engine/fcm.ts`) — used to build the FCM v1 endpoint URL                                        |
+| `BOT_SIGNING_SECRET`    | `game` (`_engine/bot_auth.ts`) — master key; per-bot key = `HMAC(master, bot_id)`                        |
+| `SERVERLESS_SECRET`     | `internal` — verifies `x-webhook-secret` on the cron/`pg_net` routes (`/internal/expire`, `/internal/purge-users`); matches Vault `serverless_secret` |
 
 ### Files
 
@@ -2996,25 +3059,77 @@ After setting secrets, deploy all functions (see §21).
 | `lib/core/startup/app_startup.dart`                            | Calls `initialize()`, stores `_notificationSub`, routes `navigationStream` taps via `navigateFromNotification`                                                                               |
 | `android/app/src/main/res/drawable/ic_notification.xml`        | Monochrome silhouette vector — used as the Android notification icon for both foreground (`flutter_local_notifications`) and background/terminated-state (FCM direct delivery) notifications |
 | `android/app/src/main/AndroidManifest.xml`                     | `com.google.firebase.messaging.default_notification_icon` meta-data points to `@drawable/ic_notification`                                                                                    |
-| `supabase/migrations/20260518081308_device_tokens.sql`         | `device_tokens` table, `upsert_device_token`/`delete_device_token` RPCs, monthly cleanup                                                                                                     |
-| `supabase/migrations/20260518091300_notification_triggers.sql` | `send_push_notification`, `store_fcm_access_token`, three notification triggers, `refresh-fcm-token` pg_cron job                                                                             |
-| `supabase/functions/refresh-fcm-token/index.ts`                | OAuth token refresh (called by pg_cron every 50 min)                                                                                                                                         |
+| `supabase/migrations/20260518081308_device_installations.sql`  | `device_installations` table, `app_upsert_device_installation`/`app_delete_device_installation` RPCs, monthly cleanup                                                                                |
+| `supabase/functions/_engine/fcm.ts`                            | FCM v1 sender — mints + caches its own OAuth token in-process (replaces the former `refresh-fcm-token` function + cron + `app_config` cache)                                                  |
+| `supabase/functions/_engine/notify.ts`                         | All EF-direct pushes: post-commit "your turn" + signed server-bot wakes, plus the friends-game invite (`/game/create`) and friend-request / accepted pushes (`social` routes). No SQL notify triggers exist. |
 
 ---
 
 ## 21. Edge Functions
 
+### Why rules run as TypeScript in Edge Functions
+
+Game rules are **pure TypeScript** (the app's `_lib/game.ts` gameEngine) run in
+an Edge Function, while the DB keeps lock/version/timing/persistence behind
+gated `engine_*` RPCs. TypeScript is the right home for complex rules (Poker
+side-pots/hand-ranking, multi-player elimination): expressive, testable, and
+library-rich, while the engine's correctness guarantees (atomic, serialized,
+hidden-info-safe) stay enforced in SQL.
+
+Why the EF — and not in the database transaction — is the orchestration layer:
+
+- **Compute is not the bottleneck.** Resolving a move/hand is sub-millisecond;
+  the scaling drivers (DB write throughput, Realtime fan-out, storage) are
+  identical wherever rules run, so *where* rules execute is a developer-experience
+  choice, not a throughput one. (Target scale: ~5,000 games/day, peak ~1,000
+  simultaneous — turn-based, latency-tolerant.)
+- **The lock is RPC-internal.** The `FOR UPDATE` lock lives entirely inside one
+  commit RPC (`BEGIN → lock → validate → write → COMMIT`). EF↔DB distance adds to
+  per-action latency (irrelevant for turn-based) but does **not** extend
+  lock-hold, so it does not cap throughput.
+- **Postgres can't synchronously call out over HTTP** — only async `pg_net`. So
+  rules can't run synchronously inside the commit transaction under the lock; the
+  orchestration that calls them lives in the EF, with Postgres invoked *by* the
+  EF (read → compute → commit), never the reverse.
+
+Alternative platforms: **Cloudflare Workers/Durable Objects** are excellent and
+slightly cheaper, with a stateful per-game DO per game (an actor-model fit), but
+that only pays off at a scale
+we are nowhere near, and it adds a second platform and a powerful Supabase key in
+a third-party store. A persistent stateful game server (VM/container) has the
+best high-scale ceiling but is premature here. Edge Functions keep one vendor,
+co-located with the DB, with the smallest security surface and one CI/CD
+toolchain. The choice is **reversible**: the rules module is pure TS, so a future
+move is a transport-layer swap, not a rules rewrite.
+
 ### Function inventory
 
-| Function            | Trigger                                                              | Purpose                                                                                                                                                                |
-| ------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `update-ratings`    | pg_net POST from `notify_rating_update` trigger on rated game finish | Runs OpenSkill, writes `player_ratings` + `rating_history` via `apply_rating_updates` RPC                                                                              |
-| `refresh-fcm-token` | pg_cron every 50 min                                                 | Exchanges `FIREBASE_SERVICE_ACCOUNT_JSON` for a Google OAuth2 token, stores it in `private.app_config` for Postgres triggers to use                                    |
+There are **four** edge functions, split by auth pattern, all built on the same
+`_engine/*` framework and the app's single `_lib/game.ts` gameEngine:
 
-`update-ratings` and `refresh-fcm-token` verify the `x-webhook-secret` header
-against `SERVERLESS_SECRET` before doing any work. Server bots have **no** edge
-function: they call the `submit_bot_action_signed` RPC directly, which verifies a
-per-bot HMAC in-database (see §26).
+- **`game`** — client-facing, `verify_jwt = true`. Every route requires a
+  verified user JWT; `@supabase/server`'s Hono middleware (`auth: 'user'`)
+  verifies it via JWKS and injects the service-role client. Routes:
+  create / create-solo / add-bot / action / start / forfeit / replay /
+  local-bot-action / delete-account / expire (the participant nudge).
+- **`internal`** — DB/cron, `verify_jwt = false`, `auth: 'none'`. Driven by
+  Postgres (`pg_cron` → `pg_net`); each route verifies the `x-webhook-secret`
+  header against `SERVERLESS_SECRET`. Two **batched** routes: `expire`
+  (`{ game_ids }`, the timeout sweep) and `purge-users` (`{ user_ids }`, the
+  stale-guest forfeit-then-purge). Both reuse the same `applyEvent` core
+  as the client `forfeit` / `delete-account` / `expire` routes.
+- **`bot`** — server bots (possibly external), `verify_jwt = false`,
+  `auth: 'none'`. A single `action` route, authenticated by a per-bot HMAC the
+  handler verifies in-process.
+- **`social`** — client-facing friend writes, `verify_jwt = true`. Routes:
+  friend-request / accept / remove. Game-agnostic (built without the gameEngine);
+  emits friend-request / accepted pushes directly.
+
+Ratings (OpenSkill) and FCM sending run inside the framework as `_engine/*`
+modules — there is no separate `update-ratings` or `refresh-fcm-token` function.
+Server bots POST to the `/bot/action` route, authenticated by a per-bot HMAC the
+EF verifies in-process with a key derived from `BOT_SIGNING_SECRET` (see §26).
+See migration §12.
 
 ### Local development
 
@@ -3034,11 +3149,11 @@ SERVERLESS_SECRET=local-dev-secret   # matches seed.sql Vault value
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected automatically by the
 CLI — do not add them to `.env.local`.
 
-**Firebase secrets** (`FIREBASE_SERVICE_ACCOUNT_JSON`, `FIREBASE_PROJECT_ID`)
-are intentionally absent from `.env.local`. `refresh-fcm-token` will fail when
-pg_cron calls it locally, but `send_push_notification` degrades gracefully
-(WARNING + early return) when the cached token is absent. Push notifications
-simply don't fire in local dev.
+**Firebase secrets** (`FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`,
+`FIREBASE_PROJECT_ID`) are intentionally absent from `.env.local`. With them
+unset, `getFirebaseEnv()` returns null and `pushToUser` degrades gracefully
+(warning + early return) — `_engine/fcm.ts` never mints a token. Push
+notifications simply don't fire in local dev.
 
 **Firebase app** (`firebase_options.dart`): Firebase is mandatory — the app will
 not compile without this file. Run `flutterfire configure` once when first
@@ -3068,9 +3183,9 @@ touch function code.
 ## 22. Account Deletion
 
 Account deletion is **infra-owned**. It is exposed to the client via the
-`delete_account()` RPC and surfaces in the UI as a destructive action in
-Settings (bottom of the screen, `colorScheme.error` styling, confirmation
-dialog).
+`game/delete-account` edge-function route and surfaces in the UI as a
+destructive action in Settings (bottom of the screen, `colorScheme.error`
+styling, confirmation dialog).
 
 ### Client-Side Flow
 
@@ -3079,12 +3194,12 @@ AuthController.deleteAccount()
   1. deleteUserData(ref, userId)             ← clears SQLite profile cache (unsafe_forever never expires on its own)
   AuthService.deleteAccount()
   2. Best-effort avatar removal from storage ('avatars' bucket, object name = userId)
-  3. supabase.rpc('delete_account')          ← the single DB call
+  3. supabase.functions.invoke('game/delete-account')  ← the single server call
   4. supabase.auth.signOut()                 ← best-effort; swallow errors
 
 AuthController.signOut()
   1. deleteUserData(ref, userId)             ← clears SQLite profile cache
-  2. notificationService.deleteCurrentToken() ← best-effort FCM token removal
+  2. notificationService.deleteCurrentInstallation() ← best-effort FCM registration removal
   3. supabase.auth.signOut()
 ```
 
@@ -3099,65 +3214,65 @@ continues.
 deletion, a subsequent login as a different account on the same device could
 theoretically read stale keys. See §23 for the full persistence design.
 
-`signOut()` after a successful `delete_account` call will likely fail (the auth
-session is already gone) — those errors are caught and silently dropped.
+`signOut()` after a successful `game/delete-account` call will likely fail (the
+auth session is already gone) — those errors are caught and silently dropped.
 Navigation back to the auth screen is driven by the existing
 `authStateChangesProvider` listener reacting to the session becoming null.
 
-### Server-Side Flow (`private.delete_account`)
+### Server-Side Flow (`game/delete-account` route)
 
-Runs as a single transaction under the caller's auth identity. All game cleanup
-happens **before** `DELETE FROM auth.users` so that `auth.uid()` remains valid
-throughout.
+The `game/delete-account` edge-function route calls `purgeUserGames`, which
+**forfeits first** (the consequence needs the rules) then runs a pure-SQL purge.
+Active-game forfeits go through the normal commit path; the teardown
+(`engine_purge_user`) is one SQL transaction, and all lobby cleanup happens
+**before** `DELETE FROM auth.users`:
 
 ```
-private.delete_account()
-  │
-  ├── FOR each waiting/ready game the user CREATED:
-  │     private.cancel_game(game_id)        ← sets status = 'aborted'
-  │
-  ├── FOR each waiting/ready game the user JOINED but did not create:
-  │     private.leave_game(game_id)         ← compacts player_index values,
-  │                                            transitions ready→waiting if needed
-  │
-  ├── FOR each active game the user is in:
-  │     private.forfeit_game(game_id)   ← acquires its own FOR UPDATE lock
-  │       └── game_handle_system_action('forfeit', …)
-  │           └── commit_action(…)
-  │               ├── INSERT game_states (new version)
-  │               ├── INSERT actions (type='system', player_index=forfeiting seat)
-  │               ├── finish_game → INSERT game_outcomes, UPDATE games.status='finished'
-  │               │     └── on_game_finished_update_ratings trigger fires
-  │               │           └── net.http_post → update-ratings edge function (async)
-  │               └── update_all_observations (fans out per-player observations)
-  │
-  └── DELETE FROM auth.users WHERE id = v_user_id
-        └── CASCADE → public.users
-              ├── CASCADE → user_profiles           (deleted)
-              ├── CASCADE → relationships            (deleted — both sides)
-              ├── CASCADE → player_ratings           (deleted)
-              ├── CASCADE → rating_history           (deleted)
-              ├── SET NULL → games.created_by        (preserved, creator anonymized)
-              ├── SET NULL → participants.user_id    (preserved, seat row retained)
-              ├── SET NULL → game_outcomes.user_id   (preserved, outcome anonymized)
-              ├── SET NULL → actions.user_id         (preserved, audit log retained)
-              └── CASCADE → observations.user_id     (deleted — no longer needed)
-        └── CASCADE → device_tokens (auth.users fk)  (deleted)
+game/delete-account            (edge function, caller JWT)
+  └── purgeUserGames (EF)
+      ├── readActiveGameIds(user)          ← the user's active games (typed SDK read)
+      ├── FOR each active game:  forfeit via the EF
+      │     handleEvent('forfeit') → engine_commit_action
+      │       ├── INSERT game_states (new version) + actions (type='system')
+      │       ├── on finish: INSERT game_outcomes, games.status='finished',
+      │       │     and rating updates written in the SAME transaction (rated games)
+      │       └── fans out per-player observations
+      └── engine_purge_user(user)          ← single SQL transaction
+            ├── FOR each waiting/ready game CREATED:  do_cancel_game  (status='aborted')
+            ├── FOR each waiting/ready game JOINED:   do_leave_game   (compacts
+            │                                          player_index, ready→waiting)
+            └── DELETE FROM auth.users WHERE id = user
+                  └── CASCADE → public.users
+                        ├── CASCADE → user_profiles           (deleted)
+                        ├── CASCADE → relationships            (deleted — both sides)
+                        ├── CASCADE → player_ratings           (deleted)
+                        ├── CASCADE → rating_history           (deleted)
+                        ├── SET NULL → games.created_by        (preserved, anonymized)
+                        ├── SET NULL → participants.user_id    (preserved, seat retained)
+                        ├── SET NULL → game_outcomes.user_id   (preserved, anonymized)
+                        ├── SET NULL → actions.user_id         (preserved, audit retained)
+                        └── CASCADE → observations.user_id     (deleted — no longer needed)
+                  └── CASCADE → device_installations (auth.users fk)  (deleted)
 ```
 
-#### Why `cancel_game` / `leave_game` before the cascade?
+The same `purgeUserGames` path backs the stale-guest cleanup (`internal/purge-users`),
+which batches guests that still hold active games; guests with no active games are
+purged in pure SQL by the cron sweep with no edge-function hop. See §25 / §21.
+
+#### Why forfeit + cancel/leave before the cascade?
 
 A plain `DELETE FROM auth.users` would SET NULL on `participants.user_id` and
-leave orphaned lobby rows. `cancel_game` and `leave_game` run the proper cleanup
-logic: compacting `player_index` values, transitioning game status, and
-preserving lobby integrity for other players. The explicit loop is necessary
-because the cascade knows nothing about these invariants.
+leave orphaned lobby rows (and abandon other players in active games).
+`engine_purge_user`'s `do_cancel_game` / `do_leave_game` run the proper cleanup —
+compacting `player_index`, transitioning status, preserving lobby integrity — and
+the EF forfeits active games first so opponents aren't stuck. The cascade alone
+knows nothing about these invariants.
 
-#### Why no version handshake around `forfeit_game`?
+#### Why no version handshake on the forfeits?
 
-`forfeit_game` takes no `expected_version` — forfeiting is an unconditional
-intent. It acquires its own `FOR UPDATE` lock on `games` and reads the latest
-`game_states` row under that lock, so the committed action is always correctly
+The forfeit takes no `expected_version` — forfeiting is an unconditional intent.
+`engine_commit_action` acquires the `FOR UPDATE` lock on `games` and reads the
+latest `game_states` row under it, so the committed action is always correctly
 ordered even if other players act concurrently.
 
 ### What is Preserved
@@ -3174,21 +3289,23 @@ Game history is preserved for other players and for future analysis:
 | `rating_history`     | **Deleted** (CASCADE)                                                            | Personal audit log; meaningless without an account             |
 | `user_profiles`      | **Deleted** (CASCADE)                                                            | Personal data                                                  |
 | `relationships`      | **Deleted** (CASCADE from both sides)                                            | Social graph                                                   |
-| `observations`       | **Deleted** (CASCADE)                                                            | Derived data; regenerable from `game_states` via `get_replay`  |
-| `device_tokens`      | **Deleted** (CASCADE from auth.users)                                            | No account → no push delivery                                  |
-| Avatar file          | **Deleted** (client-side before RPC)                                             | Storage is not in the DB transaction                           |
+| `observations`       | **Deleted** (CASCADE)                                                            | Derived data; regenerable from `game_states` on replay         |
+| `device_installations` | **Deleted** (CASCADE from auth.users)                                          | No account → no push delivery                                  |
+| Avatar file          | **Deleted** (client-side first)                                                  | Storage is not in the DB transaction                           |
 
-### Rating Update Race Condition
+### Rating Updates During Deletion
 
-The `on_game_finished_update_ratings` trigger fires synchronously during
-`forfeit_game` (when `games.status` transitions to `'finished'`). The trigger
-**reads `game_outcomes.user_id` at trigger time**, before the cascade sets it to
-NULL, and bundles it into the `net.http_post` payload. The HTTP call fires
-asynchronously after the transaction commits.
+Ratings are computed in the EF and written by `private.apply_rating_updates`
+**inside the finishing transaction** (see §8). Deletion sequences this cleanly: `purgeUserGames`
+**forfeits the caller's active games first** (each forfeit is its own commit, so
+any rated forfeit applies its rating updates while the user row still exists),
+and only then does `engine_purge_user` cancel/leave the remaining lobby games and
+`DELETE FROM auth.users`. So the deleting player's own rating writes complete
+before their `public.users` row is gone.
 
-By commit time, `public.users` has been deleted (the cascade ran in the same
-transaction). The `apply_rating_updates` RPC — called by the edge function —
-guards against this:
+`apply_rating_updates` still keeps an existence guard as defense-in-depth, so a
+finishing game that references an already-removed identity simply skips that
+player while the others are rated normally:
 
 ```sql
 IF v_user_id IS NOT NULL AND NOT EXISTS (
@@ -3197,9 +3314,6 @@ IF v_user_id IS NOT NULL AND NOT EXISTS (
   CONTINUE;  -- skip deleted user, other players still get their update
 END IF;
 ```
-
-The deleted player's rating row has already been CASCADE-deleted. The surviving
-players in the same game receive their rating updates normally.
 
 ### Dart-Side Null Handling
 
@@ -3500,7 +3614,7 @@ scaffold already warms the catalog for **local-bot** builds (it watches it to
 decide the New Solo Game FAB), so the prewarm exists to ready the
 **server-bots-only** path — where the shell's `localBots.isNotEmpty`
 short-circuit means nothing watches it until the waiting-room "Add bot" picker
-opens. The cost for a bot-less deployment is one cheap `get_bots` returning an
+opens. The cost for a bot-less deployment is one cheap `app_bots` returning an
 empty list, persisted once.
 
 ### Schema Migration
@@ -3542,9 +3656,10 @@ direct dependencies because `storage_provider.dart` imports them directly
 
 ## 24. Backward Compatibility — evolving the game without breaking shipped apps
 
-This is the companion to [`versioning.md`](versioning.md). That doc covers the
-**engine Dart API** and **engine SQL** contracts (semver, expand/contract, the
-release/rollout flow). This section covers what bites once a _game_ is in real
+This is the companion to [README → Versioning & backward
+compatibility](../README.md#versioning--backward-compatibility). That section
+covers the **engine Dart API** and **engine SQL** contracts (semver,
+expand/contract, the release/rollout flow). This section covers what bites once a _game_ is in real
 users' hands and you want to change a rule or add a feature: the **game JSONB
 payloads** (config / state / observation / action), the **client caches**, and
 the **client↔server version negotiation** that bounds how long old clients must
@@ -3561,7 +3676,7 @@ started under the old rules, do when they meet the new code?"_
 | Axis                     | Granularity              | Where it lives                                                                                                      | Who reads it                                                     |
 | ------------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
 | **Engine semver**        | per engine release       | git tag `vX.Y.Z`, `pubspec.yaml`                                                                                    | build/release                                                    |
-| **Game schema version**  | per game _type_ revision | `games.schema_version` column (threaded to the SQL hooks as `p_schema_version`; on `Game`/`BaseEngine` client-side) | `game_apply_action` (SQL) + `BaseEngine.parseObservation` (Dart) |
+| **Game schema version**  | per game _type_ revision | `games.schema_version` column (threaded to the TS hooks as the `schemaVersion` argument; on `Game`/`BaseEngine` client-side) | `applyAction` (TS) + `BaseEngine.parseObservation` (Dart) |
 | **Cache schema version** | per persisted model      | each provider's `destroyKey`                                                                                        | `riverpod_sqflite` on cold start                                 |
 
 An engine release may touch none, one, or several of these.
@@ -3570,15 +3685,15 @@ An engine release may touch none, one, or several of these.
 
 | # | Surface                                                                                    | Breaks when                               | Mechanism                                                                                                           |
 | - | ------------------------------------------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| 1 | **Engine Dart API** (barrel, `runEngineApp`, `GameModule`/`BaseEngine`)                    | compile time                              | engine semver — [`versioning.md`](versioning.md)                                                                    |
-| 2 | **Engine SQL** (infra migrations + the app-owned hooks)                                    | runtime, vs live DBs + installed binaries | expand/contract — [`versioning.md`](versioning.md)                                                                  |
+| 1 | **Engine Dart API** (barrel, `runEngineApp`, `GameModule`/`BaseEngine`)                    | compile time                              | engine semver — [README](../README.md#versioning--backward-compatibility)                                           |
+| 2 | **Engine SQL** (infra migrations + the app-owned hooks)                                    | runtime, vs live DBs + installed binaries | expand/contract — [README](../README.md#versioning--backward-compatibility)                                         |
 | 3 | **Game JSONB** (`games.config`, `game_states.state`, `observations.data`, action `p_data`) | in-flight games                           | **game schema version** (below)                                                                                     |
 | 4 | **Client caches** (`riverpod.db`, SharedPreferences, image cache)                          | cold-start decode of stale rows           | **`destroyKey` discipline + tolerant decode** (below)                                                               |
 | 5 | **Client↔server version**                                                                  | old client meets new backend              | **client-version header + `min_supported_version` gate** (designed; **deferred** — Android uses Play in-app-update) |
 
 **Authority note.** The client `BaseEngine.isValidAction` is **UX-only** (it
 greys out illegal taps); the authoritative rule check is the server hook
-`game_apply_action`. This is what lets many rule changes ship **server-side
+`applyAction`. This is what lets many rule changes ship **server-side
 only** (see the decision checklist).
 
 ### Surface 3 — game schema version (version the game _type_)
@@ -3589,10 +3704,10 @@ and that version is honored for the game's whole life.
 
 **Where it lives.** A first-class **`games.schema_version` column**
 (`INT NOT NULL DEFAULT 1`) — set once at creation (from the client's
-`GameModule.schemaVersion`, written by `create_game`) and immutable. It is kept
-**out of** the opaque `config`/`state`/observation JSONB so those payloads stay
-game-owned and the drain query is a plain column scan. The engine threads it to
-all game SQL hooks as an explicit `p_schema_version` parameter, and surfaces it
+`GameModule.schemaVersion`, written by `engine_create_game`) and immutable. It is
+kept **out of** the opaque `config`/`state`/observation JSONB so those payloads
+stay game-owned and the drain query is a plain column scan. The engine threads it
+to the game hooks as an explicit `schemaVersion` argument, and surfaces it
 on the `Game` model (`required int schemaVersion` — the `NOT NULL` column always
 provides it) and on `BaseEngine.schemaVersion`.
 
@@ -3604,12 +3719,12 @@ version.
 
 **How both sides branch.**
 
-```sql
--- server: game_apply_action(..., p_config, p_schema_version)
-CASE p_schema_version
-  WHEN 1 THEN /* original rules (kept until v1 games drain) */
-  WHEN 2 THEN /* new rules */
-END
+```ts
+// server: applyAction({ config, schemaVersion, ... })
+switch (args.schemaVersion) {
+  case 1: /* original rules (kept until v1 games drain) */ break;
+  case 2: /* new rules */ break;
+}
 ```
 
 ```dart
@@ -3623,18 +3738,18 @@ ObservationData parseObservation(Map<String, dynamic> json) =>
 
 **Retiring an old version — two paths, two lifetimes.** Old code splits in two:
 
-- **Write path** (`game_apply_action`, `game_handle_system_action` — anything
+- **Write path** (`applyAction`, `handleEvent` — anything
   that _advances_ state) can be retired once **both**: (1) the **drain query**
   returns zero —
   `SELECT count(*) FROM games WHERE status='active' AND schema_version < N;` —
   and (2) the **force-update floor** has passed the last app version that could
   _create_ that schema. Active games are the only callers of the write path, so
   once they drain it is dead.
-- **Read / projection / render path** (`game_compute_observation` on the server,
+- **Read / projection / render path** (`computeObservation` on the server,
   `BaseEngine.parseObservation` + rendering on the client) must survive **as
   long as you want to replay games created under that schema** — _not_ bounded
-  by draining. `get_replay` re-projects every historical `game_states` row
-  through `game_compute_observation` at the game's own `schema_version`, so
+  by draining. Replay re-projects every historical `game_states` row
+  through `computeObservation` at the game's own `schema_version`, so
   replays of an old finished game stay requestable long after the last active
   old-schema game ended. Retire this path only when you drop replay support for
   that schema.
@@ -3700,7 +3815,9 @@ game schema, you may _contract_.
 
 ### Deploy playbook (expand → ship → contract)
 
-Same as [`versioning.md`](versioning.md), applied to game changes:
+Same as [README → Versioning & backward
+compatibility](../README.md#versioning--backward-compatibility), applied to game
+changes:
 
 1. **Expand** — ship the additive DB change (new column / `_v2` RPC / new schema
    branch in the hooks) **before or with** the app release; old shapes keep
@@ -3724,7 +3841,7 @@ project; migrations are append-only/forward-only (fix forward, never roll back).
 - Purely additive (new optional field/feature)? → nullable / `@Default`, **no
   bump**; old clients ignore it, new clients default it.
 - Server-only rule logic, same shapes, in-flight games stay consistent? → change
-  `game_apply_action` only, **no bump**.
+  `applyAction` only, **no bump**.
 - New enum value? → ensure `unknownEnumValue` tolerance is already shipped, then
   expand/contract.
 - Touching a persisted model's shape? → bump **that provider's** `destroyKey`.
@@ -3734,11 +3851,11 @@ project; migrations are append-only/forward-only (fix forward, never roll back).
 Three of the four foundations are implemented (dev-phase, in-place); the version
 gate (Surface 5) is **designed but deliberately not built**.
 
-1. **Game schema version** — `games.schema_version` column; `create_game` stores
-   it from `GameModule.schemaVersion`; threaded to all game hooks as
-   `p_schema_version`; surfaced on `Game`/`BaseEngine.schemaVersion` and gated
+1. **Game schema version** — `games.schema_version` column; `engine_create_game`
+   stores it from `GameModule.schemaVersion`; threaded to the game hooks as a
+   `schemaVersion` argument; surfaced on `Game`/`BaseEngine.schemaVersion` and gated
    by `GameModule.supportsSchema` in `gameEngineProvider` (render path). **Join
-   is gated too:** `join_game`/`join_game_by_code` take the client's max
+   is gated too:** `app_join_game`/`app_join_game_by_code` take the client's max
    supported schema and refuse to seat the caller in a newer-schema game, so
    every join path (lobby, friends, by-code, deep link) is blocked _before_ a
    participant row is created — not only when the game screen later tries to
@@ -3784,21 +3901,25 @@ handle with no avatar. `users.email` is nullable specifically to allow this.
 
 Guests can play (including creating **public, unrated** games) but cannot use
 rated games or social features. Because anonymous users share the
-`authenticated` Postgres role, this cannot be enforced with `GRANT`/`REVOKE` —
-it is a **runtime check on the `is_anonymous` JWT claim**:
+`authenticated` Postgres role, this cannot be enforced with `GRANT`/`REVOKE` — it
+is a **runtime check on the `is_anonymous` JWT claim**, applied at whichever layer
+owns the operation:
 
-- `private.is_anonymous()` → reads `auth.jwt()->>'is_anonymous'`.
-- `private.require_permanent_user()` → raises for guests. Called by
-  `send_friend_request`, `accept_friend_request`, `remove_friend`,
-  `search_users`. Guests are also blocked as a social _target_ (not just caller)
-  via `private.is_anonymous_user(uuid)`: `search_users` excludes anonymous
-  accounts from results, and `send_friend_request` rejects an anonymous target —
+- **Edge-function routes** read the caller's guest status from the JWT
+  (`isAnonymousCaller`, no DB round-trip) and gate in TypeScript:
+  `game/create` blocks `friends` access for guests and **rejects** a guest's
+  `rated = true` (the `rated` assertion is validated, not coerced — §5/§8);
+  `game/create-solo` allows guests local bots only; `game/add-bot` rejects guests;
+  the `social/*` routes reject a guest **caller**.
+- **Client-direct RPCs** keep their guest gate in SQL (no EF in the loop):
+  `app_join_game` raises if a guest tries to join a **rated** game (also covers
+  `app_join_game_by_code`) — otherwise a guest would gain a `player_ratings` row and
+  skew opponents' ratings; `app_search_users` is **registered-only**
+  (`private.require_permanent_user()`).
+- **Target** anonymity stays in SQL because it needs the target's row, not the
+  caller's JWT: `private.is_anonymous_user(uuid)` makes `app_search_users` exclude
+  anonymous accounts and `engine_send_friend_request` reject an anonymous target —
   so a throwaway guest never appears in or receives friend activity.
-- `create_game` forces `rated = false` for guests
-  (`... AND NOT private.is_anonymous()`).
-- `join_game` raises if the target game is rated and the caller is a guest (also
-  covers `join_game_by_code`, which delegates to it) — otherwise a guest would
-  gain a `player_ratings` row and skew opponents' ratings.
 
 Client-side, the `isAnonymousProvider` (derived from the auth stream) drives UI
 gating: the Social drawer destination stays visible but is **disabled**
@@ -3840,9 +3961,9 @@ no game action in the last 2 days. The short windows keep guest data from
 accumulating long enough that deletion is a painful surprise; active guests are
 always kept, and the in-app guest upgrade card warns about the window. Each is
 torn down through
-`private.purge_user` — the **same** path `delete_account` uses (cancel created
-lobbies, leave joined lobbies, forfeit active games, then delete the
-`auth.users` row, cascading as in §22). Because the teardown is shared, a
+`engine_purge_user` — the **same** path the `game/delete-account` route uses
+(forfeit active games first, then cancel created lobbies, leave joined lobbies,
+and delete the `auth.users` row, cascading as in §22). Because the teardown is shared, a
 guest's lingering games are resolved gracefully rather than orphaned, so a
 delete never leaves a null creator or ghost participant — no separate live-game
 guard is needed. Each guest's purge runs in its own subtransaction so one
@@ -3872,7 +3993,7 @@ Adding Bots**.
 
 > **Non-goal: offline play.** "Local bot" means *where the move is computed*, not
 > *offline*. The engine is **server-authoritative** — every transition runs in
-> `game_apply_action`, observations are computed server-side, and
+> `applyAction`, observations are computed server-side, and
 > identity/outcomes/ratings live in the DB. A local-bot game still needs the
 > server for *every* move (the client picks the move; the server validates,
 > applies, and fans out). True offline solo is a separate, out-of-scope feature —
@@ -3883,14 +4004,14 @@ Adding Bots**.
 |              | **Local bot** (`is_local = true`)                | **Server bot** (`is_local = false`)                    |
 | ------------ | ------------------------------------------------ | ------------------------------------------------------ |
 | Who computes | the sole human's own client                      | a remote endpoint the operator runs                    |
-| Wake         | the client's existing observation Realtime sub   | `net.http_post` to `webhook_url` (HMAC-signed)         |
-| Action entry | `submit_local_bot_action` (authenticated)        | `submit_bot_action_signed` (anon; per-bot HMAC)        |
+| Wake         | the client's existing observation Realtime sub   | EF `fetch` to `webhook_url` (HMAC-signed)              |
+| Action entry | `game/local-bot-action` route (authenticated)    | `bot/action` route (anon; per-bot HMAC)                |
 | Use case     | solo play, incl. hidden-info (no human to cheat) | multiplayer fill, rated games, "play while app closed" |
 
 Both write **observation rows** like humans (the `observations` table is
 generalised — nullable `user_id`, plus `bot_id` and `player_index`; see §2), so a
-bot's wake falls out of the existing `notify_your_turn` trigger and arrives **with
-the observation** — no pull or compute-on-demand call.
+server bot's wake falls out of the EF's post-commit `notifyTransition` (§20) and
+arrives **with the observation** — no pull or compute-on-demand call.
 
 ### Authorization invariants (engine-enforced, not per-game)
 
@@ -3921,39 +4042,41 @@ construction**.
 
 Each path enforces one slice of the invariants (see §5 for signatures):
 
-- **`create_solo_game(bot_ids[], …)`** — the solo constructor, generalised to N
-  bots. Creates the game with the caller as the **sole** human, **forced
-  unrated**, validates each bot (schema + `game_bot_seatable`), requires the
-  timing partition, seats everyone, and runs `start_game` **in one shot**. Because
-  the game is never joinable, no second human can ever enter — invariant 1 holds
-  with no extra guard. Anonymous callers may seat **local bots only** (server bots
-  cost real per-move compute).
-- **`add_bot_to_game(game_id, bot_id)`** — creator-only waiting-room fill (the
-  host's "Add bot" button). Rejects local bots (invariant 2), guests, a
+- **`game/create-solo` (→ `engine_create_solo_game`)** — the solo constructor,
+  generalised to N bots. The route validates bot class/timing/schema policy in
+  TS (§5); the RPC creates the game with the caller as the **sole** human,
+  **forced unrated**, seats everyone, and flips to `ready` **in one shot**.
+  Because the game is never joinable, no second human can ever enter — invariant 1
+  holds with no extra guard. Anonymous callers may seat **local bots only**
+  (server bots cost real per-move compute).
+- **`game/add-bot` (→ `engine_add_bot_to_game`)** — creator-only waiting-room
+  fill (the host's "Add bot" button). The route rejects guests in TS; the RPC,
+  under its seat-count `FOR UPDATE`, rejects local bots (invariant 2), a
   schema/config-incompatible bot, and a non-`rated_eligible` bot in a rated game
   (invariant 3, never downgraded). The seat/guard logic is factored into
   `private.seat_server_bot` so the **deferred** matchmaking auto-fill can reuse it
   via service-role without the creator check.
 
-So local bots are reachable **only** via `create_solo_game`; no code path places
+So local bots are reachable **only** via `game/create-solo`; no code path places
 one into a rated or multi-human game.
 
 ### Wake & action entry
 
-- **Server bot.** Woken by the `notify_your_turn` trigger → `private.send_bot_wake`
-  `net.http_post`s the seat's observation to `webhook_url` (see §20). The bot
-  replies by calling **`submit_bot_action_signed`** (anon; HMAC-gated). One
-  trigger, two transports; `expire_turn` is the liveness backstop for an
+- **Server bot.** Woken post-commit by `notifyTransition` → `wakeBot`
+  `fetch`es the seat's observation to `webhook_url` (HMAC `x-wake-signature`; see
+  §20). The bot replies on the **`bot/action`** route (anon; HMAC-gated). One
+  wake, two transports; the timeout commit is the liveness backstop for an
   unreachable bot (hence server ⇒ timed).
 - **Local bot.** A device can't receive a webhook and must not hold a secret, so
   it uses what the client already has: its own observation Realtime sub carries
   `pending_players`. When a bot seat in a **solo** game goes pending, the client
-  pulls that seat's full view via **`get_local_bot_observation`** (gated) and
-  submits via **`submit_local_bot_action`** (see *Local-bot driving*).
+  pulls that seat's full view via **`app_local_bot_observation`** (gated) and
+  submits via the **`game/local-bot-action`** route (see *Local-bot driving*).
 
-Both action RPCs mirror `submit_action` (same `FOR UPDATE`, version, deadline,
-"is it this seat's turn?" checks; same `game_apply_action → commit_action` with
-`'bot'` type) — they differ only in who may call and how the seat is authorized.
+Both action paths commit through `engine_commit_action` (same `FOR UPDATE`,
+version, deadline, "is it this seat's turn?" checks; same `applyAction → commit`
+with `'bot'` type) — they differ only in who may call and how the seat is
+authorized.
 
 ### Config-based availability
 
@@ -3961,10 +4084,10 @@ Both action RPCs mirror `submit_action` (same `FOR UPDATE`, version, deadline,
 whether a bot supports the **rules variant** chosen in `games.config` (e.g. a
 chess bot that does standard but not misère — same schema). That capability is
 declared in **`bots.config`** and interpreted by the game's
-**`game_bot_seatable(bot_config, game_config)`** hook (§4, default `true`) — the
-**single source of truth**: enforced at seating and exposed to the pickers via
-`seatable_bot_ids(config)` (§5), so the rule is never duplicated in Dart and
-adding or retuning bots needs no app release.
+**`botSeatable(bot_config, game_config)`** hook (§4, default `true`) — the
+**single source of truth**: enforced at seating in the EF and mirrored to the
+pickers by the Dart `botSeatable` twin (§5), so the rule is never duplicated by
+hand and retuning the predicate ships in the rules module, not an app release.
 
 ### Local-bot driving (client-side)
 
@@ -3983,9 +4106,9 @@ the **solo gate once** (exactly one human) and watches one **per-seat driver**
 (`LocalBotSeatDriver`) for each bot seat with a shipped `localBots` impl —
 server-bot seats (no match) are skipped, their webhook drives them. Each per-seat
 driver holds that seat's committed state on the main isolate and, whenever the
-seat is pending, pulls its view via `get_local_bot_observation`
-(sole-human-gated), runs `chooseAction` off-thread, and submits through
-`submit_local_bot_action`.
+seat is pending, pulls its view via `app_local_bot_observation`
+(sole-human-gated), runs `chooseAction` off-thread, and submits through the
+`game/local-bot-action` route.
 
 Keeping the committed state in the driver (not inside the compute) makes
 preemption free: a newer observation just spawns a fresh compute and the doomed
@@ -4013,10 +4136,10 @@ filling four seats of a 6-player game). Seats are addressed by
 `(game_id,
 player_index)`, never by `bot_id`: each seat has its own observation
 row and its own wake carrying that seat's `player_index`, the bot echoes it in
-the signed action, and `submit_bot_action_signed` acts on exactly that seat. Seats are
+the signed action, and the `bot/action` route acts on exactly that seat. Seats are
 fully independent `observation → action` calls — one never sees another's hidden
 state — and ratings treat each as an independent result for the identity (never
-rated against its own other seats; see §8 and `update-ratings`).
+rated against its own other seats; see §8).
 
 Conversely, **many personas can share one implementation** (N:1): point several
 `bots` rows at the same `webhook_url` (server) or register several configured
@@ -4026,34 +4149,35 @@ instances of one `LocalBot` class (local), each with a distinct `username` and
 with no code change and no behaviour-classifier column. A server wake carries
 `username` and `config`, letting one deployment self-configure per persona.
 
-### Authentication — one per-bot HMAC, both directions
+### Authentication — one derived per-bot HMAC, both directions
 
-Both directions authenticate with a **single per-bot HMAC secret** in Vault
-(`bot_secret_<bot_id>`) — the cheapest scheme that runs everywhere, including inside
-a Postgres trigger and a stock-Postgres RPC. The **action is the only security
-boundary**; the wake is low-stakes because every move is re-validated against
-authoritative state under the `games FOR UPDATE` lock.
+Both directions authenticate with a **per-bot key derived in the edge function**
+as `HMAC(BOT_SIGNING_SECRET, bot_id)` (`_engine/bot_auth.ts`). No per-bot secret
+is stored — not on the `bots` row, not in Vault; only the single master
+`BOT_SIGNING_SECRET` function secret exists, and the per-bot key falls out of it
+deterministically. The **action is the only security boundary**; the wake is
+low-stakes because every move is re-validated against authoritative state under
+the `games FOR UPDATE` lock.
 
 - **bot → us (action).** The bot HMAC-SHA256s the exact JSON
-  `{game_id, bot_id, player_index, version, data}` it sends, with its secret. The
-  anon-callable `submit_bot_action_signed` RPC verifies the MAC in-database
-  (`extensions.hmac`, via `private.verify_bot_action_hmac`) and applies the move.
-  This authenticates both the actor and the move bytes; replay is handled by the
-  version check + pending-seat re-check under lock (a resubmitted action carries a
-  stale version). HMAC is verified in-DB because `pgsodium` (the only in-DB Ed25519
-  path) is pending-deprecation — which is what removes the need for an edge function.
-- **us → bot (wake).** `private.send_bot_wake` HMAC-SHA256s the exact JSON body with
-  the same secret and sends it base64 in `x-wake-signature`; the bot recomputes over
+  `{game_id, bot_id, player_index, version, data}` it sends, with its derived key.
+  The anon `bot/action` route recomputes the key (`signForBot`) and verifies the
+  MAC (`verifyBotSignature`, constant-time) before committing the move via
+  `engine_commit_action`. This authenticates both the actor and the move bytes;
+  replay is handled by the version check + pending-seat re-check under lock (a
+  resubmitted action carries a stale version).
+- **us → bot (wake).** `wakeBot` HMAC-SHA256s the exact JSON body with the same
+  derived key and sends it base64 in `x-wake-signature`; the bot recomputes over
   the raw body and compares. A leak forges wakes to that one bot only — wasted
   compute, no game effect.
 
-One secret signs both directions with **no domain-separation prefix**: a wake carries
+One key signs both directions with **no domain-separation prefix**: a wake carries
 an observation and no move, an action carries a move and no observation, so a MAC
 reflected into the other direction is signature-valid but meaningless. The trade for
 HMAC over an asymmetric signature is that the platform holds a secret that could forge
 this bot's moves — fine for first-party bots (a full DB compromise can write
-`game_states` directly anyway). The signed wake body is the canonical `jsonb` text,
-exactly the bytes pg_net sends, so the bot verifies without re-serialising.
+`game_states` directly anyway). The signed wake body is the exact bytes the EF
+sends, so the bot verifies without re-serialising.
 
 ### Hidden-information local bots
 
@@ -4062,7 +4186,7 @@ a human to cheat against?**" In a solo game (one human, the rest bots) there is
 none, so peeking at a bot's hidden state only spoils the player's own unrated
 game, exactly like a single-player offline engine. Thus: perfect-info any roster →
 local OK; **hidden-info, solo, unrated → local OK** (e.g. Stratego); hidden-info
-**with human opponents** → server only. `get_local_bot_observation` is the one
+**with human opponents** → server only. `app_local_bot_observation` is the one
 place the engine reveals a bot's full view to a client, and its gate (caller is
 the sole human; target is a local bot in this game) is what makes that safe.
 
@@ -4076,7 +4200,7 @@ guests). Opponent **counts** come from the game's existing `playersForConfig` /
 `buildCreationConfig`; **opponents** are the usable bots' `display_name`s (these
 are *personas*, not a difficulty ladder, so the copy says "choose your opponent").
 Switching timing re-derives the usable list, so no invalid combination can reach
-`create_solo_game`. The other touchpoint is the host's waiting-room **"Add bot"**
+`game/create-solo`. The other touchpoint is the host's waiting-room **"Add bot"**
 affordance for a multiplayer human game (offers only `rated_eligible` bots when
 the game is rated; hidden for guest hosts).
 
@@ -4098,10 +4222,10 @@ insert into bots (username, display_name, schema_version,
 values ('hard_ai', 'Hard AI', 1,
         false, 'https://my-bot.example/wake', false)
 returning id;  -- → <bot_id>
-
-select vault.create_secret('<random secret>', 'bot_secret_<bot_id>');
 ```
 
-The bot deployment holds a copy of its **HMAC secret** (signs actions, verifies
-wakes). A local bot needs no secret — just an `is_local` row whose `username` matches
-a `GameModule.localBots` entry.
+No per-bot secret is stored. The bot deployment derives its **HMAC key** the same
+way the edge function does — `HMAC-SHA256(BOT_SIGNING_SECRET, <bot_id>)` — and uses
+it to sign actions and verify wakes. Only the platform's single `BOT_SIGNING_SECRET`
+function secret needs provisioning. A local bot needs no key — just an `is_local`
+row whose `username` matches a `GameModule.localBots` entry.

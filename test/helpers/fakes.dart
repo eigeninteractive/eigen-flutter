@@ -2,6 +2,8 @@ import 'package:flutter/widgets.dart';
 import 'package:eigen_engine/core/game/base_engine.dart';
 import 'package:eigen_engine/core/game/game_creation_spec.dart';
 import 'package:eigen_engine/core/game/game_module.dart';
+import 'package:eigen_engine/features/game/data/models/game.dart'
+    show GameAccess;
 
 /// Minimal tic-tac-toe-like observation: a flat board of 9 cells where each
 /// entry is the occupying player index, or null if empty.
@@ -81,4 +83,21 @@ class SampleModule extends GameModule {
 
   @override
   Widget buildRules(BuildContext context) => const Text('Sample rules');
+
+  @override
+  String? ratingPool({
+    required GameAccess access,
+    int? turnSeconds,
+    int? budgetSeconds,
+    int? incrementSeconds,
+    required int minPlayers,
+    required int maxPlayers,
+    required Map<String, dynamic> config,
+  }) => access == GameAccess.public ? 'casual' : null;
+
+  @override
+  bool botSeatable(
+    Map<String, dynamic> gameConfig,
+    Map<String, dynamic> botConfig,
+  ) => true;
 }

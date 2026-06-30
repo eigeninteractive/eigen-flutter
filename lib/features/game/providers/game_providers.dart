@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter_riverpod/experimental/persist.dart';
 import 'package:riverpod_annotation/experimental/json_persist.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -66,18 +64,6 @@ class AvailableBots extends _$AvailableBots {
 Future<Map<String, BotInfo>> botCatalogById(Ref ref) async {
   final bots = await ref.watch(availableBotsProvider.future);
   return {for (final bot in bots) bot.id: bot};
-}
-
-/// Ids of bots seatable into a game with the given config, per the server's
-/// `game_bot_seatable` hook — the single source of truth for config
-/// compatibility (no rule duplicated in Dart, so adding/retuning bots or changing
-/// the rule never needs an app release). The pickers intersect this with the
-/// cached catalog. [configJson] is the `games.config` JSON-encoded so the family
-/// key has value-equality; auto-disposed (it tracks the dialog's live config).
-@riverpod
-Future<Set<String>> seatableBotIds(Ref ref, {required String configJson}) {
-  final config = jsonDecode(configJson) as Map<String, dynamic>;
-  return ref.watch(gameRepositoryProvider).seatableBotIds(config);
 }
 
 /// Whether the solo-play entry should be offered for this deployment.
@@ -172,7 +158,7 @@ Stream<Game> gameStream(Ref ref, {required String gameId}) {
 /// with non-nullable player data.
 ///
 /// Works for both human and bot participants — [playerInfoCacheProvider] queries
-/// the unified `get_players` RPC covering both.
+/// the unified `app_players` RPC covering both.
 ///
 /// Auto-disposes when no screen watches it — a session can touch many games
 /// (home cards, history navigation), and keeping every game's context alive

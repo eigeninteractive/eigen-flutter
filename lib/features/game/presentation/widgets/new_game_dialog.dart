@@ -1,11 +1,10 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:eigen_engine/core/analytics/analytics_provider.dart';
 import 'package:eigen_engine/core/errors/error_messages.dart';
 import 'package:eigen_engine/core/game/game_creation_spec.dart';
+import 'package:eigen_engine/core/game/game_module.dart';
 import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
 import 'package:eigen_engine/features/game/data/models/game.dart';
 import 'package:eigen_engine/features/game/presentation/widgets/timing_selector.dart';
@@ -26,6 +25,7 @@ class NewGameDialog extends ConsumerStatefulWidget {
 
 class _NewGameDialogState extends ConsumerState<NewGameDialog> {
   GameAccess _access = GameAccess.public;
+  late GameModule _module;
   late GameCreationSpec _spec;
   // Resolved timing from the shared TimingSelector; seeded with its default so
   // there is no null window before the first interaction.
@@ -38,59 +38,30 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
   Widget? _creationConfigWidget;
   bool _isLoading = false;
 
-  // Rated toggle: on by default
+  // Rated toggle: on by default. Only meaningful when the config is rating-
+  // eligible (see [GameModule.ratingPool]); the server is the final authority.
   bool _rated = true;
-
-  // Server-derived preview of whether the current config would be rated, shown
-  // as a live badge. Null until the first preview returns.
-  ({bool rated, String? pool})? _ratingPreview;
 
   @override
   void initState() {
     super.initState();
-    final module = ref.read(currentGameModuleProvider);
-    _spec = module.creationSpec;
+    _module = ref.read(currentGameModuleProvider);
+    _spec = _module.creationSpec;
     _timing = TimingSelector.initial(_spec.timingConfigs);
     _gameConfig = Map.of(_spec.defaultConfig);
-    final (min, max) = module.playersForConfig(_gameConfig);
+    final (min, max) = _module.playersForConfig(_gameConfig);
     _minPlayers = min;
     _maxPlayers = max;
-    _creationConfigWidget = module.buildCreationConfig(
-      onChanged: (config) {
+    _creationConfigWidget = _module.buildCreationConfig(
+      // Rebuild on config change so the rating toggle's eligibility (which depends
+      // on the config) recomputes locally via [GameModule.ratingPool].
+      onChanged: (config) => setState(() {
         _gameConfig = config;
-        final (newMin, newMax) = module.playersForConfig(config);
+        final (newMin, newMax) = _module.playersForConfig(config);
         _minPlayers = newMin;
         _maxPlayers = newMax;
-        _refreshRatingPreview();
-      },
+      }),
     );
-    _refreshRatingPreview();
-  }
-
-  /// Refreshes the Rated/Casual preview from the server (single source of truth,
-  /// shared with create_game). Called when a rated-relevant input changes — the
-  /// access mode, timing mode, game config, or the rated toggle. The specific
-  /// slider seconds don't affect eligibility, so slider drags don't trigger it.
-  void _refreshRatingPreview() {
-    unawaited(() async {
-      try {
-        final preview = await ref
-            .read(gameRepositoryProvider)
-            .previewGameRating(
-              access: _access,
-              turnSeconds: _timing.turnSeconds,
-              budgetSeconds: _timing.budgetSeconds,
-              incrementSeconds: _timing.incrementSeconds,
-              minPlayers: _minPlayers,
-              maxPlayers: _maxPlayers,
-              config: _gameConfig,
-              ratedPreference: _rated,
-            );
-        if (mounted) setState(() => _ratingPreview = preview);
-      } catch (_) {
-        // Best-effort; keep the previous badge on a transient error.
-      }
-    }());
   }
 
   @override
@@ -101,6 +72,21 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
     // segment is shown-but-disabled and the Rated toggle is hidden (the server
     // enforces both regardless).
     final isAnonymous = ref.watch(isAnonymousProvider);
+
+    // Local rating eligibility (the Dart twin of the server's GameEngine.ratingPool,
+    // which recomputes the authoritative pool at creation). Null pool ⇒ this config
+    // is casual-only, so the toggle is hidden; guests are always unrated.
+    final pool = _module.ratingPool(
+      access: _access,
+      turnSeconds: _timing.turnSeconds,
+      budgetSeconds: _timing.budgetSeconds,
+      incrementSeconds: _timing.incrementSeconds,
+      minPlayers: _minPlayers,
+      maxPlayers: _maxPlayers,
+      config: _gameConfig,
+    );
+    final ratingEligible = !isAnonymous && pool != null;
+    final effectiveRated = ratingEligible && _rated;
 
     return Dialog(
       child: ConstrainedBox(
@@ -137,10 +123,8 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
                   ),
                 ],
                 selected: {_access},
-                onSelectionChanged: (s) => setState(() {
-                  _access = s.first;
-                  _refreshRatingPreview();
-                }),
+                onSelectionChanged: (s) =>
+                    setState(() => _access = s.first),
               ),
               const SizedBox(height: 16),
 
@@ -148,14 +132,7 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
               TimingSelector(
                 configs: _spec.timingConfigs,
                 enabled: !_isLoading,
-                onChanged: (timing) => setState(() {
-                  // Refresh the rated preview only when the mode changes; the
-                  // specific slider seconds don't affect eligibility, so slider
-                  // drags must not spam the server.
-                  final modeChanged = timing.mode != _timing.mode;
-                  _timing = timing;
-                  if (modeChanged) _refreshRatingPreview();
-                }),
+                onChanged: (timing) => setState(() => _timing = timing),
               ),
 
               // ── Game-specific config ──────────────────────────────────
@@ -165,48 +142,40 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
               ],
 
               // ── Rated toggle ──────────────────────────────────────────
-              // Hidden for guests (they play unrated; the server enforces it
-              // regardless). Otherwise always shown; the server silently
-              // overrides to unrated if the game type doesn't support rating
-              // for this configuration.
-              if (!isAnonymous) ...[
+              // Shown only when this config is rating-eligible (and the user is
+              // not a guest), decided locally by GameModule.ratingPool. An
+              // ineligible config is casual-only, so there is nothing to toggle.
+              if (ratingEligible) ...[
                 const SizedBox(height: 8),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Rated'),
                   value: _rated,
-                  onChanged: (v) => setState(() {
-                    _rated = v;
-                    _refreshRatingPreview();
-                  }),
+                  onChanged: (v) => setState(() => _rated = v),
                 ),
               ],
 
-              // Live Rated/Casual badge from the server (the authority on
-              // eligibility — guests, ineligible config, etc.).
-              if (_ratingPreview case final preview?) ...[
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(
-                      preview.rated
-                          ? Icons.emoji_events_outlined
-                          : Icons.sports_esports_outlined,
-                      size: 16,
+              // Local Rated/Casual badge derived from GameModule.ratingPool (the
+              // server recomputes the authoritative pool at creation).
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Icon(
+                    effectiveRated
+                        ? Icons.emoji_events_outlined
+                        : Icons.sports_esports_outlined,
+                    size: 16,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    effectiveRated ? 'Rated · $pool' : 'Casual',
+                    style: textTheme.bodySmall?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      preview.rated
-                          ? 'Rated${preview.pool != null ? ' · ${preview.pool}' : ''}'
-                          : 'Casual',
-                      style: textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+                  ),
+                ],
+              ),
 
               const SizedBox(height: 24),
 
@@ -244,6 +213,20 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
   Future<void> _createGame() async {
     setState(() => _isLoading = true);
     try {
+      // `rated` is a concrete assertion validated by the server (rejected on
+      // mismatch, not coerced), so compute the eligibility-gated value here — the
+      // same Dart twin of GameEngine.ratingPool used to show the toggle in build.
+      final pool = _module.ratingPool(
+        access: _access,
+        turnSeconds: _timing.turnSeconds,
+        budgetSeconds: _timing.budgetSeconds,
+        incrementSeconds: _timing.incrementSeconds,
+        minPlayers: _minPlayers,
+        maxPlayers: _maxPlayers,
+        config: _gameConfig,
+      );
+      final rated = !ref.read(isAnonymousProvider) && pool != null && _rated;
+
       final gameId = await ref
           .read(gameRepositoryProvider)
           .createGame(
@@ -254,7 +237,7 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
             minPlayers: _minPlayers,
             maxPlayers: _maxPlayers,
             config: _gameConfig,
-            ratedPreference: _rated,
+            rated: rated,
             schemaVersion: ref.read(currentGameModuleProvider).schemaVersion,
           );
       ref
@@ -263,7 +246,7 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
             gameId: gameId,
             access: _access.name,
             timingMode: _timing.mode,
-            rated: _rated,
+            rated: rated,
           );
       if (!mounted) return;
       Navigator.pop(context);

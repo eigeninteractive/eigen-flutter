@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -276,7 +275,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   }
 
   /// Schedules (or cancels) a timer that fires [kExpiryTriggerDelay] *after*
-  /// the [deadline], then calls [trigger_turn_expiry] so the server can process
+  /// the [deadline], then calls `GameRepository.triggerTurnExpiry` so the server
+  /// can process
   /// the timeout before the pg_cron job runs. Replaces any previously scheduled
   /// timer.
   ///

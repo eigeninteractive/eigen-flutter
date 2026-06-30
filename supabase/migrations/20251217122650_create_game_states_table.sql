@@ -18,10 +18,11 @@ CREATE TABLE public.game_states (
   -- Stored here (not just in observations) so get_replay can call
   -- game_compute_observation without re-running game logic.
   pending_players INT[] NOT NULL,
-  -- Xorshift64 PRNG seed. Advanced by private.prng_next() inside
-  -- game_apply_action. Never exposed through observations — infra-owned only.
-  -- Must be non-zero (xorshift loops at zero); initialised to 1 by default,
-  -- overwritten with a random value by start_game.
+  -- Seeded PRNG state, threaded through the edge-function gameEngine (advanced by
+  -- _engine/prng.ts). Never exposed through observations — infra-owned only.
+  -- Must be non-zero; the commit RPC rejects a zero seed as a "gameEngine forgot to
+  -- set it" guard. Initialised to 1 by default, overwritten with a random value
+  -- when the game starts.
   rng_seed BIGINT NOT NULL DEFAULT 1,
   -- Absolute deadline for the current pending player(s) to act.
   -- NULL for untimed games. Set by infra after every action using

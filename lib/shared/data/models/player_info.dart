@@ -4,7 +4,7 @@ part 'player_info.freezed.dart';
 part 'player_info.g.dart';
 
 /// Public identity of a player (human or bot), sourced from the
-/// `get_players` RPC.
+/// `app_players` RPC.
 ///
 /// Contains only publicly-safe fields (no email, no payment tier).
 /// Used across the app wherever a player's identity needs to be displayed —

@@ -16,12 +16,34 @@ const historyPageSize = 30;
 
 /// Repository for game operations.
 ///
-/// All write operations use RPC functions. Clients read observations
-/// via Realtime subscriptions.
+/// GameEngine operations (start, action, forfeit, expiry, local-bot moves) go
+/// through the `game` Edge Function, which runs the TypeScript gameEngine and
+/// commits via gated RPCs. Lobby/discovery/bot-catalog operations and reads stay
+/// on PostgREST RPCs. Clients read observations via Realtime subscriptions.
 class GameRepository {
   GameRepository(this._client);
 
   final SupabaseClient _client;
+
+  /// Invokes a `game` Edge Function route, normalising errors so
+  /// [humanize] still recognises the server's message (e.g. "Stale state").
+  ///
+  /// The function returns `{ "error": "<message>" }` with a non-2xx status on
+  /// failure; supabase throws [FunctionException] carrying that body in
+  /// [FunctionException.details]. We rethrow an [Exception] whose message is the
+  /// server text so the existing humanizer matches unchanged.
+  Future<dynamic> _invokeEngine(String route, Map<String, dynamic> body) async {
+    try {
+      final res = await _client.functions.invoke('game/$route', body: body);
+      return res.data;
+    } on FunctionException catch (e) {
+      final details = e.details;
+      final message = details is Map && details['error'] is String
+          ? details['error'] as String
+          : 'Edge function error (status ${e.status})';
+      throw Exception(message);
+    }
+  }
 
   /// Creates a new game via RPC.
   ///
@@ -29,6 +51,12 @@ class GameRepository {
   ///
   /// [turnSeconds] and [budgetSeconds] are mutually exclusive timing modes.
   /// Passing both throws on the server.
+  ///
+  /// [rated] is a concrete assertion, not a preference: the caller computes it
+  /// from the rating rules (the Dart twin of `GameEngine.ratingPool`, plus the
+  /// guest check) and the server validates it, rejecting a mismatch rather than
+  /// silently coercing. Pass `false` whenever the config is ineligible or the
+  /// caller is a guest.
   Future<String> createGame({
     GameAccess access = GameAccess.public,
     int? turnSeconds,
@@ -37,24 +65,21 @@ class GameRepository {
     required int minPlayers,
     required int maxPlayers,
     Map<String, dynamic> config = const {},
-    bool ratedPreference = true,
+    bool rated = true,
     required int schemaVersion,
   }) async {
-    final result = await _client.rpc(
-      'create_game',
-      params: {
-        'p_access': access.name,
-        'p_turn_seconds': ?turnSeconds,
-        'p_budget_seconds': ?budgetSeconds,
-        'p_increment_seconds': ?incrementSeconds,
-        'p_min_players': minPlayers,
-        'p_max_players': maxPlayers,
-        'p_config': config,
-        'p_rated_preference': ratedPreference,
-        'p_schema_version': schemaVersion,
-      },
-    );
-    return result as String;
+    final data = await _invokeEngine('create', {
+      'access': access.name,
+      'turn_seconds': ?turnSeconds,
+      'budget_seconds': ?budgetSeconds,
+      'increment_seconds': ?incrementSeconds,
+      'min_players': minPlayers,
+      'max_players': maxPlayers,
+      'config': config,
+      'rated': rated,
+      'schema_version': schemaVersion,
+    });
+    return (data as Map<String, dynamic>)['game_id'] as String;
   }
 
   /// Joins a game via RPC.
@@ -70,7 +95,7 @@ class GameRepository {
     required int clientSchemaVersion,
   }) async {
     final result = await _client.rpc(
-      'join_game',
+      'app_join_game',
       params: {
         'p_game_id': gameId,
         'p_client_schema_version': clientSchemaVersion,
@@ -91,15 +116,16 @@ class GameRepository {
     required int clientSchemaVersion,
   }) async {
     final result = await _client.rpc(
-      'join_game_by_code',
+      'app_join_game_by_code',
       params: {'p_code': code, 'p_client_schema_version': clientSchemaVersion},
     );
     return result as String;
   }
 
-  /// Starts a game via RPC (host only).
+  /// Starts a game via the engine function (host only). The function computes
+  /// the initial state + observation slices in TS and commits them.
   Future<void> startGame(String gameId) async {
-    await _client.rpc('start_game', params: {'p_game_id': gameId});
+    await _invokeEngine('start', {'game_id': gameId});
   }
 
   /// Submits an action via RPC.
@@ -115,14 +141,11 @@ class GameRepository {
     required Map<String, dynamic> actionData,
     required int expectedVersion,
   }) async {
-    await _client.rpc(
-      'submit_action',
-      params: {
-        'p_game_id': gameId,
-        'p_data': actionData,
-        'p_expected_version': expectedVersion,
-      },
-    );
+    await _invokeEngine('action', {
+      'game_id': gameId,
+      'data': actionData,
+      'expected_version': expectedVersion,
+    });
   }
 
   /// Fetches the outcomes for a completed game.
@@ -140,7 +163,7 @@ class GameRepository {
 
   /// Gets public games that are open for joining (lobby).
   ///
-  /// Delegates to the [get_lobby_games] RPC, which filters full games via a
+  /// Delegates to the [app_lobby_games] RPC, which filters full games via a
   /// SQL [HAVING] clause on the participant count — an aggregate comparison
   /// that PostgREST cannot express as a plain [WHERE] filter.
   ///
@@ -158,7 +181,7 @@ class GameRepository {
     List<({Game game, List<Participant> participants, bool isParticipant})>
   >
   getLobbyGames({DateTime? cursor}) =>
-      _getJoinableGames('get_lobby_games', cursor);
+      _getJoinableGames('app_lobby_games', cursor);
 
   /// Gets friends-access games that are open for joining, including the
   /// current user's own rooms.
@@ -166,7 +189,7 @@ class GameRepository {
     List<({Game game, List<Participant> participants, bool isParticipant})>
   >
   getFriendsGames({DateTime? cursor}) =>
-      _getJoinableGames('get_friends_games', cursor);
+      _getJoinableGames('app_friends_games', cursor);
 
   /// Shared fetch/parse for the two lobby RPCs, which return identical shapes.
   Future<
@@ -203,19 +226,19 @@ class GameRepository {
   /// The server re-validates under a row lock, so duplicate calls from the
   /// client and the pg_cron job are both safe.
   Future<void> triggerTurnExpiry(String gameId) async {
-    await _client.rpc('trigger_turn_expiry', params: {'p_game_id': gameId});
+    await _invokeEngine('expire', {'game_id': gameId});
   }
 
   /// Leaves a waiting or ready game (non-creator participants only).
   ///
   /// The creator cannot leave — use [cancelGame] instead.
   Future<void> leaveGame(String gameId) async {
-    await _client.rpc('leave_game', params: {'p_game_id': gameId});
+    await _client.rpc('app_leave_game', params: {'p_game_id': gameId});
   }
 
   /// Cancels a waiting game (creator only).
   Future<void> cancelGame(String gameId) async {
-    await _client.rpc('cancel_game', params: {'p_game_id': gameId});
+    await _client.rpc('app_cancel_game', params: {'p_game_id': gameId});
   }
 
   /// Forfeits an active game.
@@ -224,7 +247,7 @@ class GameRepository {
   /// check — forfeiting is an unconditional intent, and the server's row
   /// lock already serialises it against concurrent actions.
   Future<void> forfeitGame(String gameId) async {
-    await _client.rpc('forfeit_game', params: {'p_game_id': gameId});
+    await _invokeEngine('forfeit', {'game_id': gameId});
   }
 
   /// Fetches the current user's finished and aborted games for the history view.
@@ -292,68 +315,21 @@ class GameRepository {
 
   // ── Bots ───────────────────────────────────────────────────────────────────
 
-  /// Server-side preview of whether a prospective game would be rated, so the
-  /// create dialog can show a live "Rated / Casual" badge. Backed by the same
-  /// `derive_rated` used at creation, so the rule is never duplicated client-side.
-  ///
-  /// `derive_rated` is a pure derivation that always emits exactly one row, so
-  /// this reads it with [single]: a non-`single` result (zero or many rows) can
-  /// only mean that contract was broken, and erroring is better than crashing on
-  /// an empty `.first` or silently taking an arbitrary row.
-  Future<({bool rated, String? pool})> previewGameRating({
-    GameAccess access = GameAccess.public,
-    int? turnSeconds,
-    int? budgetSeconds,
-    int? incrementSeconds,
-    int minPlayers = 2,
-    int maxPlayers = 2,
-    Map<String, dynamic> config = const {},
-    bool ratedPreference = true,
-  }) async {
-    final response = await _client
-        .rpc(
-          'preview_game_rating',
-          params: {
-            'p_access': access.name,
-            'p_turn_seconds': ?turnSeconds,
-            'p_budget_seconds': ?budgetSeconds,
-            'p_increment_seconds': ?incrementSeconds,
-            'p_min_players': minPlayers,
-            'p_max_players': maxPlayers,
-            'p_config': config,
-            'p_rated_preference': ratedPreference,
-          },
-        )
-        .single();
-    return (
-      rated: response['rated'] as bool,
-      pool: response['pool'] as String?,
-    );
-  }
-
   /// Bots available for this deployment (display-safe columns), for the
   /// solo play and "Add bot" pickers.
   Future<List<BotInfo>> getBots() async {
-    final result = await _client.rpc('get_bots');
+    final result = await _client.rpc('app_bots');
     return (result as List)
         .cast<Map<String, dynamic>>()
         .map(BotInfo.fromJson)
         .toList();
   }
 
-  /// Ids of bots that may be seated into a game with [config], per the server's
-  /// `game_bot_seatable` hook. The pickers filter the cached catalog by this set
-  /// so the compatibility rule lives only server-side (no Dart duplication).
-  Future<Set<String>> seatableBotIds(Map<String, dynamic> config) async {
-    final result = await _client.rpc(
-      'seatable_bot_ids',
-      params: {'p_config': config},
-    );
-    return (result as List).cast<String>().toSet();
-  }
-
-  /// Creates a solo game: the caller plus [botIds] (local and/or
-  /// server, in seat order), unrated, started atomically. Returns the game ID.
+  /// Creates a solo game: the caller plus [botIds] (local and/or server, in seat
+  /// order), unrated. The EF gates each bot's config seatability
+  /// ([GameModule.botSeatable]) in TS, then `engine_create_solo_game` creates +
+  /// seats and leaves the game `ready`; the engine `start` route then computes the
+  /// initial state and begins play. Returns the game ID.
   Future<String> createSoloGame({
     required List<String> botIds,
     required int schemaVersion,
@@ -362,29 +338,26 @@ class GameRepository {
     int? incrementSeconds,
     Map<String, dynamic> config = const {},
   }) async {
-    final result = await _client.rpc(
-      'create_solo_game',
-      params: {
-        'p_bot_ids': botIds,
-        'p_schema_version': schemaVersion,
-        'p_turn_seconds': ?turnSeconds,
-        'p_budget_seconds': ?budgetSeconds,
-        'p_increment_seconds': ?incrementSeconds,
-        'p_config': config,
-      },
-    );
-    return result as String;
+    final data = await _invokeEngine('create-solo', {
+      'bot_ids': botIds,
+      'schema_version': schemaVersion,
+      'turn_seconds': ?turnSeconds,
+      'budget_seconds': ?budgetSeconds,
+      'increment_seconds': ?incrementSeconds,
+      'config': config,
+    });
+    final gameId = (data as Map<String, dynamic>)['game_id'] as String;
+    await startGame(gameId);
+    return gameId;
   }
 
-  /// Adds a server bot to a multiplayer waiting/ready game (creator only).
+  /// Adds a server bot to a multiplayer waiting/ready game (creator only). The EF
+  /// gates config seatability ([GameModule.botSeatable]) before seating.
   Future<void> addBotToGame({
     required String gameId,
     required String botId,
   }) async {
-    await _client.rpc(
-      'add_bot_to_game',
-      params: {'p_game_id': gameId, 'p_bot_id': botId},
-    );
+    await _invokeEngine('add-bot', {'game_id': gameId, 'bot_id': botId});
   }
 
   /// Submits a local bot's move on its behalf (client-driven, solo games only).
@@ -397,15 +370,12 @@ class GameRepository {
     required Map<String, dynamic> actionData,
     required int expectedVersion,
   }) async {
-    await _client.rpc(
-      'submit_local_bot_action',
-      params: {
-        'p_game_id': gameId,
-        'p_player_index': playerIndex,
-        'p_data': actionData,
-        'p_expected_version': expectedVersion,
-      },
-    );
+    await _invokeEngine('local-bot-action', {
+      'game_id': gameId,
+      'player_index': playerIndex,
+      'data': actionData,
+      'expected_version': expectedVersion,
+    });
   }
 
   /// Fetches a bot seat's [Observation] for local play, server-gated to the sole
@@ -422,7 +392,7 @@ class GameRepository {
   }) async {
     final response = await _client
         .rpc(
-          'get_local_bot_observation',
+          'app_local_bot_observation',
           params: {'p_game_id': gameId, 'p_player_index': playerIndex},
         )
         .maybeSingle();

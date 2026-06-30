@@ -1,4 +1,3 @@
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -52,9 +51,6 @@ class _PlayVsBotDialogState extends ConsumerState<PlayVsBotDialog> {
   // is no list to keep sized and no state mutation during build.
   final Map<int, String> _seatOverrides = {};
   bool _creating = false;
-  // Last resolved seatable-bot set; kept so the opponent list stays visible
-  // (stale) while a config change refetches, instead of flashing a spinner.
-  Set<String>? _lastSeatable;
 
   @override
   void initState() {
@@ -123,13 +119,12 @@ class _PlayVsBotDialogState extends ConsumerState<PlayVsBotDialog> {
     GameModule module, {
     required bool timed,
     required bool isGuest,
-    Set<String>? seatableIds,
   }) => bots.where((b) {
     if (b.schemaVersion > module.schemaVersion) return false;
-    // Config gate: the server (game_bot_seatable) decides which bots support the
-    // chosen config; filter by that set. Null = not yet resolved (skip here; build
-    // gates Play until it loads). Local-impl + timing checks stay client-side.
-    if (seatableIds != null && !seatableIds.contains(b.id)) return false;
+    // Config gate: the game's own botSeatable rule decides which bots support the
+    // chosen config (the Dart twin of the server's GameEngine.botSeatable, which
+    // enforces it at seating). Local UX only — no network round-trip per config.
+    if (!module.botSeatable(_config, b.config)) return false;
     // Partition by timing: a local bot runs on the present human's client (no
     // deadline backstop needed), so it is offered only in an *untimed* game; a
     // server bot requires a timed game (its endpoint may be unreachable). The
@@ -154,35 +149,19 @@ class _PlayVsBotDialogState extends ConsumerState<PlayVsBotDialog> {
   Widget build(BuildContext context) {
     final module = ref.watch(currentGameModuleProvider);
     final botsAsync = ref.watch(availableBotsProvider);
-    final seatableAsync = ref.watch(
-      seatableBotIdsProvider(configJson: jsonEncode(_config)),
-    );
     final isGuest = ref.watch(isAnonymousProvider);
     final timed = _timing.mode != 'untimed';
-    final freshSeatable = seatableAsync.value;
-    if (freshSeatable != null) _lastSeatable = freshSeatable;
-    // Stale-while-revalidate: render against the last resolved set while a config
-    // change refetches, so the opponent list doesn't flash a spinner.
-    final seatableIds = freshSeatable ?? _lastSeatable;
     final usable = switch (botsAsync) {
       AsyncData(:final value) => _usableBots(
         value,
         module,
         timed: timed,
         isGuest: isGuest,
-        seatableIds: seatableIds,
       ),
       _ => const <BotInfo>[],
     };
     final opponents = _totalPlayers - 1;
-    // Gate Play on the *fresh* set (current config resolved) even though the list
-    // may still show the stale set — so we never submit a bot the new config is
-    // about to filter out (the server enforces it regardless).
-    final canPlay =
-        !_creating &&
-        freshSeatable != null &&
-        usable.isNotEmpty &&
-        opponents >= 1;
+    final canPlay = !_creating && usable.isNotEmpty && opponents >= 1;
 
     return AlertDialog(
       title: const Text('New Solo Game'),
@@ -214,16 +193,9 @@ class _PlayVsBotDialogState extends ConsumerState<PlayVsBotDialog> {
                 onChanged: (timing) => setState(() => _timing = timing),
               ),
               const SizedBox(height: 16),
-              // Opponent selectors. Keep the last resolved set visible during a
-              // refetch (config change); only show a spinner before the first one.
-              if (seatableAsync case AsyncError(:final error))
-                Text(humanize(error))
-              else if (seatableIds == null)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else if (usable.isEmpty)
+              // Opponent selectors — filtered locally by module.botSeatable, so
+              // they update instantly as the config changes (no refetch).
+              if (usable.isEmpty)
                 const Text('No AI opponents are available for this game yet.')
               else
                 Column(
@@ -272,15 +244,11 @@ class _PlayVsBotDialogState extends ConsumerState<PlayVsBotDialog> {
 
   Future<void> _start() async {
     final module = ref.read(currentGameModuleProvider);
-    final seatableIds = await ref.read(
-      seatableBotIdsProvider(configJson: jsonEncode(_config)).future,
-    );
     final usable = _usableBots(
       ref.read(availableBotsProvider).value ?? const [],
       module,
       timed: _timing.mode != 'untimed',
       isGuest: ref.read(isAnonymousProvider),
-      seatableIds: seatableIds,
     );
     if (usable.isEmpty) return;
     final opponents = _totalPlayers - 1;

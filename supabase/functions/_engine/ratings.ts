@@ -1,14 +1,24 @@
+/**
+ * OpenSkill rating computation — pure, DB-agnostic.
+ *
+ * Invoked in-process by the engine on a rated game's finishing transition: the
+ * EF reads each seat's current `mu`/`sigma` (`engine_read_rating_inputs`), zips
+ * them with the outcome it just computed into {@link PlayerInput}s, and passes
+ * the resulting {@link RatingUpdate}s to the commit RPC, which writes
+ * `player_ratings` + `rating_history` atomically with the game finish. This
+ * module never touches the database.
+ */
+
 import type { Rating } from "openskill";
 import { rate, rating } from "openskill";
 
-/** A player seat as delivered by the pg_net trigger.
+/** A player seat to be rated.
  *
- * The one hand-authored input contract. Self-contained: each seat's current
- * `mu`/`sigma` is bundled, so this module never reads the database.
- * `display_rating` is intentionally NOT carried — it is derived from
- * `mu`/`sigma` here (see {@link displayRating}) so the formula lives in one
- * place per side of the wire. `Rating` (`{ mu, sigma }`) is openskill's own type.
- */
+ * Self-contained: each seat's current `mu`/`sigma` is bundled, so this module
+ * never reads the database. `display_rating` is intentionally NOT carried — it is
+ * derived from `mu`/`sigma` here (see {@link displayRating}) so the formula lives
+ * in one place per side of the wire. `Rating` (`{ mu, sigma }`) is openskill's
+ * own type. */
 export interface PlayerInput extends Rating {
   player_index: number;
   user_id: string | null;
@@ -34,9 +44,9 @@ function snapshot(r: Rating) {
   return { mu: r.mu, sigma: r.sigma, display_rating: displayRating(r) };
 }
 
-/** One identity's rating change — the outgoing contract consumed by
- * apply_rating_updates. Its before/after shape is derived from {@link snapshot}
- * rather than re-declared. */
+/** One identity's rating change — the contract consumed by the commit RPC's
+ * in-transaction rating writer. Its before/after shape is derived from
+ * {@link snapshot} rather than re-declared. */
 export interface RatingUpdate {
   identity: { user_id: string } | { bot_id: string };
   before: ReturnType<typeof snapshot>;
