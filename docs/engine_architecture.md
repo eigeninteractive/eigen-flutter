@@ -4,7 +4,8 @@
 > `GameEngine` (six methods, §4) the engine's **edge function** invokes at its
 > commit chokepoint; the client carries a Dart `GameModule` (rendering, action
 > validation, local twins of `ratingPool`/`botSeatable`) but never decides rules.
-> There are **four edge functions** (`game`, `social`, `internal`, `bot`, §21).
+> There is **one `engine` edge function** with four auth-tiered route groups
+> (`game`, `social`, `internal`, `bot`, §21).
 > Every state-changing operation goes through an edge-function route that runs the
 > rules and commits through a **gated, service-role `engine_*` SQL RPC** — a thin
 > atomic writer that keeps only the lock/transaction work, with policy (validation,
@@ -33,7 +34,9 @@ underlying `core` codebase is identical.
   and action validation for this specific app. It supplies the rules as a
   **TypeScript `GameEngine`** — six methods (`initialState`, `applyAction`,
   `computeObservation`, plus optional `ratingPool`, `handleEvent`,
-  `botSeatable`) the edge function invokes — and a **Dart `GameModule`** for the
+  `botSeatable`) the edge function invokes, and per-`schema_version` **Zod
+  schemas** the edge function parses every payload through before a hook
+  runs — and a **Dart `GameModule`** for the
   client (rendering, action validation, and local twins of `ratingPool` /
   `botSeatable`). The pure game logic is platform-shared TypeScript run on the
   server; the client never decides rules.
@@ -745,7 +748,8 @@ commit chokepoint and persists the result atomically via the gated SQL RPCs.
 All hooks receive a `HookContext` (`config`: the opaque game blob; `schemaVersion`:
 the game row's schema, so a build can branch on either). `initialState`,
 `applyAction`, and `handleEvent` return an **`Envelope`**; `applyAction`
-returns a `Result<Envelope>` so an illegal move is data, not an exception.
+additionally rejects a rule-breaking move by throwing `IllegalMoveError`
+(rendered as a 400 — the hook's one expected failure).
 
 The **`Envelope`** is `{ state, pending_players, outcome?, rng_seed, turn_seconds? }`:
 - `state`: pure game payload (board, deck, fog…). Never whose-turn or winner info
@@ -793,13 +797,13 @@ starting envelope, e.g.:
 `pending_players` are the seats that may act first; advance `rng_seed` past any
 setup randomness; `turn_seconds` optionally fixes the first action's deadline.
 
-### `applyAction(args: ApplyActionArgs): Result<Envelope>`
+### `applyAction(args: ApplyActionArgs): Envelope`
 
 `args`: `state`, `pending`, `data` (the move), `playerIndex`, `seed`, plus the
 `HookContext`. The infra has **already** confirmed it is this seat's turn at the
 expected version under the row lock, so do **not** re-check turn order — only
-validate move legality. Return `{ ok: false, error: { code: 'illegal_move', … } }`
-for a rejected move (→ 400) or `{ ok: true, value: envelope }`.
+validate move legality. Throw `IllegalMoveError` for a rejected move (→ 400
+with the message); return the new envelope for a legal one.
 
 When the game ends, include `outcome` as an array of `OutcomeEntry`:
 
@@ -846,11 +850,19 @@ There are **two tiers** of server entry point:
 
 1. **Edge-function routes** — the primary surface for everything that needs the
    game rules or an un-forgeable policy gate. The Dart client calls them across
-   the four edge functions (`game`, `social`, `internal`, `bot` — see §21). Each
-   route runs in TypeScript: it verifies the caller, runs the relevant
+   the `engine` function's route groups (`game`, `social`, `internal`, `bot` —
+   see §21). Each
+   route runs in TypeScript: a **Zod request schema** on the route validates
+   the body shape (a malformed request 400s before any handler runs), the
+   handler verifies the caller, parses every game payload (state, action data,
+   config) through the app's **Zod schemas** — declared per `schema_version`
+   on `GameEngine.schemas`, so hooks receive typed, validated values and the
+   state a hook returns is re-validated before commit — runs the relevant
    `GameEngine` hook(s), and calls a **service-role, gated `engine_*` SQL RPC**
-   for the atomic write. **Policy lives in TS** (input validation, guest gating
-   from the JWT `is_anonymous` claim, the rating decision); the `engine_*` RPCs
+   for the atomic write through `_engine/repo.ts`, the single module that
+   touches the database. **Policy lives in TS** (request validation, the schema
+   boundary, guest gating from the JWT `is_anonymous`
+   claim, the rating decision); the `engine_*` RPCs
    are **thin atomic writers** that keep only the lock/transaction work, backed by
    the `games` CHECK / `UNIQUE` / FK constraints. These RPCs are `REVOKE`d from
    `authenticated` — only the edge function (service role) may call them.
@@ -893,7 +905,7 @@ extensions defined first in `…_foundation.sql`.
 | `game/local-bot-action` | `engine_commit_action` (`bot`) | Drives a **local** bot seat. EF gates in TS against the roster it read (`assertLocalBotSeat`: caller is a participant, seat is a local bot, sole-human game). |
 | `game/delete-account` | `engine_purge_user` (+ per-game forfeits) | Self-service account teardown — see §22. |
 | `social/friend-request` · `social/accept` · `social/remove` | `engine_send_friend_request` · `engine_accept_friend_request` · `engine_remove_friend` | Friend writes. EF gates the **caller** (registered-only, no self-request) from the JWT and pushes the FCM notification directly; SQL keeps the atomic relationship write and the **target**-anonymity check (needs the target's row). |
-| `internal/expire` · `internal/purge-users` | `engine_commit_action` · `engine_purge_user` | Batched cron paths (webhook-secret auth) — timeout sweep and stale-guest forfeit-then-purge. See §21 / §22. |
+| `internal/expire` · `internal/purge-users` | `engine_commit_action` · `engine_purge_user` | Batched cron paths (secret-API-key auth) — timeout sweep and stale-guest forfeit-then-purge. See §21 / §22. |
 | `bot/action` | `engine_commit_action` (`bot`) | A **server** bot's only surface. The per-bot HMAC over the payload is verified in TS (`_engine/bot_auth.ts`, keyed by `HMAC(BOT_SIGNING_SECRET, bot_id)`); then the claimed seat is checked and the move applied. |
 
 ### Client-direct RPCs (PostgREST, `authenticated`)
@@ -1197,38 +1209,36 @@ VALUES (
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 ```
 
-**2. `serverless_secret` — create in Vault**
+**2. `secret_api_key` — create in Vault**
 
-First, generate a secure random secret:
-
-```bash
-openssl rand -base64 32
-```
-
-Use the output as the secret value below and in the edge function's
-`SERVERLESS_SECRET` environment variable. The two must match.
+The cron sweeps authenticate to the engine EF's `/engine/internal/*` routes
+with the project's **secret API key** (`sb_secret_…`, from **Settings → API
+Keys**) sent as the `apikey` header; `@supabase/server`'s `auth: 'secret'`
+mode validates it against the `SUPABASE_SECRET_KEY` the platform injects into
+the function. There is no bespoke webhook secret to generate — the platform
+credential is the credential; Vault just makes it readable from SQL.
 
 Option A — Supabase Dashboard: **Database → Vault → Add secret**. Set name to
-`serverless_secret` and value to the generated secret.
+`secret_api_key` and value to the project's secret API key.
 
 Option B — Supabase SQL editor:
 
 ```sql
 SELECT vault.create_secret(
-  'your-secret-value',
-  'serverless_secret',
-  'Shared secret verified by all serverless functions'
+  'sb_secret_...',
+  'secret_api_key',
+  'Project secret API key; apikey header for cron -> engine EF calls'
 );
 ```
 
-To update an existing Vault secret:
+To update an existing Vault secret (e.g. after rotating the API key):
 
 ```sql
 SELECT vault.update_secret(
-  (SELECT id FROM vault.secrets WHERE name = 'serverless_secret'),
-  'your-new-secret-value',
-  'serverless_secret',
-  'Shared secret verified by all serverless functions'
+  (SELECT id FROM vault.secrets WHERE name = 'secret_api_key'),
+  'sb_secret_...',
+  'secret_api_key',
+  'Project secret API key; apikey header for cron -> engine EF calls'
 );
 ```
 
@@ -2855,8 +2865,9 @@ modules involved:
   exchange), refreshing it before expiry. This replaces the former
   `refresh-fcm-token` function + `pg_cron` + `app_config` token cache. It does no
   database access.
-- `_engine/notify.ts` — the Supabase side. `pushToUser` loads the target's
-  `device_installations` rows, calls `fcm.ts` to fan out by FID, and prunes any
+- `_engine/notify.ts` — the orchestration side. `pushToUser` loads the target's
+  `device_installations` rows (via `_engine/repo.ts`, which owns every query),
+  calls `fcm.ts` to fan out by FID, and prunes any
   FID FCM reports permanently invalid (`UNREGISTERED` / `SENDER_ID_MISMATCH`).
   Zero rows = no HTTP calls; if FCM is not configured it logs and returns early
   (graceful in local dev).
@@ -3016,9 +3027,6 @@ needed.
 **Setting the secrets:**
 
 ```bash
-# SERVERLESS_SECRET must match the value already in Supabase Vault (see §8 Production Configuration).
-supabase secrets set SERVERLESS_SECRET=<same-value-as-vault>
-
 supabase secrets set FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@your-project.iam.gserviceaccount.com
 supabase secrets set FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----
 ...
@@ -3038,17 +3046,21 @@ expected — `pushToUser` checks `getFirebaseEnv()` and degrades gracefully with
 warning when the `FIREBASE_*` secrets are absent, so local play is unaffected.
 Do not add placeholder Firebase values to `.env.local`.
 
-After setting secrets, deploy all functions (see §21).
+After setting secrets, deploy the `engine` function (see §21).
 
-All secrets below are set on the single `game` function (see migration §12).
+Secrets are project-wide; the `engine` function reads:
 
 | Secret                  | Used by                                                                                                  |
 | ----------------------- | -------------------------------------------------------------------------------------------------------- |
-| `FIREBASE_CLIENT_EMAIL` | `game` (`_engine/fcm.ts`) — JWT issuer claim for the Google OAuth2 token exchange                        |
-| `FIREBASE_PRIVATE_KEY`  | `game` (`_engine/fcm.ts`) — RS256 signing key for the JWT                                                |
-| `FIREBASE_PROJECT_ID`   | `game` (`_engine/fcm.ts`) — used to build the FCM v1 endpoint URL                                        |
-| `BOT_SIGNING_SECRET`    | `game` (`_engine/bot_auth.ts`) — master key; per-bot key = `HMAC(master, bot_id)`                        |
-| `SERVERLESS_SECRET`     | `internal` — verifies `x-webhook-secret` on the cron/`pg_net` routes (`/internal/expire`, `/internal/purge-users`); matches Vault `serverless_secret` |
+| `FIREBASE_CLIENT_EMAIL` | `_engine/fcm.ts` — JWT issuer claim for the Google OAuth2 token exchange                                 |
+| `FIREBASE_PRIVATE_KEY`  | `_engine/fcm.ts` — RS256 signing key for the JWT                                                         |
+| `FIREBASE_PROJECT_ID`   | `_engine/fcm.ts` — used to build the FCM v1 endpoint URL                                                 |
+| `BOT_SIGNING_SECRET`    | `_engine/bot_auth.ts` — master key; per-bot key = `HMAC(master, bot_id)`                                 |
+
+The cron/`pg_net` routes (`/engine/internal/*`) need no function-side secret:
+`@supabase/server`'s `auth: 'secret'` mode validates the caller's `apikey`
+header against the platform-injected `SUPABASE_SECRET_KEY` (the caller-side
+copy lives in Vault as `secret_api_key` — §8).
 
 ### Files
 
@@ -3104,50 +3116,58 @@ move is a transport-layer swap, not a rules rewrite.
 
 ### Function inventory
 
-There are **four** edge functions, split by auth pattern, all built on the same
-`_engine/*` framework and the app's single `_lib/game.ts` gameEngine:
+There is **one** edge function, **`engine`** (`verify_jwt = false` — auth is
+per route group inside the function, so the platform-level JWT check must not
+reject the non-JWT callers). One function means one warm worker (fewer cold
+starts), one deploy, and one import map — the consolidation Supabase itself
+recommends for related routes. It is built on the `_engine/*` framework and
+the app's single `_lib/game.ts` gameEngine, and serves four route groups split
+by `withSupabase` auth mode:
 
-- **`game`** — client-facing, `verify_jwt = true`. Every route requires a
-  verified user JWT; `@supabase/server`'s Hono middleware (`auth: 'user'`)
-  verifies it via JWKS and injects the service-role client. Routes:
+- **`/engine/game/*`** — client-facing, `auth: 'user'`. Every route requires a
+  verified user JWT (verified in-lib via JWKS); the middleware injects the
+  service-role client. Routes:
   create / create-solo / add-bot / action / start / forfeit / replay /
   local-bot-action / delete-account / expire (the participant nudge).
-- **`internal`** — DB/cron, `verify_jwt = false`, `auth: 'none'`. Driven by
-  Postgres (`pg_cron` → `pg_net`); each route verifies the `x-webhook-secret`
-  header against `SERVERLESS_SECRET`. Two **batched** routes: `expire`
+- **`/engine/social/*`** — client-facing friend writes, `auth: 'user'`. Routes:
+  friend-request / accept / remove. Game-agnostic (never touches the
+  gameEngine); emits friend-request / accepted pushes directly.
+- **`/engine/internal/*`** — DB/cron, `auth: 'secret'`. Driven by Postgres
+  (`pg_cron` → `pg_net`) posting the project's secret API key as the `apikey`
+  header (from Vault `secret_api_key` — §8). Two **batched** routes: `expire`
   (`{ game_ids }`, the timeout sweep) and `purge-users` (`{ user_ids }`, the
   stale-guest forfeit-then-purge). Both reuse the same `applyEvent` core
-  as the client `forfeit` / `delete-account` / `expire` routes.
-- **`bot`** — server bots (possibly external), `verify_jwt = false`,
-  `auth: 'none'`. A single `action` route, authenticated by a per-bot HMAC the
-  handler verifies in-process.
-- **`social`** — client-facing friend writes, `verify_jwt = true`. Routes:
-  friend-request / accept / remove. Game-agnostic (built without the gameEngine);
-  emits friend-request / accepted pushes directly.
+  as the client `forfeit` / `delete-account` / `expire` routes. (The group
+  prefixes also disambiguate `game/expire` vs `internal/expire`.)
+- **`/engine/bot/*`** — server bots (possibly external), `auth: 'none'`. A
+  single `action` route, authenticated by a per-bot HMAC the handler verifies
+  in-process.
 
 Ratings (OpenSkill) and FCM sending run inside the framework as `_engine/*`
 modules — there is no separate `update-ratings` or `refresh-fcm-token` function.
-Server bots POST to the `/bot/action` route, authenticated by a per-bot HMAC the
+Server bots POST to the `/engine/bot/action` route, authenticated by a per-bot
+HMAC the
 EF verifies in-process with a key derived from `BOT_SIGNING_SECRET` (see §26).
 See migration §12.
 
 ### Local development
 
-The Supabase CLI serves all functions locally:
+The Supabase CLI serves the function locally:
 
 ```bash
 supabase functions serve
 ```
 
 Secrets for local serving live in `supabase/functions/.env.local` (not
-committed, but the file already exists with the local dev value):
+committed): the Firebase vars and `BOT_SIGNING_SECRET` when needed, plus
+`SUPABASE_SECRET_KEY` if your CLI version doesn't inject it — `@supabase/server`
+resolves the secret key from `SUPABASE_SECRET_KEY`/`SUPABASE_SECRET_KEYS` for
+both the admin client and `auth: 'secret'` validation. The Vault
+`secret_api_key` (see `seed.sql`) must hold the same value so the local cron
+sweeps authenticate.
 
-```
-SERVERLESS_SECRET=local-dev-secret   # matches seed.sql Vault value
-```
-
-`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected automatically by the
-CLI — do not add them to `.env.local`.
+`SUPABASE_URL` is injected automatically by the
+CLI — do not add it to `.env.local`.
 
 **Firebase secrets** (`FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`,
 `FIREBASE_PROJECT_ID`) are intentionally absent from `.env.local`. With them
@@ -3163,14 +3183,14 @@ during local dev runs.
 
 ### Production deployment
 
-Set all secrets first (§8 for `SERVERLESS_SECRET` + Vault; §20 for Firebase
-secrets), then deploy all functions in one command:
+Set all secrets first (§8 for the Vault `secret_api_key`; §20 for Firebase
+secrets), then deploy:
 
 ```bash
-supabase functions deploy
+supabase functions deploy engine
 ```
 
-No arguments = deploys every function in `supabase/functions/`. Re-run this
+Re-run this
 command any time function code changes. Secrets do not need to be re-set on
 redeploy — they persist in the project.
 

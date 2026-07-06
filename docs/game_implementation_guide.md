@@ -825,7 +825,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 const BOT_ID = process.env.BOT_ID;
 const SECRET = process.env.BOT_KEY; // = HMAC-SHA256(BOT_SIGNING_SECRET, bot_id)
-const ACTION_URL = process.env.ACTION_URL; // …/functions/v1/bot/action
+const ACTION_URL = process.env.ACTION_URL; // …/functions/v1/engine/bot/action
 const ANON_KEY = process.env.SUPABASE_ANON_KEY;
 const hmac = (s) => createHmac("sha256", SECRET).update(s).digest("base64");
 
@@ -875,7 +875,7 @@ language-agnostic `curl`:
 ```bash
 PAYLOAD='{"game_id":"…","bot_id":"…","player_index":1,"version":7,"data":{"position":4}}'
 SIG=$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$BOT_KEY" -binary | base64)
-curl -sS -X POST "$SUPABASE_URL/functions/v1/bot/action" \
+curl -sS -X POST "$SUPABASE_URL/functions/v1/engine/bot/action" \
   -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ANON_KEY" \
   -H "Content-Type: application/json" \
   --data "$(jq -n --arg p "$PAYLOAD" --arg s "$SIG" '{payload:$p, signature:$s}')"
@@ -974,10 +974,12 @@ The seam stays typed inside Dart, but the **wire boundary** (what crosses to
 `p_data`) is `Map<String, dynamic>` — that is exactly what reaches the hook. A
 **server bot runs in another language, so it cannot share the Dart type**; its
 uniformity is guaranteed at the JSON-shape level only. That makes
-`applyAction` (the single consumer) plus the `ActionData` schema the **one
-source of truth** that the Dart `ActionData` model and the server bot both
-mirror. Version the shape via the `schemaVersion` argument if it ever changes.
-See Hook 2 (`applyAction`) for the consumer contract.
+`applyAction` (the single consumer) plus the `action` Zod schema in your
+`schemas` map the **one source of truth** that the Dart `ActionData` model and
+the server bot both mirror — the edge function rejects (400) any action `data`
+that fails the game's version `action` schema before your hook runs. Version
+the shape by adding a `schemas` entry when it changes. See Hook 2
+(`applyAction`) for the consumer contract.
 
 ---
 
@@ -1110,11 +1112,12 @@ untouched.
 
 The engine's **backend** is **vendored** into your app — run
 `dart run eigen_engine:sync_supabase` from the app directory. It copies the
-engine's `migrations/*.sql`, the four edge functions (`game`, `social`,
-`internal`, `bot` — their harnesses + the shared `_engine` framework), and
+engine's `migrations/*.sql`, the single `engine` edge function (its harness +
+the shared `_engine` framework, serving the `game`, `social`, `internal`, and
+`bot` route groups), and
 `seed.sql` into your `supabase/`, leaving your app-owned files (any game
 migration, your `functions/_lib/game.ts`) untouched. Ratings (OpenSkill) and push
-notifications run inside the edge functions now — there are no separate
+notifications run inside the edge function now — there are no separate
 `update-ratings` / `refresh-fcm-token` functions. Commit everything, then
 `supabase db reset`. Re-run when you bump the engine version. See **Supabase
 project setup** below for the one-time config.
@@ -1141,35 +1144,50 @@ the backend's vendoring rule:
 or pruned — your local lockfile is left alone.)
 
 So your entire server-side rules surface is one file — `game.ts` — which exports
-a `GameEngine` instance with the six methods:
+a `GameEngine` instance: **Zod schemas per payload** (the `schemas` map) plus the
+six methods. The schemas are the single source of truth — derive the payload
+types from them with `z.infer` and the whole engine is typed end-to-end:
 
 ```ts
+import { z } from "zod";
+import { IllegalMoveError, passthroughObservation } from "engine/game-engine.ts";
 import type {
   ApplyActionArgs,
   BotSeatableArgs,
-  ComputeObservationArgs,
   Envelope,
+  EventArgs,
   GameEngine,
   InitialStateArgs,
   RatingPoolArgs,
-  Result,
-  EventArgs,
 } from "types/engine.types.ts";
-import { passthroughObservation } from "../_engine/observation.ts";
 
-class MyGame implements GameEngine {
-  initialState(args: InitialStateArgs): Envelope {/* … */}
-  applyAction(args: ApplyActionArgs): Result<Envelope> {
-    /* { ok: true, value: envelope } or { ok: false, error: { code: "illegal_move", … } } */
+const stateSchema = z.object({ board: z.array(z.number()).length(9) });
+const actionSchema = z.object({ position: z.number().int().min(0).max(8) });
+const configSchema = z.object({});
+
+type State = z.infer<typeof stateSchema>;   // `type`, not `interface`
+type Action = z.infer<typeof actionSchema>;
+type Config = z.infer<typeof configSchema>;
+
+class MyGame implements GameEngine<State, Action, Config> {
+  readonly schemas = {
+    1: { state: stateSchema, action: actionSchema, config: configSchema },
+  };
+  initialState(args: InitialStateArgs<Config>): Envelope<State> {/* … */}
+  applyAction(
+    args: ApplyActionArgs<State, Action, Config>,
+  ): Envelope<State> {
+    /* args.state / args.data are already parsed + typed — no casts.
+       throw new IllegalMoveError("…") to reject; return the new envelope */
   }
-  handleEvent(args: EventArgs): Envelope {
+  handleEvent(args: EventArgs<State, Config>): Envelope<State> {
     /* forfeit/timeout consequence */
   }
-  computeObservation = passthroughObservation; // perfect-info; override for hidden-info
-  ratingPool(args: RatingPoolArgs): string | null {
+  computeObservation = passthroughObservation<State, Config>; // perfect-info
+  ratingPool(args: RatingPoolArgs<Config>): string | null {
     return null; // unrated; return a pool name (e.g. "rapid") to rate
   }
-  botSeatable(args: BotSeatableArgs): boolean {
+  botSeatable(args: BotSeatableArgs<Config>): boolean {
     return true; // every bot seatable; tighten per your config
   }
 }
@@ -1177,12 +1195,45 @@ class MyGame implements GameEngine {
 export const gameEngine: GameEngine = new MyGame();
 ```
 
-The `GameEngine` contract (the `Args` types, `Envelope`, `Result`/`GameError`) is
+The `GameEngine` contract (the `Args` types, `Envelope`) is
 defined in `functions/_types/engine.types.ts` — read it for the authoritative
-signatures; `passthroughObservation` (the perfect-info default) lives in
-`functions/_engine/observation.ts`. `applyAction` returns a `Result` rather than
-throwing: `{ ok: true, value }` for a legal move, or `{ ok: false, error }` with
-code `"illegal_move"` (→ HTTP 400) / `"stale"` (→ 409) / `"internal"` (→ 500). The
+signatures; `IllegalMoveError`, `passthroughObservation` (the perfect-info
+default) and
+the schema-boundary helpers live in `functions/_engine/game-engine.ts`.
+
+**The harness enforces the schema boundary for you.** Each route first
+validates the request body's *envelope* (ids, versions, timing fields) against
+an engine-owned Zod schema — a malformed request 400s before any handler code
+runs. Then, before any hook runs, the
+framework picks the game row's `schema_version` entry from `schemas` and parses
+every payload through it, so hook bodies never see unvalidated JSON:
+
+| Payload                                | On schema failure                    |
+| -------------------------------------- | ------------------------------------ |
+| client `config` at create              | 400 (Zod issues in the message)      |
+| client/bot action `data`               | 400                                  |
+| `schema_version` not in `schemas` at create | 400                             |
+| stored `state`/`config` on read        | 500 (corruption / missed version)    |
+| loaded game's version not in `schemas` | 500 (EF deployed behind its data)    |
+| hook-returned `state`                  | 500 (validated before every commit)  |
+
+Client payloads flow onward **sanitized** — unknown keys stripped, defaults
+applied — into your hooks, the `actions` log, and `games.config`. Two rules keep
+this sound: keep schemas **transform-free** (what parses is what persists, and
+hook output is re-validated against the same `state` schema), and derive payload
+types as `type` aliases (an `interface` fails the engine's `JsonObject`
+constraint).
+
+**Schema versioning:** ship one `schemas` entry per `schema_version` you
+support. On a breaking shape change, add a new entry — games created earlier
+keep parsing under theirs — and make the payload type the tagged union of the
+versions' shapes so hooks can narrow (`schemaVersion` also arrives in every
+hook's args). This is the TS twin of the Dart side's
+`BaseEngine.parseObservation` branching on its `schemaVersion` field.
+
+`applyAction` rejects a rule-breaking move by throwing `IllegalMoveError`
+(→ HTTP 400 with the message); any other throw is treated as a game bug (→ 500).
+The
 infra has already confirmed it is the acting seat's turn at the expected version
 before calling, so do not re-check turn order. `ratingPool` and `botSeatable` need
 **Dart twins** in your `GameModule` (the client gates the create-dialog
@@ -1192,10 +1243,10 @@ value consumed and return the advanced `rng_seed`.
 
 Iterate locally with `supabase functions serve` (or
 `deno check
---config supabase/functions/game/deno.json supabase/functions/game/index.ts`
-for a quick type-check). Because `game-engine.ts` is pure (no Supabase/Deno
-imports), it is unit-testable in isolation. Deploy with
-`supabase functions deploy game`.
+--config supabase/functions/engine/deno.json supabase/functions/engine/index.ts`
+for a quick type-check). Because `game-engine.ts` has no Supabase/Deno runtime
+dependency, your gameEngine is unit-testable in isolation. Deploy with
+`supabase functions deploy engine`.
 
 Once your app is in production, migrations become append-only and schema changes
 must stay backward-compatible with app versions still in the wild — see
@@ -1228,23 +1279,21 @@ settings in sync by hand when you bump the engine version:
      `additional_redirect_urls` change is needed — the upgrade uses native
      Google ID-token linking (`linkIdentityWithIdToken`), which reuses the app's
      existing native Google Sign-In and never opens a browser redirect.
-   - `[edge_runtime]` + the **`[functions.game]`** and **`[functions.social]`**
-     (`verify_jwt = true`), **`[functions.internal]`** and **`[functions.bot]`**
-     (`verify_jwt = false`) blocks, with `import_map` / `entrypoint` pointing at
-     `./functions/game/`, `./functions/social/`, `./functions/internal/`, and
-     `./functions/bot/` — copy them verbatim from the engine config. These are the
-     four edge functions, and the blocks are what make them deployable; without
-     them `supabase functions deploy`/`serve` won't pick the functions up.
+   - `[edge_runtime]` + the **`[functions.engine]`** block
+     (`verify_jwt = false` — auth is per route group *inside* the function:
+     user JWT for `game`/`social`, secret API key for `internal`, per-bot HMAC
+     for `bot`), with `import_map` / `entrypoint` pointing at
+     `./functions/engine/` — copy it verbatim from the engine config. The block
+     is what makes the function deployable; without it
+     `supabase functions deploy`/`serve` won't pick it up.
 2. **Vendor the backend:** `dart run eigen_engine:sync_supabase` (migrations +
    functions + seed), then commit. The first run scaffolds
-   `functions/_lib/game.ts` and prints a reminder to add the `[functions.game]` /
-   `[functions.social]` / `[functions.internal]` / `[functions.bot]` config
-   blocks; implement your `gameEngine` in that file (see **The game edge
-   function** above).
-3. **`functions/.env.local`** — copy the engine's `functions/.env.local.example`
-   and fill in `SERVERLESS_SECRET` + the Firebase service-account vars
-   (`FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`, `FIREBASE_PROJECT_ID`).
-   This file is git-ignored.
+   `functions/_lib/game.ts` and prints a reminder to add the
+   `[functions.engine]` config block; implement your `gameEngine` in that file
+   (see **The game edge function** above).
+3. **`functions/.env.local`** — set the Firebase service-account vars
+   (`FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`, `FIREBASE_PROJECT_ID`) and
+   `BOT_SIGNING_SECRET` if you run server bots. This file is git-ignored.
 4. **`signing_keys.json`** — local JWT signing keys; git-ignored and created by
    the Supabase CLI for local dev (see Supabase local-development docs). Not
    vendored.
@@ -1254,7 +1303,7 @@ settings in sync by hand when you bump the engine version:
 
 ---
 
-### Hook 0: `ratingPool(args: RatingPoolArgs): string | null`
+### Hook 0: `ratingPool(args: RatingPoolArgs<Config>): string | null`
 
 Optional. Decides whether — and in which pool — a game with the chosen settings
 is rated. Return a pool name (`'rapid'`, `'daily'`, …) or `null` for unrated.
@@ -1271,7 +1320,7 @@ hides/forces the toggle accordingly. Pool names stay server-authoritative.
 **Default**: `null` (all games unrated until overridden).
 
 ```ts
-ratingPool(args: RatingPoolArgs): string | null {
+ratingPool(args: RatingPoolArgs<Config>): string | null {
   if (args.access !== "public") return null;     // only public games rate
   if (args.turnSeconds != null) return "rapid";  // map timing mode → pool
   if (args.budgetSeconds != null) return "daily";
@@ -1286,22 +1335,24 @@ server rejects the create if they don't.
 
 ---
 
-### Hook 0b: `botSeatable(args: BotSeatableArgs): boolean`
+### Hook 0b: `botSeatable(args: BotSeatableArgs<Config>): boolean`
 
 Optional. Decides whether a bot may be seated into a game with the chosen config.
 Called by the edge function before seating (the `add-bot` and `create-solo`
 routes); return `true` to allow. `args` carries `botConfig` (the bot's declared
-capabilities, from `bots.config`) and `gameConfig` (`games.config`). It is the
+capabilities, from `bots.config` — opaque JSON, unversioned by your game
+schemas) and `gameConfig` (`games.config`, already parsed against the game's
+version config schema, so it arrives as your typed `Config`). It is the
 **single source of truth** for config compatibility, and gates the variant axis
 `schema_version` can't (a bot can match the schema but not the rules variant).
 
 **Default**: `true` (every bot seatable). Override to gate by the capability keys
-your game stores in `bots.config` — the engine imposes no schema on `config`.
+your game stores in `bots.config` — the engine imposes no schema on `bots.config`.
 
 ```ts
-botSeatable(args: BotSeatableArgs): boolean {
+botSeatable(args: BotSeatableArgs<Config>): boolean {
   // Example: a chess bot lists supported variants in its config; default "standard".
-  const variant = (args.gameConfig.variant as string) ?? "standard";
+  const variant = args.gameConfig.variant ?? "standard"; // typed Config
   const supported = (args.botConfig.variants as string[]) ?? ["standard"];
   return supported.includes(variant);
 }
@@ -1313,14 +1364,16 @@ client never offers an opponent that seating would reject.
 
 ---
 
-### Hook 1: `initialState(args: InitialStateArgs): Envelope`
+### Hook 1: `initialState(args: InitialStateArgs<Config>): Envelope<State>`
 
-`args`: `seed` (`bigint`), `playerCount`, plus the `HookContext` (`config`,
-`schemaVersion`). Returns the starting envelope — must include `state`,
-`pending_players`, and `rng_seed`; may include `turn_seconds`.
+`args`: `seed` (`bigint`), `playerCount`, plus the `HookContext` (`config` —
+parsed and typed, `schemaVersion`). Returns the starting envelope — must include
+`state`, `pending_players`, and `rng_seed`; may include `turn_seconds`. The
+returned `state` is validated against the game's version `state` schema before
+it is committed.
 
 ```ts
-initialState(args: InitialStateArgs): Envelope {
+initialState(args: InitialStateArgs<Config>): Envelope<State> {
   // Consume setup randomness via _engine/prng.ts if needed (shuffle, deal),
   // then return the advanced seed.
   let seed = args.seed;
@@ -1344,19 +1397,24 @@ initialState(args: InitialStateArgs): Envelope {
 
 ---
 
-### Hook 2: `applyAction(args: ApplyActionArgs): Result<Envelope>`
+### Hook 2: `applyAction(args: ApplyActionArgs<State, Action, Config>): Envelope<State>`
 
 `args`: `state`, `pending`, `data` (the move), `playerIndex`, `seed`, plus the
-`HookContext`. The action route calls this for player-initiated moves; the infra
-has **already** confirmed it is this seat's turn at the expected version under the
-lock, so validate **only** move legality. Return `{ ok: false, error }` (code
-`"illegal_move"` → 400) to reject, or `{ ok: true, value: envelope }`.
+`HookContext`. `state`, `data`, and `config` arrive parsed against the game's
+version schemas — a move whose `data` fails the `action` schema is rejected
+with 400 before this hook runs, so validate **game-rule** legality only, not
+shape. The infra has **already** confirmed it is this seat's turn at the
+expected version under the lock, so do not re-check turn order either. Reject a
+rule-breaking move by throwing `IllegalMoveError` (→ 400 with the message);
+any other throw is a game bug (→ 500).
 
 ```ts
-applyAction(args: ApplyActionArgs): Result<Envelope> {
+applyAction(
+  args: ApplyActionArgs<State, Action, Config>,
+): Envelope<State> {
   // 1. Validate the move is legal; reject if not.
   if (!isLegal(args.state, args.data, args.playerIndex)) {
-    return { ok: false, error: { code: "illegal_move", message: "…" } };
+    throw new IllegalMoveError("cell already occupied");
   }
   // 2. Apply it to produce the new state. 3. Consume randomness via
   //    _engine/prng.ts as needed, threading the advanced seed.
@@ -1364,18 +1422,15 @@ applyAction(args: ApplyActionArgs): Result<Envelope> {
   const newState = /* … */ args.state;
   const ongoing = /* … */ true;
   return {
-    ok: true,
-    value: {
-      state: newState,
-      pending_players: ongoing ? [(args.playerIndex + 1) % 2] : [],
-      rng_seed: args.seed, // advanced if randomness was consumed; non-zero
-      ...(ongoing ? {} : { outcome: /* OutcomeEntry[] */ [] }),
-    },
+    state: newState,
+    pending_players: ongoing ? [(args.playerIndex + 1) % 2] : [],
+    rng_seed: args.seed, // advanced if randomness was consumed; non-zero
+    ...(ongoing ? {} : { outcome: /* OutcomeEntry[] */ [] }),
   };
 }
 ```
 
-**Return envelope fields** (inside `value`):
+**Return envelope fields**:
 
 | Field             | Required | Description                                                                                                                                                                                                |
 | ----------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1415,13 +1470,14 @@ eliminated players in the `outcome` array until the game is truly over. Instead:
 
 ---
 
-### Hook 2b: `handleEvent(args: EventArgs): Envelope`
+### Hook 2b: `handleEvent(args: EventArgs<State, Config>): Envelope<State>`
 
-`args`: `state`, `pending`, `type`, `data`, `seed`, plus the `HookContext`.
-Decides the consequence of a system-initiated event. Unlike `applyAction` it
-**cannot be illegal** — it always resolves to an envelope. The engine only ever
-sees two `type`s (`'auto_forfeit'` is an infra log label, never passed to the
-hook):
+`args`: `state`, `pending`, `type`, `data` (a typed `EventData` union — no
+casts needed), `seed`, plus the `HookContext`. Decides the consequence of a
+system-initiated event. Unlike `applyAction` it **cannot be illegal** — it
+always resolves to an envelope. The hook's `type` is only ever one of two
+values (`data.type` additionally distinguishes an engine-driven
+`'auto_forfeit'` from a voluntary resign):
 
 | `type`      | Trigger                                                  | Which seat(s)                                                                   |
 | ----------- | -------------------------------------------------------- | ------------------------------------------------------------------------------- |
@@ -1434,8 +1490,8 @@ one seat. Both return the same envelope as `applyAction` (`state`,
 `pending_players`, `rng_seed`, optional `outcome`, optional `turn_seconds`).
 
 ```ts
-handleEvent(args: EventArgs): Envelope {
-  if (args.type === "timeout") {
+handleEvent(args: EventArgs<State, Config>): Envelope<State> {
+  if (args.data.type === "timeout") {
     // Every seat in args.pending timed out. Decide holistically: here, the
     // lone non-pending seat wins; if all seats are pending, it's a draw.
     const survivors = allSeats.filter((s) => !args.pending.includes(s));
@@ -1443,8 +1499,8 @@ handleEvent(args: EventArgs): Envelope {
       ? winFor(args, survivors[0])     // single survivor wins
       : drawAmong(args, args.pending); // everyone flagged → draw
   }
-  // forfeit: a single seat is out.
-  const loser = args.data.player_index as number;
+  // forfeit / auto_forfeit: a single seat is out; the union narrows here.
+  const loser = args.data.player_index;
   const winner = (loser + 1) % 2; // adjust for N>2 games
   return {
     state: args.state,
@@ -1472,24 +1528,26 @@ return {
 
 ---
 
-### Hook 3: `computeObservation(args: ComputeObservationArgs): ObservationSlice`
+### Hook 3: `computeObservation(args: ComputeObservationArgs<State, Config>): ObservationSlice`
 
 `args`: `state`, `pending`, `playerIndex`, `participantCount`, `isReplay`, plus
 the `HookContext`. The edge function fans this out once per participant after
 every transition (and per historical version for replay). Returns
-`{ data, pending_players }`. **Perfect-info games do not override this** — assign
-the `passthroughObservation` default (the identity projection).
+`{ data, pending_players }` — the slice `data` is deliberately schema-less
+(`JsonObject`): it is an output-only projection the Dart client parses.
+**Perfect-info games do not override this** — assign the
+`passthroughObservation` default (the identity projection).
 
 Override for hidden-info games to strip opponent cards/hands and optionally narrow
 `pending_players`. Use `isReplay` to reveal information post-game (e.g. all hole
 cards in a Poker replay).
 
 ```ts
-// Perfect-info: assign the helper directly.
-computeObservation = passthroughObservation;
+// Perfect-info: assign the helper, instantiated with your payload types.
+computeObservation = passthroughObservation<State, Config>;
 
 // Hidden-info: override.
-computeObservation(args: ComputeObservationArgs): ObservationSlice {
+computeObservation(args: ComputeObservationArgs<State, Config>): ObservationSlice {
   if (args.isReplay) {
     // Finished game: reveal everything for review.
     return { data: args.state, pending_players: args.pending };
@@ -2133,21 +2191,19 @@ release APK before uploading.
 - [ ] `expire_all_turns` pg_cron job confirmed active in production (check
       Dashboard → Database → Cron Jobs)
 - [ ] `serverless_base_url` set in `private.app_config` for production project
-- [ ] `serverless_secret` created in Supabase Vault for production project and
-      matches `SERVERLESS_SECRET` edge function env var
-- [ ] function secrets set via `supabase secrets set` (project-wide, so they
-      cover all four functions `game` / `social` / `internal` / `bot`; see
-      `engine_architecture.md §21`): `SERVERLESS_SECRET` (webhook secret for the
-      cron-driven timeout + stale-guest cleanup sweeps — used by `internal`),
-      `BOT_SIGNING_SECRET`
-      (server-bot HMAC key derivation — used by `bot`), and `FIREBASE_CLIENT_EMAIL`
+- [ ] `secret_api_key` created in Supabase Vault for production project,
+      holding the project's **secret API key** (`sb_secret_…`) — the cron
+      sweeps send it as the `apikey` header to `/engine/internal/*`, where
+      `@supabase/server`'s `auth: 'secret'` mode validates it (no bespoke
+      webhook secret exists)
+- [ ] function secrets set via `supabase secrets set` (see
+      `engine_architecture.md §21`): `BOT_SIGNING_SECRET`
+      (server-bot HMAC key derivation), and `FIREBASE_CLIENT_EMAIL`
       / `FIREBASE_PRIVATE_KEY` / `FIREBASE_PROJECT_ID` (FCM push — the EF mints its
       own OAuth token). The `SUPABASE_*` vars are injected automatically.
-- [ ] `[functions.game]`, `[functions.social]`, `[functions.internal]`, and
-      `[functions.bot]` blocks present in `config.toml` (per-app, not vendored)
-      so the functions deploy
-- [ ] `supabase functions deploy game` + `… deploy social` + `… deploy internal`
-      + `… deploy bot` run (the four edge functions) — see
+- [ ] `[functions.engine]` block (`verify_jwt = false`) present in
+      `config.toml` (per-app, not vendored) so the function deploys
+- [ ] `supabase functions deploy engine` run — see
       `engine_architecture.md §21`. Ratings (OpenSkill) and notifications (FCM)
       run inside the shared framework; there is no `update-ratings` or
       `refresh-fcm-token` function or FCM-token cron job.

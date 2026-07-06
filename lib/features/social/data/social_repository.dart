@@ -7,12 +7,13 @@ class SocialRepository {
 
   final SupabaseClient _client;
 
-  /// Invoke a `social` edge-function route. The friend *writes* go through the EF
-  /// (gated `engine_*` RPCs) so it can emit the friend-request / accepted FCM
-  /// pushes directly. Unwraps `{ "error": "<message>" }` like the game wrapper.
+  /// Invoke an `engine` edge-function social route. The friend *writes* go
+  /// through the EF (gated `engine_*` RPCs) so it can emit the friend-request /
+  /// accepted FCM pushes directly. Unwraps `{ "error": "<message>" }` like the
+  /// game wrapper.
   Future<void> _invokeSocial(String route, Map<String, dynamic> body) async {
     try {
-      await _client.functions.invoke('social/$route', body: body);
+      await _client.functions.invoke('engine/social/$route', body: body);
     } on FunctionException catch (e) {
       final details = e.details;
       final message = details is Map && details['error'] is String

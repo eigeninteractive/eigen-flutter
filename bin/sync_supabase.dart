@@ -8,21 +8,21 @@
 ///                                     GameEngine contract, rpc/runtime, FCM,
 ///                                     ratings, notify, bot auth, PRNG)
 ///   - `functions/_types/`             generated `database.types.ts` +
-///                                     hand-authored `engine.types.ts`
-///   - `functions/game/`,              the three deployable function harnesses
-///     `functions/internal/`,          (`index.ts` + `deno.json` + `.npmrc`):
-///     `functions/bot/`                client / DB-cron / bot
-///   - `functions/deno.json`           shared import map (+ `.env.local.example`)
-///   - `seed.sql`                      engine app_config + serverless-secret seed
+///                                     hand-authored `engine.types.ts` +
+///                                     `database.overrides.ts`
+///   - `functions/engine/`             the single deployable function harness
+///                                     (`index.ts` + `deno.json` + `.npmrc`)
+///   - `functions/deno.json`           shared import map
+///   - `seed.sql`                      engine app_config seed
 ///
 /// The app owns exactly one thing under `functions/`: `_lib/`, where it
 /// implements its `GameEngine` (in `game.ts` and any files it adds). That dir is
 /// **scaffolded once** from the engine's example and then never touched, so an
-/// app's game is safe across re-syncs. Everything else — including the `game/`,
-/// `internal/`, and `bot/` harnesses — is engine-owned and re-vendored
-/// (mirror + prune) each sync.
+/// app's game is safe across re-syncs. Everything else — including the
+/// `engine/` harness — is engine-owned and re-vendored (mirror + prune) each
+/// sync.
 /// Also NOT copied (per-project / secret): `config.toml` (the app adds its own
-/// `[functions.game]` block — base it on the engine's reference config),
+/// `[functions.engine]` block — base it on the engine's reference config),
 /// `signing_keys.json`, `functions/.env.local`.
 ///
 /// Run from the app directory (the app must depend on `eigen_engine`):
@@ -51,6 +51,12 @@ const _appLibDir = '_lib';
 /// The seam file the engine scaffolds into [_appLibDir]. Its presence in the app
 /// marks `_lib/` as already owned, so a re-sync leaves the whole dir untouched.
 const _appSeamFile = 'game.ts';
+
+/// Engine-owned dirs under `functions/`, mirrored (+ pruned) on every sync.
+/// Deliberately an explicit allowlist — only the shared framework, the types,
+/// and the single `engine` function harness are vendored, so nothing else in
+/// the engine's `functions/` can ever leak into an app.
+const _engineOwnedDirs = ['_engine', '_types', 'engine'];
 
 Future<void> main(List<String> args) async {
   var out = 'supabase';
@@ -90,32 +96,34 @@ Future<void> main(List<String> args) async {
     }
   }
 
-  // functions/<name>/ — every engine dir, mirrored. `_lib` is the exception:
-  // it's the app's game, scaffolded once and then left alone.
+  // functions/ — exactly the allowlisted engine dirs, mirrored. `_lib` is the
+  // exception: it's the app's game, scaffolded once and then left alone. Any
+  // other dir — app-added functions, engine-side strays — is never touched.
   final srcFunctions = Directory('${engine.path}/functions');
   if (srcFunctions.existsSync()) {
     final dstFunctions = Directory('$out/functions')
       ..createSync(recursive: true);
-    // Engine-owned root files shared across functions: the import map and the
-    // env template. The real `.env.local` (a secret) is never copied.
-    for (final fileName in const ['deno.json', '.env.local.example']) {
-      final f = File('${srcFunctions.path}/$fileName');
-      if (f.existsSync()) f.copySync('${dstFunctions.path}/$fileName');
+    // Engine-owned root file: the shared import map. The real `.env.local`
+    // (a secret) is never copied.
+    final importMap = File('${srcFunctions.path}/deno.json');
+    if (importMap.existsSync()) {
+      importMap.copySync('${dstFunctions.path}/deno.json');
     }
-    // Engine dirs (`_engine`, `_types`, `game`, …), mirrored — except `_lib`,
-    // the app's game, which is scaffolded once and then left to the app.
-    // App-added function dirs (an app may ship its own edge functions) are left
-    // alone; if the engine ever retires a function, remove it from the app by
-    // hand.
-    for (final dir in srcFunctions.listSync().whereType<Directory>()) {
-      final name = dir.uri.pathSegments[dir.uri.pathSegments.length - 2];
-      final dst = Directory('$out/functions/$name');
-      if (name == _appLibDir) {
-        scaffoldedLib = _scaffoldAppLib(dir, dst);
-        continue;
+    final srcLib = Directory('${srcFunctions.path}/$_appLibDir');
+    if (srcLib.existsSync()) {
+      scaffoldedLib = _scaffoldAppLib(
+        srcLib,
+        Directory('${dstFunctions.path}/$_appLibDir'),
+      );
+    }
+    for (final name in _engineOwnedDirs) {
+      final src = Directory('${srcFunctions.path}/$name');
+      if (!src.existsSync()) {
+        _fail('engine package is missing functions/$name — broken checkout?');
       }
-      _copyDir(dir, dst);
-      _pruneDir(dir, dst);
+      final dst = Directory('${dstFunctions.path}/$name');
+      _copyDir(src, dst);
+      _pruneDir(src, dst);
       functions++;
     }
   }
@@ -138,15 +146,13 @@ Future<void> main(List<String> args) async {
   if (scaffoldedLib) {
     stdout.writeln(
       'Scaffolded $out/functions/$_appLibDir/ from the engine example — '
-      'implement your GameEngine in $_appSeamFile there (the rest, including the '
-      'game/, internal/, and bot/ harnesses, is engine-owned and re-vendored each '
-      'sync).',
+      'implement your GameEngine in $_appSeamFile there (the rest, including '
+      'the engine/ harness, is engine-owned and re-vendored each sync).',
     );
     stdout.writeln(
-      'Then add [functions.game] (verify_jwt=true) plus [functions.internal] and '
-      '[functions.bot] (verify_jwt=false) blocks to config.toml '
-      '(import_map/entrypoint under each ./functions/<name>/) — config.toml is '
-      'per-app, not vendored. See the engine config for the reference blocks.',
+      'Then add a [functions.engine] block (verify_jwt=false; '
+      'import_map/entrypoint under ./functions/engine/) to config.toml — it is '
+      'per-app, not vendored. See the engine config for the reference block.',
     );
   }
 }

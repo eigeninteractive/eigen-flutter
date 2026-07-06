@@ -61,13 +61,13 @@ DECLARE
   v_game_ids  UUID[];
 BEGIN
   SELECT value INTO v_base_url FROM private.app_config WHERE key = 'serverless_base_url';
-  SELECT decrypted_secret INTO v_secret FROM vault.decrypted_secrets WHERE name = 'serverless_secret';
+  SELECT decrypted_secret INTO v_secret FROM vault.decrypted_secrets WHERE name = 'secret_api_key';
   IF v_base_url IS NULL OR v_base_url = '' THEN
     RAISE WARNING 'expire sweep skipped: serverless_base_url not configured';
     RETURN;
   END IF;
   IF v_secret IS NULL OR v_secret = '' THEN
-    RAISE WARNING 'expire sweep skipped: serverless_secret not in Vault';
+    RAISE WARNING 'expire sweep skipped: secret_api_key not in Vault';
     RETURN;
   END IF;
 
@@ -90,9 +90,13 @@ BEGIN
     RETURN;
   END IF;
 
+  -- The engine EF's /engine/internal/* group runs @supabase/server's
+  -- `auth: 'secret'` mode: it validates this apikey header against the
+  -- project's secret API key (the same key the platform injects into the
+  -- function), so no bespoke webhook secret exists.
   PERFORM net.http_post(
-    url     := v_base_url || '/internal/expire',
-    headers := jsonb_build_object('Content-Type', 'application/json', 'x-webhook-secret', v_secret),
+    url     := v_base_url || '/engine/internal/expire',
+    headers := jsonb_build_object('Content-Type', 'application/json', 'apikey', v_secret),
     body    := jsonb_build_object('game_ids', to_jsonb(v_game_ids))
   );
 END;
@@ -127,7 +131,7 @@ DECLARE
   v_with_active UUID[] := '{}';
 BEGIN
   SELECT value INTO v_base_url FROM private.app_config WHERE key = 'serverless_base_url';
-  SELECT decrypted_secret INTO v_secret FROM vault.decrypted_secrets WHERE name = 'serverless_secret';
+  SELECT decrypted_secret INTO v_secret FROM vault.decrypted_secrets WHERE name = 'secret_api_key';
 
   -- Stale guests: anonymous accounts older than 7 days with no action in the
   -- last 2 days. Those with no active games are purged here in SQL; the rest are
@@ -160,14 +164,14 @@ BEGIN
     RETURN;
   END IF;
   IF v_secret IS NULL OR v_secret = '' THEN
-    RAISE WARNING 'stale-guest cleanup: % guest(s) need forfeit but serverless_secret not in Vault',
+    RAISE WARNING 'stale-guest cleanup: % guest(s) need forfeit but secret_api_key not in Vault',
       array_length(v_with_active, 1);
     RETURN;
   END IF;
 
   PERFORM net.http_post(
-    url     := v_base_url || '/internal/purge-users',
-    headers := jsonb_build_object('Content-Type', 'application/json', 'x-webhook-secret', v_secret),
+    url     := v_base_url || '/engine/internal/purge-users',
+    headers := jsonb_build_object('Content-Type', 'application/json', 'apikey', v_secret),
     body    := jsonb_build_object('user_ids', to_jsonb(v_with_active))
   );
 END;

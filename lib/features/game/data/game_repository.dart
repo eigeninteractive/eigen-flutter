@@ -25,7 +25,7 @@ class GameRepository {
 
   final SupabaseClient _client;
 
-  /// Invokes a `game` Edge Function route, normalising errors so
+  /// Invokes an `engine` Edge Function game route, normalising errors so
   /// [humanize] still recognises the server's message (e.g. "Stale state").
   ///
   /// The function returns `{ "error": "<message>" }` with a non-2xx status on
@@ -34,7 +34,10 @@ class GameRepository {
   /// server text so the existing humanizer matches unchanged.
   Future<dynamic> _invokeEngine(String route, Map<String, dynamic> body) async {
     try {
-      final res = await _client.functions.invoke('game/$route', body: body);
+      final res = await _client.functions.invoke(
+        'engine/game/$route',
+        body: body,
+      );
       return res.data;
     } on FunctionException catch (e) {
       final details = e.details;

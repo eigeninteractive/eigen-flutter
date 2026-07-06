@@ -56,11 +56,10 @@ eigen_engine/
    `runEngineApp(module: const MyGameModule(), config: AppConfig(…), …)`.
 3. Vendor the engine backend (migrations + functions + seed) into your committed
    `supabase/`: `dart run eigen_engine:sync_supabase`.
-4. Implement your game's rules. Two SQL predicate hooks (`game_rating_pool`,
-   `game_bot_seatable`) go in your own migration; the four heavy rules hooks are
-   **TypeScript** in the vendored `game` edge function — you edit only
+4. Implement your game's rules. All six hooks are
+   **TypeScript** in the vendored `engine` edge function — you edit only
    `supabase/functions/_lib/game.ts` (the sync scaffolds it once; everything
-   else in that function is engine-owned). Add a `[functions.game]` block to
+   else in that function is engine-owned). Add a `[functions.engine]` block to
    your `config.toml` (it is per-app, not vendored).
 
 The full walkthrough — project structure, the `GameModule` contract, the SQL

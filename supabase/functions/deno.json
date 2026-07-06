@@ -1,9 +1,12 @@
 {
   "imports": {
     "@hono/hono": "jsr:@hono/hono@^4",
+    "@hono/zod-validator": "jsr:@hono/zod-validator@^0.8",
     "@supabase/functions-js": "jsr:@supabase/functions-js@^2",
     "@supabase/server": "npm:@supabase/server@^1",
     "openskill": "npm:openskill@^4",
+    "type-fest": "npm:type-fest@^4",
+    "zod": "npm:zod@^4",
     "google-auth-library": "npm:google-auth-library@^10",
     "engine/": "./_engine/",
     "lib/": "./_lib/",
