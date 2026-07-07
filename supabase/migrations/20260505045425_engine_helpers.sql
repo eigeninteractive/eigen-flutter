@@ -285,7 +285,12 @@ BEGIN
     IF p_mode = 'timeout' THEN RETURN TRUE; END IF;
     RAISE EXCEPTION 'Game is not active';
   END IF;
-  IF p_expected_version IS NOT NULL AND p_cur_version != p_expected_version THEN
+  -- Every mode sends the version it computed against; a NULL would silently
+  -- skip the optimistic guard, so it is a caller bug and raises.
+  IF p_expected_version IS NULL THEN
+    RAISE EXCEPTION 'p_expected_version is required';
+  END IF;
+  IF p_cur_version != p_expected_version THEN
     IF p_mode = 'timeout' THEN RETURN TRUE; END IF;
     -- Board advanced. SQLSTATE EIG02 lets the EF classify this for retry by code
     -- (a forfeit recomputes against the new state; a user/bot move rejects it).
@@ -299,8 +304,11 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 
 -- Persists ONE EF-computed transition: append game_states + actions, finish_game
 -- on outcome, write observation slices. Bank/timing for the row are passed in
--- (the caller owns bank deduction); the deadline is derived here. Shared by every
--- engine_commit_action mode and reused per-step by the batched timeout path.
+-- (the caller owns bank deduction); the deadline is derived here. `p_rng_seed`
+-- is the game's base seed, copied verbatim from the previous row by the caller
+-- (the EF derives per-transition randomness from it; it never crosses the
+-- commit wire). Shared by every engine_commit_action mode and reused per-step
+-- by the batched timeout path.
 CREATE OR REPLACE FUNCTION private.persist_transition(
   p_now            TIMESTAMPTZ,
   p_game_id        UUID,
@@ -309,6 +317,7 @@ CREATE OR REPLACE FUNCTION private.persist_transition(
   p_acting_bot_id  UUID,
   p_transition     JSONB,
   p_new_version    INT,
+  p_rng_seed       TEXT,
   p_budget_seconds INT,
   p_turn_seconds   INT,
   p_player_times   BIGINT[]
@@ -317,7 +326,6 @@ RETURNS VOID AS $$
 DECLARE
   v_state          JSONB := p_transition->'new_state';
   v_pending        INT[] := ARRAY(SELECT jsonb_array_elements_text(p_transition->'new_pending')::INT);
-  v_seed           BIGINT := (p_transition->>'new_seed')::BIGINT;
   v_outcome        JSONB := p_transition->'outcome';
   v_action_seconds INT   := (p_transition->>'turn_seconds')::INT;
   v_player_index   INT   := (p_transition->>'player_index')::INT;
@@ -328,9 +336,6 @@ DECLARE
   v_rating_pool    TEXT;
   v_dl             RECORD;
 BEGIN
-  IF v_seed IS NULL OR v_seed = 0 THEN
-    RAISE EXCEPTION 'transition rng_seed must be non-zero';
-  END IF;
   -- The EF sends JSON null (not absent) for an ongoing move; normalise to SQL NULL.
   IF v_outcome IS NOT NULL AND jsonb_typeof(v_outcome) = 'null' THEN
     v_outcome := NULL;
@@ -344,7 +349,7 @@ BEGIN
     (game_id, version, state, pending_players, rng_seed,
      turn_deadline, player_times, turn_started_at)
   VALUES
-    (p_game_id, p_new_version, v_state, v_pending, v_seed,
+    (p_game_id, p_new_version, v_state, v_pending, p_rng_seed,
      v_dl.deadline, p_player_times, v_dl.turn_started_at);
 
   -- Identity = who performed the action. For system actions (timeout/forfeit)

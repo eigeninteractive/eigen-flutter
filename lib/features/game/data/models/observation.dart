@@ -7,8 +7,9 @@ part 'observation.g.dart';
 ///
 /// Infra-level row, one per participant (human or bot), keyed by
 /// `(gameId, playerIndex)`. [data] is the opaque game-specific payload.
-/// [pendingPlayers] mirrors the server's canonical set of indices allowed
-/// to act; callers derive "is my turn" as `pendingPlayers.contains(playerIndex)`.
+/// [pendingPlayers] is this seat's view of the canonical pending set (a
+/// hidden-info game may narrow it, never dropping the seat itself); callers
+/// derive "is my turn" as `pendingPlayers.contains(playerIndex)`.
 ///
 /// Exactly one of [userId] / [botId] is set: a human's own row carries [userId]
 /// (and RLS hides everyone else's), while a bot seat's row carries [botId] and is

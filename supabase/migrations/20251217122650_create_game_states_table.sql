@@ -18,12 +18,14 @@ CREATE TABLE public.game_states (
   -- Stored here (not just in observations) so get_replay can call
   -- game_compute_observation without re-running game logic.
   pending_players INT[] NOT NULL,
-  -- Seeded PRNG state, threaded through the edge-function gameEngine (advanced by
-  -- _engine/prng.ts). Never exposed through observations — infra-owned only.
-  -- Must be non-zero; the commit RPC rejects a zero seed as a "gameEngine forgot to
-  -- set it" guard. Initialised to 1 by default, overwritten with a random value
-  -- when the game starts.
-  rng_seed BIGINT NOT NULL DEFAULT 1,
+  -- The game's base RNG seed: an opaque random string written once at start
+  -- (v0) and copied verbatim onto every later row by the commit RPC. The EF
+  -- derives each transition's generator from '<rng_seed>:<version>' (rand-seed
+  -- sfc32 in _engine/observation.ts), so a replay re-derives every draw. Lives
+  -- here rather than on games because this table is service-role-only — games
+  -- rows are participant-readable, and a leaked seed would let a client
+  -- predict every future shuffle.
+  rng_seed TEXT NOT NULL,
   -- Absolute deadline for the current pending player(s) to act.
   -- NULL for untimed games. Set by infra after every action using
   -- games.turn_seconds or player bank time. Queried by submit_action

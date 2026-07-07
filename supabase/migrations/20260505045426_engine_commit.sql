@@ -30,7 +30,6 @@ DECLARE
   v_budget       INT;
   v_count        INT;
   v_pending      INT[];
-  v_seed         BIGINT;
   v_player_times BIGINT[];
   v_dl           RECORD;
   v_now          TIMESTAMPTZ := NOW();
@@ -47,9 +46,10 @@ BEGIN
   IF v_status = 'active' THEN RETURN; END IF;  -- idempotent
   IF v_status != 'ready' THEN RAISE EXCEPTION 'Game is not ready to start'; END IF;
 
-  v_seed := p_seed::BIGINT;
-  IF v_seed IS NULL OR v_seed = 0 THEN
-    RAISE EXCEPTION 'initial rng_seed must be non-zero';
+  -- The base seed is the game's whole randomness source; an empty one means
+  -- the EF forgot to generate it.
+  IF p_seed IS NULL OR p_seed = '' THEN
+    RAISE EXCEPTION 'initial rng_seed must be non-empty';
   END IF;
   v_pending := ARRAY(SELECT jsonb_array_elements_text(p_pending)::INT);
 
@@ -66,7 +66,7 @@ BEGIN
   INSERT INTO public.game_states
     (game_id, version, state, pending_players, rng_seed, turn_deadline, player_times, turn_started_at)
   VALUES
-    (p_game_id, 0, p_initial_state, v_pending, v_seed,
+    (p_game_id, 0, p_initial_state, v_pending, p_seed,
      v_dl.deadline, v_player_times, v_dl.turn_started_at);
 
   -- One observation row per participant (human and bot), identity joined from
@@ -128,6 +128,7 @@ DECLARE
   v_cur_state         JSONB;
   v_cur_pending       INT[];
   v_cur_version       INT;
+  v_cur_seed          TEXT;
   v_cur_deadline      TIMESTAMPTZ;
   v_cur_player_times  BIGINT[];
   v_cur_turn_started  TIMESTAMPTZ;
@@ -145,8 +146,8 @@ BEGIN
   FROM public.games WHERE id = p_game_id
   FOR UPDATE;
 
-  SELECT state, pending_players, version, turn_deadline, player_times, turn_started_at
-  INTO v_cur_state, v_cur_pending, v_cur_version, v_cur_deadline,
+  SELECT state, pending_players, version, rng_seed, turn_deadline, player_times, turn_started_at
+  INTO v_cur_state, v_cur_pending, v_cur_version, v_cur_seed, v_cur_deadline,
        v_cur_player_times, v_cur_turn_started
   FROM public.game_states
   WHERE game_id = p_game_id
@@ -193,7 +194,7 @@ BEGIN
 
     PERFORM private.persist_transition(
       v_now, p_game_id, 'system', NULL, NULL, v_t,
-      v_cur_version + 1, v_budget, v_turn_seconds, v_new_player_times
+      v_cur_version + 1, v_cur_seed, v_budget, v_turn_seconds, v_new_player_times
     );
     RETURN;
   END IF;
@@ -224,7 +225,7 @@ BEGIN
 
     PERFORM private.persist_transition(
       v_now, p_game_id, v_action_type, p_caller_id, p_acting_bot_id, v_t,
-      v_cur_version + 1, v_budget, v_turn_seconds, v_new_player_times
+      v_cur_version + 1, v_cur_seed, v_budget, v_turn_seconds, v_new_player_times
     );
     RETURN;
   END IF;
@@ -237,7 +238,8 @@ BEGIN
   PERFORM private.persist_transition(
     v_now, p_game_id, v_action_type,
     CASE WHEN p_mode = 'resign' THEN p_caller_id ELSE NULL END,
-    NULL, v_t, v_cur_version + 1, v_budget, v_turn_seconds, v_cur_player_times
+    NULL, v_t, v_cur_version + 1, v_cur_seed, v_budget, v_turn_seconds,
+    v_cur_player_times
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';

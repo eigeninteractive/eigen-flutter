@@ -12,8 +12,8 @@ own rules and UI through two pieces:
 
 - a **TypeScript `GameEngine`** — six methods (three core: `initialState`,
   `applyAction`, `computeObservation`; three optional: `ratingPool`,
-  `handleEvent`, `botSeatable`) that the engine's edge function runs
-  server-side (see **Backend Changes Required**), and
+  `handleEvent`, `botSeatable`) that the engine's edge function runs server-side
+  (see **Backend Changes Required**), and
 - a **Dart `GameModule`** — the client side (board rendering, action validation,
   and local twins of `ratingPool`/`botSeatable` for the create dialog and bot
   pickers).
@@ -568,8 +568,8 @@ for (final gp in playersContext.players.values) {
 
 > Per-game **roles** (host/guest, team, faction, dealer…) are _not_ an infra
 > concept — they live in your game's observation/state JSON, where your engine
-> and `computeObservation` hook can shape them freely. Infra only tracks
-> the seat index (`playerIndex`) and `type`.
+> and `computeObservation` hook can shape them freely. Infra only tracks the
+> seat index (`playerIndex`) and `type`.
 
 ### `PlayersContext` API
 
@@ -771,7 +771,9 @@ bot). The contract is the only bot surface you implement.
    `bots.config` handed to `createState` (N:1). The engine's driver matches a
    pending bot seat to the `localBots` entry whose `username` equals the seat's
    `bots.username`, runs `chooseAction`, and submits — you write no wake/submit
-   plumbing.
+   plumbing. (The driver spots the bot's turn from the **host's** observation
+   row, so a `computeObservation` that narrows `pending_players` must keep
+   pending bot seats visible to the host — see Hook 3.)
 
 3. **Insert a matching `bots` row** per persona (see SQL below) with
    `is_local = true`.
@@ -799,16 +801,20 @@ reference server below); the flow:
 
 Both directions use the **same per-bot HMAC key**, derived from the platform's
 single master secret as `HMAC-SHA256(BOT_SIGNING_SECRET, bot_id)` — no per-bot
-secret is stored anywhere. The bot is given this derived key once:
+secret is stored anywhere. The bot is given this derived key once. A signature
+is always `"v1," + base64(HMAC-SHA256(key, "<domain>:<message>"))` — the signed
+bytes are prefixed with a direction tag so a captured signature can never be
+replayed into the other direction, and the `v1,` scheme prefix leaves room to
+evolve the format:
 
-- **Wake (us → bot):** the engine sends `x-wake-signature` = base64 HMAC-SHA256
-  of the exact request body; your bot recomputes it over the raw body and
-  rejects on mismatch.
-- **Action (bot → us):** your bot sends `signature` = base64 HMAC-SHA256 of
-  the exact `payload` it posts; the `bot/action` route recomputes the key and
-  verifies it. This is the real security boundary — the wake never authorizes a
-  move (the server re-validates every action under lock), so a forged wake can
-  at most waste the bot's compute.
+- **Wake (us → bot):** the engine sends `x-wake-signature` = the signature over
+  `"wake:" +` the exact request body; your bot recomputes it over the raw body
+  and rejects on mismatch.
+- **Action (bot → us):** your bot sends `signature` = the signature over
+  `"action:" +` the exact `payload` it posts; the `bot/action` route recomputes
+  the key and verifies it. This is the real security boundary — the wake never
+  authorizes a move (the server re-validates every action under lock), so a
+  forged wake can at most waste the bot's compute.
 
 So the bot deployment holds **one derived key** (it signs actions and verifies
 wakes). Server-bot games must be **timed** (the turn deadline is the liveness
@@ -827,14 +833,17 @@ const BOT_ID = process.env.BOT_ID;
 const SECRET = process.env.BOT_KEY; // = HMAC-SHA256(BOT_SIGNING_SECRET, bot_id)
 const ACTION_URL = process.env.ACTION_URL; // …/functions/v1/engine/bot/action
 const ANON_KEY = process.env.SUPABASE_ANON_KEY;
-const hmac = (s) => createHmac("sha256", SECRET).update(s).digest("base64");
+const sign = (domain, s) =>
+  "v1," +
+  createHmac("sha256", SECRET)
+    .update(`${domain}:`).update(s).digest("base64");
 
 createServer((req, res) => {
   const chunks = [];
   req.on("data", (c) => chunks.push(c));
   req.on("end", async () => {
     const raw = Buffer.concat(chunks); // the RAW bytes
-    const a = Buffer.from(hmac(raw));
+    const a = Buffer.from(sign("wake", raw));
     const b = Buffer.from(req.headers["x-wake-signature"] ?? "");
     if (a.length !== b.length || !timingSafeEqual(a, b)) { // 1. verify wake
       res.writeHead(401).end();
@@ -858,7 +867,7 @@ createServer((req, res) => {
         apikey: ANON_KEY,
         Authorization: `Bearer ${ANON_KEY}`,
       },
-      body: JSON.stringify({ payload, signature: hmac(payload) }),
+      body: JSON.stringify({ payload, signature: sign("action", payload) }),
     });
     if (!r.ok) console.warn("action rejected:", r.status, await r.text());
   });
@@ -874,7 +883,8 @@ language-agnostic `curl`:
 
 ```bash
 PAYLOAD='{"game_id":"…","bot_id":"…","player_index":1,"version":7,"data":{"position":4}}'
-SIG=$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$BOT_KEY" -binary | base64)
+SIG="v1,$(printf 'action:%s' "$PAYLOAD" \
+  | openssl dgst -sha256 -hmac "$BOT_KEY" -binary | base64)"
 curl -sS -X POST "$SUPABASE_URL/functions/v1/engine/bot/action" \
   -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ANON_KEY" \
   -H "Content-Type: application/json" \
@@ -904,9 +914,9 @@ returning id;  -- → <bot_id>; provision the bot with HMAC(BOT_SIGNING_SECRET, 
 join gate — seating refuses a bot below the game's `schema_version`).
 `rated_eligible = true` is required for a bot to enter a rated game. Set
 `config` (jsonb) to parameterize a persona (N:1) and/or declare capabilities for
-`botSeatable`. `config` is **public read-only reference data** —
-`app_bots` exposes it for both local and server bots (the pickers and the
-seatable filter read it), so never put secrets there.
+`botSeatable`. `config` is **public read-only reference data** — `app_bots`
+exposes it for both local and server bots (the pickers and the seatable filter
+read it), so never put secrets there.
 
 ### In-game, treat bots as players
 
@@ -932,18 +942,18 @@ places that must agree:
 2. **Producer (local bot)** — `LocalBot.chooseAction` returns that **same typed
    `ActionData`**; the infra driver serialises it through the very same
    `engine.serializeAction`. A human tap and a bot decision are interchangeable.
-3. **Consumer (server)** — your `applyAction` hook receives the resulting
-   JSON as `p_data` (jsonb) and is the **only authority**: it validates legality
-   and applies it. Never trust the client to have sent a legal move — a local
-   bot's move has exactly the same untrusted provenance as a human's.
+3. **Consumer (server)** — your `applyAction` hook receives the resulting JSON
+   as `p_data` (jsonb) and is the **only authority**: it validates legality and
+   applies it. Never trust the client to have sent a legal move — a local bot's
+   move has exactly the same untrusted provenance as a human's.
 
 The action payload is a plain JSON object whose keys are yours to choose; keep
 it minimal — it is **only** "what the move is". Infra supplies the seat
 (`p_player_index`), version, RNG seed, config, and schema version to
-`applyAction` as **separate parameters**, so never put them in the
-payload. It is passed straight through as the hook's `p_data` with no infra
-envelope; for the placeholder TicTacToe game that is literally
-`{"position": 0–8}` (`(p_data->>'position')::INT`).
+`applyAction` as **separate parameters**, so never put them in the payload. It
+is passed straight through as the hook's `p_data` with no infra envelope; for
+the placeholder TicTacToe game that is literally `{"position": 0–8}`
+(`(p_data->>'position')::INT`).
 
 The engine gives you a **fully typed action seam**, the output mirror of
 `parseObservation`: `BaseEngine` is generic over `TActionData`, your game
@@ -973,13 +983,13 @@ Map<String, dynamic> serializeAction(ActionData action) => action.toJson();
 The seam stays typed inside Dart, but the **wire boundary** (what crosses to
 `p_data`) is `Map<String, dynamic>` — that is exactly what reaches the hook. A
 **server bot runs in another language, so it cannot share the Dart type**; its
-uniformity is guaranteed at the JSON-shape level only. That makes
-`applyAction` (the single consumer) plus the `action` Zod schema in your
-`schemas` map the **one source of truth** that the Dart `ActionData` model and
-the server bot both mirror — the edge function rejects (400) any action `data`
-that fails the game's version `action` schema before your hook runs. Version
-the shape by adding a `schemas` entry when it changes. See Hook 2
-(`applyAction`) for the consumer contract.
+uniformity is guaranteed at the JSON-shape level only. That makes `applyAction`
+(the single consumer) plus the `action` Zod schema in your `schemas` map the
+**one source of truth** that the Dart `ActionData` model and the server bot both
+mirror — the edge function rejects (400) any action `data` that fails the game's
+version `action` schema before your hook runs. Version the shape by adding a
+`schemas` entry when it changes. See Hook 2 (`applyAction`) for the consumer
+contract.
 
 ---
 
@@ -1102,25 +1112,24 @@ watching the infra header's timing mode condition.
 
 ## Backend Changes Required
 
-A game's server-side rules surface is **six TypeScript methods on a `GameEngine`**
-— `initialState`, `applyAction`, `computeObservation`, plus optional `ratingPool`,
-`handleEvent`, and `botSeatable`. They all live in the **`game` edge
-function** as one typed object you export from `functions/_lib/game.ts` — see
-**The game edge function** below. There is **no SQL to write for the rules**; the
-gated `engine_*` RPCs the edge function commits through are infra and stay
-untouched.
+A game's server-side rules surface is **six TypeScript methods on a
+`GameEngine`** — `initialState`, `applyAction`, `computeObservation`, plus
+optional `ratingPool`, `handleEvent`, and `botSeatable`. They all live in the
+**`game` edge function** as one typed object you export from
+`functions/_lib/game.ts` — see **The game edge function** below. There is **no
+SQL to write for the rules**; the gated `engine_*` RPCs the edge function
+commits through are infra and stay untouched.
 
 The engine's **backend** is **vendored** into your app — run
 `dart run eigen_engine:sync_supabase` from the app directory. It copies the
 engine's `migrations/*.sql`, the single `engine` edge function (its harness +
 the shared `_engine` framework, serving the `game`, `social`, `internal`, and
-`bot` route groups), and
-`seed.sql` into your `supabase/`, leaving your app-owned files (any game
-migration, your `functions/_lib/game.ts`) untouched. Ratings (OpenSkill) and push
-notifications run inside the edge function now — there are no separate
-`update-ratings` / `refresh-fcm-token` functions. Commit everything, then
-`supabase db reset`. Re-run when you bump the engine version. See **Supabase
-project setup** below for the one-time config.
+`bot` route groups), and `seed.sql` into your `supabase/`, leaving your
+app-owned files (any game migration, your `functions/_lib/game.ts`) untouched.
+Ratings (OpenSkill) and push notifications run inside the edge function now —
+there are no separate `update-ratings` / `refresh-fcm-token` functions. Commit
+everything, then `supabase db reset`. Re-run when you bump the engine version.
+See **Supabase project setup** below for the one-time config.
 
 You normally write **no game SQL at all**. (A migration is only needed if your
 game adds its own tables; the rules themselves are pure TypeScript.)
@@ -1128,29 +1137,32 @@ game adds its own tables; the rules themselves are pure TypeScript.)
 ### The game edge function
 
 The rules run as TypeScript inside the engine-owned edge functions (the whole
-`_engine/` framework — Hono routing, auth, gated reads/commits — is bundled in on
-import). There are **four** functions — `game` (client JWT), `social` (client
+`_engine/` framework — Hono routing, auth, gated reads/commits — is bundled in
+on import). There are **four** functions — `game` (client JWT), `social` (client
 JWT), `internal` (cron/webhook secret), `bot` (per-bot HMAC) — but you implement
-only the `GameEngine`; the framework wires it into all of them. Ownership mirrors
-the backend's vendoring rule:
+only the `GameEngine`; the framework wires it into all of them. Ownership
+mirrors the backend's vendoring rule:
 
-| Path                                                            | Owner   | On `sync_supabase`                      |
-| --------------------------------------------------------------- | ------- | --------------------------------------- |
-| `functions/_engine/**`, `functions/_types/**`                   | engine  | re-vendored (overwritten + pruned)      |
-| `functions/{game,social,internal,bot}/*` (`index.ts`, config…)  | engine  | re-vendored (overwritten + pruned)      |
-| `functions/_lib/game.ts`                                        | **you** | scaffolded **once**, then never touched |
+| Path                                                           | Owner   | On `sync_supabase`                      |
+| -------------------------------------------------------------- | ------- | --------------------------------------- |
+| `functions/_engine/**`, `functions/_types/**`                  | engine  | re-vendored (overwritten + pruned)      |
+| `functions/{game,social,internal,bot}/*` (`index.ts`, config…) | engine  | re-vendored (overwritten + pruned)      |
+| `functions/_lib/game.ts`                                       | **you** | scaffolded **once**, then never touched |
 
 (`deno.lock` is git-ignored and regenerated per project, so it is never copied
 or pruned — your local lockfile is left alone.)
 
 So your entire server-side rules surface is one file — `game.ts` — which exports
-a `GameEngine` instance: **Zod schemas per payload** (the `schemas` map) plus the
-six methods. The schemas are the single source of truth — derive the payload
+a `GameEngine` instance: **Zod schemas per payload** (the `schemas` map) plus
+the six methods. The schemas are the single source of truth — derive the payload
 types from them with `z.infer` and the whole engine is typed end-to-end:
 
 ```ts
 import { z } from "zod";
-import { IllegalMoveError, passthroughObservation } from "engine/game-engine.ts";
+import {
+  IllegalMoveError,
+  passthroughObservation,
+} from "engine/game-engine.ts";
 import type {
   ApplyActionArgs,
   BotSeatableArgs,
@@ -1165,7 +1177,7 @@ const stateSchema = z.object({ board: z.array(z.number()).length(9) });
 const actionSchema = z.object({ position: z.number().int().min(0).max(8) });
 const configSchema = z.object({});
 
-type State = z.infer<typeof stateSchema>;   // `type`, not `interface`
+type State = z.infer<typeof stateSchema>; // `type`, not `interface`
 type Action = z.infer<typeof actionSchema>;
 type Config = z.infer<typeof configSchema>;
 
@@ -1195,27 +1207,26 @@ class MyGame implements GameEngine<State, Action, Config> {
 export const gameEngine: GameEngine = new MyGame();
 ```
 
-The `GameEngine` contract (the `Args` types, `Envelope`) is
-defined in `functions/_types/engine.types.ts` — read it for the authoritative
-signatures; `IllegalMoveError`, `passthroughObservation` (the perfect-info
-default) and
-the schema-boundary helpers live in `functions/_engine/game-engine.ts`.
+The `GameEngine` contract (the `Args` types, `Envelope`) is defined in
+`functions/_types/engine.types.ts` — read it for the authoritative signatures;
+`IllegalMoveError`, `passthroughObservation` (the perfect-info default) and the
+schema-boundary helpers live in `functions/_engine/game-engine.ts`.
 
-**The harness enforces the schema boundary for you.** Each route first
-validates the request body's *envelope* (ids, versions, timing fields) against
-an engine-owned Zod schema — a malformed request 400s before any handler code
-runs. Then, before any hook runs, the
-framework picks the game row's `schema_version` entry from `schemas` and parses
-every payload through it, so hook bodies never see unvalidated JSON:
+**The harness enforces the schema boundary for you.** Each route first validates
+the request body's _envelope_ (ids, versions, timing fields) against an
+engine-owned Zod schema — a malformed request 400s before any handler code runs.
+Then, before any hook runs, the framework picks the game row's `schema_version`
+entry from `schemas` and parses every payload through it, so hook bodies never
+see unvalidated JSON:
 
-| Payload                                | On schema failure                    |
-| -------------------------------------- | ------------------------------------ |
-| client `config` at create              | 400 (Zod issues in the message)      |
-| client/bot action `data`               | 400                                  |
-| `schema_version` not in `schemas` at create | 400                             |
-| stored `state`/`config` on read        | 500 (corruption / missed version)    |
-| loaded game's version not in `schemas` | 500 (EF deployed behind its data)    |
-| hook-returned `state`                  | 500 (validated before every commit)  |
+| Payload                                     | On schema failure                   |
+| ------------------------------------------- | ----------------------------------- |
+| client `config` at create                   | 400 (Zod issues in the message)     |
+| client/bot action `data`                    | 400                                 |
+| `schema_version` not in `schemas` at create | 400                                 |
+| stored `state`/`config` on read             | 500 (corruption / missed version)   |
+| loaded game's version not in `schemas`      | 500 (EF deployed behind its data)   |
+| hook-returned `state`                       | 500 (validated before every commit) |
 
 Client payloads flow onward **sanitized** — unknown keys stripped, defaults
 applied — into your hooks, the `actions` log, and `games.config`. Two rules keep
@@ -1231,15 +1242,16 @@ versions' shapes so hooks can narrow (`schemaVersion` also arrives in every
 hook's args). This is the TS twin of the Dart side's
 `BaseEngine.parseObservation` branching on its `schemaVersion` field.
 
-`applyAction` rejects a rule-breaking move by throwing `IllegalMoveError`
-(→ HTTP 400 with the message); any other throw is treated as a game bug (→ 500).
-The
-infra has already confirmed it is the acting seat's turn at the expected version
-before calling, so do not re-check turn order. `ratingPool` and `botSeatable` need
-**Dart twins** in your `GameModule` (the client gates the create-dialog
-Rated/Casual toggle and the bot pickers locally); the server stays authoritative.
-Seeds are 64-bit `bigint`; advance them via `_engine/prng.ts` for every random
-value consumed and return the advanced `rng_seed`.
+`applyAction` rejects a rule-breaking move by throwing `IllegalMoveError` (→
+HTTP 400 with the message); any other throw is treated as a game bug (→ 500).
+The infra has already confirmed it is the acting seat's turn at the expected
+version before calling, so do not re-check turn order. `ratingPool` and
+`botSeatable` need **Dart twins** in your `GameModule` (the client gates the
+create-dialog Rated/Casual toggle and the bot pickers locally); the server stays
+authoritative. Randomness comes from `args.rng` — a deterministic
+per-transition generator (`rand-seed`) the harness derives for you; draw as
+many values as you need (`rng.next()` → float in `[0, 1)`) and never cache it
+across hook calls.
 
 Iterate locally with `supabase functions serve` (or
 `deno check
@@ -1251,8 +1263,8 @@ dependency, your gameEngine is unit-testable in isolation. Deploy with
 Once your app is in production, migrations become append-only and schema changes
 must stay backward-compatible with app versions still in the wild — see
 [README → Versioning & backward
-compatibility](../README.md#versioning--backward-compatibility) (expand/contract,
-mobile update lag, in-flight game state).
+compatibility](../README.md#versioning--backward-compatibility)
+(expand/contract, mobile update lag, in-flight game state).
 
 ### Supabase project setup (one-time, per app)
 
@@ -1279,13 +1291,13 @@ settings in sync by hand when you bump the engine version:
      `additional_redirect_urls` change is needed — the upgrade uses native
      Google ID-token linking (`linkIdentityWithIdToken`), which reuses the app's
      existing native Google Sign-In and never opens a browser redirect.
-   - `[edge_runtime]` + the **`[functions.engine]`** block
-     (`verify_jwt = false` — auth is per route group *inside* the function:
-     user JWT for `game`/`social`, secret API key for `internal`, per-bot HMAC
-     for `bot`), with `import_map` / `entrypoint` pointing at
-     `./functions/engine/` — copy it verbatim from the engine config. The block
-     is what makes the function deployable; without it
-     `supabase functions deploy`/`serve` won't pick it up.
+   - `[edge_runtime]` + the **`[functions.engine]`** block (`verify_jwt = false`
+     — auth is per route group _inside_ the function: user JWT for
+     `game`/`social`, secret API key for `internal`, per-bot HMAC for `bot`),
+     with `import_map` / `entrypoint` pointing at `./functions/engine/` — copy
+     it verbatim from the engine config. The block is what makes the function
+     deployable; without it `supabase functions deploy`/`serve` won't pick it
+     up.
 2. **Vendor the backend:** `dart run eigen_engine:sync_supabase` (migrations +
    functions + seed), then commit. The first run scaffolds
    `functions/_lib/game.ts` and prints a reminder to add the
@@ -1311,11 +1323,12 @@ is rated. Return a pool name (`'rapid'`, `'daily'`, …) or `null` for unrated.
 `minPlayers`, `maxPlayers`, `config`.
 
 `rated` is a **validated assertion**, not a preference: the client computes it
-from the **Dart twin** of this method (plus its guest status) and sends a concrete
-`rated`. The edge function recomputes `canBeRated = pool != null && !guest` and
-**rejects a mismatch** (422) rather than coercing. There is no *forced-rated* mode
-— an ineligible config or a guest must send `rated = false`, and the create dialog
-hides/forces the toggle accordingly. Pool names stay server-authoritative.
+from the **Dart twin** of this method (plus its guest status) and sends a
+concrete `rated`. The edge function recomputes
+`canBeRated = pool != null && !guest` and **rejects a mismatch** (422) rather
+than coercing. There is no _forced-rated_ mode — an ineligible config or a guest
+must send `rated = false`, and the create dialog hides/forces the toggle
+accordingly. Pool names stay server-authoritative.
 
 **Default**: `null` (all games unrated until overridden).
 
@@ -1328,26 +1341,27 @@ ratingPool(args: RatingPoolArgs<Config>): string | null {
 }
 ```
 
-Keep a **Dart twin** in your `GameModule` with the identical rule so the New Game
-dialog can show the live Rated/Casual badge and gate the toggle (hidden when the
-pool is `null` or the user is a guest). The twin and this method must agree — the
-server rejects the create if they don't.
+Keep a **Dart twin** in your `GameModule` with the identical rule so the New
+Game dialog can show the live Rated/Casual badge and gate the toggle (hidden
+when the pool is `null` or the user is a guest). The twin and this method must
+agree — the server rejects the create if they don't.
 
 ---
 
 ### Hook 0b: `botSeatable(args: BotSeatableArgs<Config>): boolean`
 
-Optional. Decides whether a bot may be seated into a game with the chosen config.
-Called by the edge function before seating (the `add-bot` and `create-solo`
-routes); return `true` to allow. `args` carries `botConfig` (the bot's declared
-capabilities, from `bots.config` — opaque JSON, unversioned by your game
-schemas) and `gameConfig` (`games.config`, already parsed against the game's
-version config schema, so it arrives as your typed `Config`). It is the
+Optional. Decides whether a bot may be seated into a game with the chosen
+config. Called by the edge function before seating (the `add-bot` and
+`create-solo` routes); return `true` to allow. `args` carries `botConfig` (the
+bot's declared capabilities, from `bots.config` — opaque JSON, unversioned by
+your game schemas) and `gameConfig` (`games.config`, already parsed against the
+game's version config schema, so it arrives as your typed `Config`). It is the
 **single source of truth** for config compatibility, and gates the variant axis
 `schema_version` can't (a bot can match the schema but not the rules variant).
 
-**Default**: `true` (every bot seatable). Override to gate by the capability keys
-your game stores in `bots.config` — the engine imposes no schema on `bots.config`.
+**Default**: `true` (every bot seatable). Override to gate by the capability
+keys your game stores in `bots.config` — the engine imposes no schema on
+`bots.config`.
 
 ```ts
 botSeatable(args: BotSeatableArgs<Config>): boolean {
@@ -1366,21 +1380,19 @@ client never offers an opponent that seating would reject.
 
 ### Hook 1: `initialState(args: InitialStateArgs<Config>): Envelope<State>`
 
-`args`: `seed` (`bigint`), `playerCount`, plus the `HookContext` (`config` —
-parsed and typed, `schemaVersion`). Returns the starting envelope — must include
-`state`, `pending_players`, and `rng_seed`; may include `turn_seconds`. The
-returned `state` is validated against the game's version `state` schema before
-it is committed.
+`args`: `rng`, `playerCount`, plus the `HookContext` (`config` — parsed and
+typed, `schemaVersion`). Returns the starting envelope — must include `state`
+and `pending_players`; may include `turn_seconds`. The returned `state` is
+validated against the game's version `state` schema before it is committed.
 
 ```ts
 initialState(args: InitialStateArgs<Config>): Envelope<State> {
-  // Consume setup randomness via _engine/prng.ts if needed (shuffle, deal),
-  // then return the advanced seed.
-  let seed = args.seed;
+  // Draw setup randomness (shuffle, deal, first player…) from args.rng —
+  // deterministic per transition, so a replay re-derives the same draws.
+  const first = Math.floor(args.rng.next() * args.playerCount);
   return {
     state: { board: [], action_count: 0 },
-    pending_players: [0],
-    rng_seed: seed, // the (possibly advanced) seed — must be non-zero
+    pending_players: [first],
     // turn_seconds: 60, // optional: override timing for the very first action only
   };
 }
@@ -1392,21 +1404,20 @@ initialState(args: InitialStateArgs<Config>): Envelope<State> {
 | ----------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `state`           | yes      | Pure game payload. No whose-turn or winner info.                                                                                       |
 | `pending_players` | yes      | 0-based indices that may act first.                                                                                                    |
-| `rng_seed`        | yes      | The seed after consuming any setup randomness. **Must be non-zero** — infra raises if null or 0.                                       |
 | `turn_seconds`    | no       | Fixed deadline for the first action only (overrides game-level timing for this action). Omit to use the game's configured timing mode. |
 
 ---
 
 ### Hook 2: `applyAction(args: ApplyActionArgs<State, Action, Config>): Envelope<State>`
 
-`args`: `state`, `pending`, `data` (the move), `playerIndex`, `seed`, plus the
+`args`: `state`, `pending`, `data` (the move), `playerIndex`, `rng`, plus the
 `HookContext`. `state`, `data`, and `config` arrive parsed against the game's
-version schemas — a move whose `data` fails the `action` schema is rejected
-with 400 before this hook runs, so validate **game-rule** legality only, not
-shape. The infra has **already** confirmed it is this seat's turn at the
-expected version under the lock, so do not re-check turn order either. Reject a
-rule-breaking move by throwing `IllegalMoveError` (→ 400 with the message);
-any other throw is a game bug (→ 500).
+version schemas — a move whose `data` fails the `action` schema is rejected with
+400 before this hook runs, so validate **game-rule** legality only, not shape.
+The infra has **already** confirmed it is this seat's turn at the expected
+version under the lock, so do not re-check turn order either. Reject a
+rule-breaking move by throwing `IllegalMoveError` (→ 400 with the message); any
+other throw is a game bug (→ 500).
 
 ```ts
 applyAction(
@@ -1416,15 +1427,14 @@ applyAction(
   if (!isLegal(args.state, args.data, args.playerIndex)) {
     throw new IllegalMoveError("cell already occupied");
   }
-  // 2. Apply it to produce the new state. 3. Consume randomness via
-  //    _engine/prng.ts as needed, threading the advanced seed.
-  // 4. Decide who acts next (empty ⇒ game over) and whether there is an outcome.
+  // 2. Apply it to produce the new state, drawing any randomness (card draw,
+  //    dice…) from args.rng — as many values as needed.
+  // 3. Decide who acts next (empty ⇒ game over) and whether there is an outcome.
   const newState = /* … */ args.state;
   const ongoing = /* … */ true;
   return {
     state: newState,
     pending_players: ongoing ? [(args.playerIndex + 1) % 2] : [],
-    rng_seed: args.seed, // advanced if randomness was consumed; non-zero
     ...(ongoing ? {} : { outcome: /* OutcomeEntry[] */ [] }),
   };
 }
@@ -1436,7 +1446,6 @@ applyAction(
 | ----------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `state`           | yes      | Updated game payload.                                                                                                                                                                                      |
 | `pending_players` | yes      | Who acts next. Empty array = game over.                                                                                                                                                                    |
-| `rng_seed`        | yes      | The seed after consuming any randomness. **Must be non-zero.**                                                                                                                                             |
 | `outcome`         | no       | **Omit when the game is ongoing** — an absent key is how infra knows play continues. Include on game end as an array of per-player results (see below).                                                    |
 | `turn_seconds`    | no       | Fixed deadline for **this action only** — does not touch any player's budget bank. Use for phase-specific windows (Nope window, betting timer). Omit to let infra apply the game's configured timing mode. |
 
@@ -1462,9 +1471,9 @@ eliminated players in the `outcome` array until the game is truly over. Instead:
 - Exclude eliminated players from all future `pending_players` returns.
 - Record the elimination in `p_current_state` (e.g.
   `{"eliminated": [2], "placement": {"2": 4}}`).
-- In `computeObservation`, put `{"is_eliminated": true, "placement": 4}`
-  in the eliminated player's observation slice — the content widget uses this to
-  show "You were eliminated" immediately.
+- In `computeObservation`, put `{"is_eliminated": true, "placement": 4}` in the
+  eliminated player's observation slice — the content widget uses this to show
+  "You were eliminated" immediately.
 - When the game ends, build the full `outcome` array including eliminated
   players with their correct `"placement"` values for ELO.
 
@@ -1472,22 +1481,24 @@ eliminated players in the `outcome` array until the game is truly over. Instead:
 
 ### Hook 2b: `handleEvent(args: EventArgs<State, Config>): Envelope<State>`
 
-`args`: `state`, `pending`, `type`, `data` (a typed `EventData` union — no
-casts needed), `seed`, plus the `HookContext`. Decides the consequence of a
+`args`: `state`, `pending`, `type`, `data` (a typed `EventData` union — no casts
+needed), `rng`, plus the `HookContext`. Decides the consequence of a
 system-initiated event. Unlike `applyAction` it **cannot be illegal** — it
-always resolves to an envelope. The hook's `type` is only ever one of two
-values (`data.type` additionally distinguishes an engine-driven
-`'auto_forfeit'` from a voluntary resign):
+always resolves to an envelope. `type` always equals `data.type`:
 
-| `type`      | Trigger                                                  | Which seat(s)                                                                   |
-| ----------- | -------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `'timeout'` | the `expire` route (client nudge) or the cron sweep      | **all of `args.pending`** ran out of time — no `player_index` in `data`         |
-| `'forfeit'` | the `forfeit` route (resign) or the account-deletion purge | `args.data.player_index` — the single target seat                              |
+| `type`           | Trigger                                             | Which seat(s)                                                           |
+| ---------------- | --------------------------------------------------- | ----------------------------------------------------------------------- |
+| `'timeout'`      | the `expire` route (client nudge) or the cron sweep | **all of `args.pending`** ran out of time — no `player_index` in `data` |
+| `'forfeit'`      | the `forfeit` route — a voluntary resign            | `args.data.player_index` — the single target seat                       |
+| `'auto_forfeit'` | the account-deletion purge (engine-driven)          | `args.data.player_index` — the single target seat                       |
 
 A `timeout` shares one deadline across all pending seats, so resolve the **whole
-set at once** — you may declare a draw when everyone flags. A `forfeit` targets
-one seat. Both return the same envelope as `applyAction` (`state`,
-`pending_players`, `rng_seed`, optional `outcome`, optional `turn_seconds`).
+set at once** — you may declare a draw when everyone flags. A forfeit targets
+one seat; the two forfeit kinds share a shape, and most games resolve them
+identically (as the example below does) — the split exists so a game *may*
+choose different consequences for a purged account (e.g. a draw rather than a
+loss). All three return the same envelope as `applyAction` (`state`,
+`pending_players`, optional `outcome`, optional `turn_seconds`).
 
 ```ts
 handleEvent(args: EventArgs<State, Config>): Envelope<State> {
@@ -1509,20 +1520,18 @@ handleEvent(args: EventArgs<State, Config>): Envelope<State> {
       { player_index: winner, result: "win",  placement: 1, team_index: winner },
       { player_index: loser,  result: "loss", placement: 2, team_index: loser },
     ],
-    rng_seed: args.seed,
   };
 }
 ```
 
-A multiplayer forfeit (or a timeout that leaves the game live) might just advance
-past the affected seats instead of ending the game:
+A multiplayer forfeit (or a timeout that leaves the game live) might just
+advance past the affected seats instead of ending the game:
 
 ```ts
 // Skip: drop the timed-out seats from pending, game continues (some N-player games).
 return {
   state: args.state,
   pending_players: [], // hook recomputes the next pending set
-  rng_seed: args.seed,
 };
 ```
 
@@ -1538,9 +1547,25 @@ every transition (and per historical version for replay). Returns
 **Perfect-info games do not override this** — assign the
 `passthroughObservation` default (the identity projection).
 
-Override for hidden-info games to strip opponent cards/hands and optionally narrow
-`pending_players`. Use `isReplay` to reveal information post-game (e.g. all hole
-cards in a Poker replay).
+Override for hidden-info games to strip opponent cards/hands and optionally
+narrow `pending_players` — each seat's row carries its own **view** of the true
+`game_states` pending set, so a reaction window (e.g. a Nope) need not reveal
+who else holds an interrupt. Use `isReplay` to reveal information post-game
+(e.g. all hole cards in a Poker replay).
+
+Narrowing is presentation only: infra keys everything authoritative — the
+not-your-turn gate, timeout resolution, clock math, notifications — off the
+true set, so a projection can mislead a client but never the server. Two rules
+keep the clients honest:
+
+- **Never narrow a seat's own membership out of its own slice.** If
+  `args.pending` contains `args.playerIndex`, the returned `pending_players`
+  must too. A seat whose own view denies it is pending never prompts its human
+  (and the local-bot driver skips its compute) — the seat silently runs out
+  the clock. What a slice says about **other** seats is yours to narrow.
+- **Keep pending local-bot seats visible in their host's slice.** The
+  local-bot driver detects a bot's turn from the host's own observation row,
+  so a solo game must not hide its bot seats' pending status from the human.
 
 ```ts
 // Perfect-info: assign the helper, instantiated with your payload types.
@@ -1588,8 +1613,8 @@ phase-specific windows regardless of the game's overall timing mode.
 implement it. The hook only needs to handle the consequence of a timeout action,
 not the clock itself.
 
-**When time expires**, infra calls `handleEvent` with `type = 'timeout'`.
-The client-side `game/expire` route nudges the server immediately when a client
+**When time expires**, infra calls `handleEvent` with `type = 'timeout'`. The
+client-side `game/expire` route nudges the server immediately when a client
 detects the deadline — the cron sweep is just a backstop. Any active participant
 can call it safely; the server validates under lock.
 
@@ -1609,21 +1634,21 @@ know the surface. There are two tiers (full detail in `engine_architecture.md`
 **Edge-function routes** (the client calls these; each runs the rules in TS and
 commits through a gated `engine_*` RPC):
 
-| Route | Purpose |
-| ----- | ------- |
-| `game/create` · `game/create-solo` | Create a game / a sole-human "vs AI" game. The EF validates timing + players, gates guests, derives the pool (`ratingPool`), and **validates the client's `rated` assertion**. |
-| `game/start` | `initialState` → writes `game_states` v0 + observations, inits banks, marks `active`. |
-| `game/action` | The move: runs `applyAction`, commits under the row lock (version + deadline + pending checks), fans out observations, writes outcome/ratings on finish. |
-| `game/forfeit` · `game/expire` | `handleEvent('forfeit')` / `('timeout')`. `expire` is the client deadline nudge (cron is the backstop). |
-| `game/add-bot` · `game/local-bot-action` | Seat a server bot (host) / drive a local bot seat. |
-| `game/replay` | The caller's observation slice at every version (finished, participant-only), projected through `computeObservation` (`isReplay = true`). |
-| `game/delete-account` | Account teardown (forfeits active games, then purges). |
-| `social/friend-request` · `social/accept` · `social/remove` | Friend writes; the EF gates the caller and pushes the notification. |
+| Route                                                       | Purpose                                                                                                                                                                        |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `game/create` · `game/create-solo`                          | Create a game / a sole-human "vs AI" game. The EF validates timing + players, gates guests, derives the pool (`ratingPool`), and **validates the client's `rated` assertion**. |
+| `game/start`                                                | `initialState` → writes `game_states` v0 + observations, inits banks, marks `active`.                                                                                          |
+| `game/action`                                               | The move: runs `applyAction`, commits under the row lock (version + deadline + pending checks), fans out observations, writes outcome/ratings on finish.                       |
+| `game/forfeit` · `game/expire`                              | `handleEvent('forfeit')` / `('timeout')`. `expire` is the client deadline nudge (cron is the backstop).                                                                        |
+| `game/add-bot` · `game/local-bot-action`                    | Seat a server bot (host) / drive a local bot seat.                                                                                                                             |
+| `game/replay`                                               | The caller's observation slice at every version (finished, participant-only), projected through `computeObservation` (`isReplay = true`).                                      |
+| `game/delete-account`                                       | Account teardown (forfeits active games, then purges).                                                                                                                         |
+| `social/friend-request` · `social/accept` · `social/remove` | Friend writes; the EF gates the caller and pushes the notification.                                                                                                            |
 
 **Client-direct RPCs** (the client calls these straight over PostgREST under
-RLS): `app_join_game` / `app_join_game_by_code`, `app_cancel_game`, `app_leave_game`,
-`app_lobby_games`, `app_friends_games`, `app_search_users`, `app_local_bot_observation`,
-`app_bots`, `app_players`, `app_update_username`.
+RLS): `app_join_game` / `app_join_game_by_code`, `app_cancel_game`,
+`app_leave_game`, `app_lobby_games`, `app_friends_games`, `app_search_users`,
+`app_local_bot_observation`, `app_bots`, `app_players`, `app_update_username`.
 
 ---
 
@@ -1652,9 +1677,9 @@ test('valid action is accepted', () {
 5. Trigger a timeout: let the deadline pass without acting, confirm the cron
    sweep (`cron_expire_turns` → `internal/expire`) commits the timeout, and
    confirm the hook's timeout consequence is applied.
-6. Test forfeit: click forfeit in the game screen, confirm `handleEvent`
-   runs with a `{ type: 'forfeit' }` action, and confirm `game_outcomes`
-   reflect the expected result.
+6. Test forfeit: click forfeit in the game screen, confirm `handleEvent` runs
+   with a `{ type: 'forfeit' }` action, and confirm `game_outcomes` reflect the
+   expected result.
 7. Test leave: join as a non-host, call `app_leave_game`, confirm participant is
    removed and game status transitions correctly.
 8. Test join-by-code: create a private/friends game, note the `short_code`
@@ -1665,10 +1690,11 @@ test('valid action is accepted', () {
 9. Test friends access: create a `friends` access game, confirm a non-friend
    cannot join, add friend, confirm friend can then join.
 10. Test the rated assertion: create a public Rapid game with `rated: true` →
-    `games.rated = true`, `games.rating_pool = 'rapid'`. Create an untimed public
-    game → `games.rated = false`, `games.rating_pool = null`. Send `rated: true`
-    for an ineligible game (null pool, or as a guest) → the `game/create` route
-    rejects it **422 mismatch** (the EF validates, it never silently coerces).
+    `games.rated = true`, `games.rating_pool = 'rapid'`. Create an untimed
+    public game → `games.rated = false`, `games.rating_pool = null`. Send
+    `rated: true` for an ineligible game (null pool, or as a guest) → the
+    `game/create` route rejects it **422 mismatch** (the EF validates, it never
+    silently coerces).
 11. Test rating update: play a rated game to completion → `player_ratings` rows
     created/updated, `rating_history` rows inserted for each player. Ratings are
     computed in the EF and written **in the same finishing transaction** — no
@@ -2191,22 +2217,21 @@ release APK before uploading.
 - [ ] `expire_all_turns` pg_cron job confirmed active in production (check
       Dashboard → Database → Cron Jobs)
 - [ ] `serverless_base_url` set in `private.app_config` for production project
-- [ ] `secret_api_key` created in Supabase Vault for production project,
-      holding the project's **secret API key** (`sb_secret_…`) — the cron
-      sweeps send it as the `apikey` header to `/engine/internal/*`, where
-      `@supabase/server`'s `auth: 'secret'` mode validates it (no bespoke
-      webhook secret exists)
+- [ ] `secret_api_key` created in Supabase Vault for production project, holding
+      the project's **secret API key** (`sb_secret_…`) — the cron sweeps send it
+      as the `apikey` header to `/engine/internal/*`, where `@supabase/server`'s
+      `auth: 'secret'` mode validates it (no bespoke webhook secret exists)
 - [ ] function secrets set via `supabase secrets set` (see
-      `engine_architecture.md §21`): `BOT_SIGNING_SECRET`
-      (server-bot HMAC key derivation), and `FIREBASE_CLIENT_EMAIL`
-      / `FIREBASE_PRIVATE_KEY` / `FIREBASE_PROJECT_ID` (FCM push — the EF mints its
-      own OAuth token). The `SUPABASE_*` vars are injected automatically.
-- [ ] `[functions.engine]` block (`verify_jwt = false`) present in
-      `config.toml` (per-app, not vendored) so the function deploys
-- [ ] `supabase functions deploy engine` run — see
-      `engine_architecture.md §21`. Ratings (OpenSkill) and notifications (FCM)
-      run inside the shared framework; there is no `update-ratings` or
-      `refresh-fcm-token` function or FCM-token cron job.
+      `engine_architecture.md §21`): `BOT_SIGNING_SECRET` (server-bot HMAC key
+      derivation), and `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` /
+      `FIREBASE_PROJECT_ID` (FCM push — the EF mints its own OAuth token). The
+      `SUPABASE_*` vars are injected automatically.
+- [ ] `[functions.engine]` block (`verify_jwt = false`) present in `config.toml`
+      (per-app, not vendored) so the function deploys
+- [ ] `supabase functions deploy engine` run — see `engine_architecture.md §21`.
+      Ratings (OpenSkill) and notifications (FCM) run inside the shared
+      framework; there is no `update-ratings` or `refresh-fcm-token` function or
+      FCM-token cron job.
 - [ ] Run `flutterfire configure` (Android + iOS) to generate
       `lib/firebase_options.dart`, `android/app/google-services.json`, and
       `ios/Runner/GoogleService-Info.plist` — all gitignored, do not commit

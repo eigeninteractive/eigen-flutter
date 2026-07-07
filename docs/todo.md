@@ -24,10 +24,7 @@
 
 - On new pending, compare against old pending (should we?) and send
   notifications and bot wakes
-- Remove the getToken or something from FCM registration, use full FID based
-  approach
 - Given we have moved to EF, do we prefer HMAC or public-private key?
-- Seeded random number generator
 - Lets say I'm playing Poker, and I'm a guest user too stale or I manually
   delete my account, a forfeight signal is fired. The game is still active
   right? After deleting all my details, will the game continue to work for other
@@ -40,5 +37,3 @@
 - How isolated it the contract with supabase as the backend in the engine
   flutter side? If required, can we cleanly swap out to another backend or a DB
   by just touching the repository layer?
-- Instead of BaseEngine taking schemaVersion, should we have different engine
-  classes for different schema versions? Same thing for Typescript?

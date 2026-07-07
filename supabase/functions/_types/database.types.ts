@@ -7,6 +7,31 @@ export type Json =
   | Json[];
 
 export type Database = {
+  graphql_public: {
+    Tables: {
+      [_ in never]: never;
+    };
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json;
+          operationName?: string;
+          query?: string;
+          variables?: Json;
+        };
+        Returns: Json;
+      };
+    };
+    Enums: {
+      [_ in never]: never;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
+    };
+  };
   public: {
     Tables: {
       actions: {
@@ -195,7 +220,7 @@ export type Database = {
           game_id: string;
           pending_players: number[];
           player_times: number[] | null;
-          rng_seed: number;
+          rng_seed: string;
           state: Json;
           turn_deadline: string | null;
           turn_started_at: string | null;
@@ -206,7 +231,7 @@ export type Database = {
           game_id: string;
           pending_players: number[];
           player_times?: number[] | null;
-          rng_seed?: number;
+          rng_seed: string;
           state: Json;
           turn_deadline?: string | null;
           turn_started_at?: string | null;
@@ -217,7 +242,7 @@ export type Database = {
           game_id?: string;
           pending_players?: number[];
           player_times?: number[] | null;
-          rng_seed?: number;
+          rng_seed?: string;
           state?: Json;
           turn_deadline?: string | null;
           turn_started_at?: string | null;
@@ -858,8 +883,12 @@ export type Database = {
 
 type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">;
 
-type DefaultSchema =
-  DatabaseWithoutInternals[Extract<keyof Database, "public">];
+type DefaultSchema = DatabaseWithoutInternals[
+  Extract<
+    keyof Database,
+    "public"
+  >
+];
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
@@ -991,6 +1020,9 @@ export type CompositeTypes<
   : never;
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       action_type: ["user", "bot", "system"],

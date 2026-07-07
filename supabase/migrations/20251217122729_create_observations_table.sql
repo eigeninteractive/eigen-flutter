@@ -14,10 +14,13 @@ CREATE TABLE public.observations (
   player_index INT NOT NULL,
   -- Player-specific projection of game_states.state.
   data JSONB NOT NULL,
-  -- Mirror of game_states.pending_players. Denormalized onto every row so
-  -- Realtime subscribers (which can only see observations, not game_states)
-  -- can render turn info without a second subscription/JOIN. Clients derive
-  -- "is my turn" locally as pending_players.contains(myPlayerIndex).
+  -- This seat's VIEW of game_states.pending_players, projected per seat by
+  -- computeObservation — hidden-info games may narrow it (e.g. not revealing
+  -- who can act in a reaction window). Denormalized onto every row so Realtime
+  -- subscribers (which can only see observations, not game_states) can render
+  -- turn info without a second subscription/JOIN. Clients derive "is my turn"
+  -- locally as pending_players.contains(myPlayerIndex), so a game must never
+  -- narrow a seat's own membership out of that seat's row.
   pending_players INT[] NOT NULL,
   -- Mirror of game_states.version. Clients pass this back as the optimistic
   -- lock key on the next submit_action call.

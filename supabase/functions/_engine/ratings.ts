@@ -2,56 +2,18 @@
  * OpenSkill rating computation — pure, DB-agnostic.
  *
  * Invoked in-process by the engine on a rated game's finishing transition: the
- * EF reads each seat's current `mu`/`sigma` (`engine_read_rating_inputs`), zips
- * them with the outcome it just computed into {@link PlayerInput}s, and passes
- * the resulting {@link RatingUpdate}s to the commit RPC, which writes
+ * EF fetches each seat's current `mu`/`sigma` from `player_ratings`
+ * (`readRatingsForSeats`, defaulting a never-rated identity to openskill
+ * `rating()`), zips them with the outcome it just computed into
+ * {@link PlayerInput}s, and turns the posteriors into {@link RatingResult}s. The
+ * EF then attaches each identity's `expected_revision` and the commit RPC writes
  * `player_ratings` + `rating_history` atomically with the game finish. This
- * module never touches the database.
+ * module is pure: it never touches the database and is unaware of revisions or
+ * the display number (the latter is derived in SQL from `(mu, sigma)`).
  */
 
-import type { Rating } from "openskill";
 import { rate, rating } from "openskill";
-
-/** A player seat to be rated.
- *
- * Self-contained: each seat's current `mu`/`sigma` is bundled, so this module
- * never reads the database. `display_rating` is intentionally NOT carried — it is
- * derived from `mu`/`sigma` here (see {@link displayRating}) so the formula lives
- * in one place per side of the wire. `Rating` (`{ mu, sigma }`) is openskill's
- * own type. */
-export interface PlayerInput extends Rating {
-  player_index: number;
-  user_id: string | null;
-  bot_id: string | null;
-  /** Ordinal finish rank (1 = best); ties share the same value. */
-  placement: number;
-  /** Players sharing a team_index are rated as one team. For individual games
-   * this equals player_index. */
-  team_index: number;
-}
-
-/** Conservative ladder number shown to players: `max(0, round((mu − 3σ) × 40))`.
- *
- * Mirrors the SQL definition of `player_ratings.display_rating`; keep the two in
- * sync if the formula ever changes.
- */
-function displayRating({ mu, sigma }: Rating) {
-  return Math.max(0, Math.round((mu - 3 * sigma) * 40));
-}
-
-/** A rating plus its derived display number — one before/after snapshot. */
-function snapshot(r: Rating) {
-  return { mu: r.mu, sigma: r.sigma, display_rating: displayRating(r) };
-}
-
-/** One identity's rating change — the contract consumed by the commit RPC's
- * in-transaction rating writer. Its before/after shape is derived from
- * {@link snapshot} rather than re-declared. */
-export interface RatingUpdate {
-  identity: { user_id: string } | { bot_id: string };
-  before: ReturnType<typeof snapshot>;
-  after: ReturnType<typeof snapshot>;
-}
+import type { PlayerInput, Rating, RatingResult } from "types/engine.types.ts";
 
 /** The human or bot occupying a seat, resolved once into both forms used here:
  * the discriminated `payload` written to the update, and a stable `key` for
@@ -105,16 +67,17 @@ function posteriorFor(posteriors: Map<number, Rating>, index: number) {
   return posterior;
 }
 
-/** The update for an identity that holds exactly one seat (every human, every
+/** The result for an identity that holds exactly one seat (every human, every
  * single-seat bot): rated once against the true field they actually faced. */
 function singleSeatUpdate(
   seat: PlayerInput,
   fieldPosteriors: Map<number, Rating>,
-): RatingUpdate {
+): RatingResult {
+  const after = posteriorFor(fieldPosteriors, seat.player_index);
   return {
     identity: resolveIdentity(seat).payload,
-    before: snapshot(seat),
-    after: snapshot(posteriorFor(fieldPosteriors, seat.player_index)),
+    mu: after.mu,
+    sigma: after.sigma,
   };
 }
 
@@ -127,7 +90,7 @@ function singleSeatUpdate(
  * share no information, every result legitimately moves the rating.
  *
  * All seats move one underlying rating, so the identity yields exactly ONE
- * update — prior → final. That matches the schema's one row per (game, identity)
+ * result — prior → final. That matches the schema's one row per (game, identity)
  * (`idx_rating_history_game_bot`); emitting per-seat updates would collide on
  * that unique index and roll back the whole apply. The running rating is the one
  * piece of sequential state and never escapes this function.
@@ -135,7 +98,7 @@ function singleSeatUpdate(
 function multiSeatUpdate(
   seats: PlayerInput[],
   field: PlayerInput[],
-): RatingUpdate {
+): RatingResult {
   const ownKey = resolveIdentity(seats[0]).key;
   const opponents = field.filter((p) => resolveIdentity(p).key !== ownKey);
   const ordered = [...seats].sort((a, b) => a.player_index - b.player_index);
@@ -150,22 +113,22 @@ function multiSeatUpdate(
   }
   return {
     identity: resolveIdentity(seats[0]).payload,
-    before: snapshot(prior),
-    after: snapshot(running),
+    mu: running.mu,
+    sigma: running.sigma,
   };
 }
 
-/** Compute every identity's rating change for one finished game.
+/** Compute every identity's new rating for one finished game.
  *
- * Exactly one update per identity — humans and bots alike — matching the one
+ * Exactly one result per identity — humans and bots alike — matching the one
  * rating row per (game, identity) the schema stores. The field is rated once;
  * single-seat identities read their posterior straight from that rating, while a
- * multi-seat identity is re-rated seat-by-seat into a single net update (see
+ * multi-seat identity is re-rated seat-by-seat into a single net result (see
  * {@link multiSeatUpdate}). The single full-field `rate()` is what every
  * single-seat player is scored against, so a human who faced a two-seat bot is
  * correctly rated against two distinct opponents.
  */
-export function computeRatings(players: PlayerInput[]): RatingUpdate[] {
+export function computeRatings(players: PlayerInput[]): RatingResult[] {
   const fieldPosteriors = rateField(players);
   return groupBy(players, (p) => resolveIdentity(p).key).map((seats) =>
     seats.length === 1

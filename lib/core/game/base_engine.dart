@@ -59,7 +59,8 @@ abstract class BaseEngine<TObservationData, TActionData, TConfigData> {
   /// Parameters:
   /// - [obs]: the current typed game payload (board, hand, fog, ...).
   /// - [pendingPlayers]: 0-based indices whose "main turn" is active right
-  ///   now. Mirror of `game_states.pending_players`. Games with interrupt
+  ///   now — this seat's projection of `game_states.pending_players`, from
+  ///   its observation row. Games with interrupt
   ///   actions (e.g. Exploding Kittens's Nope) use this to distinguish a
   ///   main-turn action (only pending players may play) from an interrupt
   ///   (anyone holding the card may play).

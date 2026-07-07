@@ -8,8 +8,7 @@
 ///                                     GameEngine contract, rpc/runtime, FCM,
 ///                                     ratings, notify, bot auth, PRNG)
 ///   - `functions/_types/`             generated `database.types.ts` +
-///                                     hand-authored `engine.types.ts` +
-///                                     `database.overrides.ts`
+///                                     hand-authored `engine.types.ts`
 ///   - `functions/engine/`             the single deployable function harness
 ///                                     (`index.ts` + `deno.json` + `.npmrc`)
 ///   - `functions/deno.json`           shared import map

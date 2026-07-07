@@ -1,0 +1,217 @@
+/**
+ * Post-commit turn notifications — the EF side of what the SQL `notify_your_turn`
+ * trigger used to do off the observation write. After a transition commits, the
+ * seats that **newly** entered the pending set are told it's their turn: humans
+ * get an FCM push, server bots get a signed wake carrying their observation.
+ *
+ * Best-effort and run post-response via `EdgeRuntime.waitUntil`, so a slow or
+ * failed send never blocks the action response. The fire-and-forget entry
+ * points ({@link notifyTransition}, {@link notifyGameStarted},
+ * {@link notifyGameInvite}) never throw — they log and give up, so callers can
+ * hand them to `waitUntil` bare. The other EF-direct pushes live here too: the
+ * friends-game invite ({@link notifyGameInvite}, from the `/game/create`
+ * route) and the generic fan-out ({@link notifyUsers}, reused by social
+ * handlers).
+ *
+ * This module orchestrates only: every query lives in `repo.ts`
+ * (`readUserFids`, `pruneFids`, …), the pure FCM send in `fcm.ts` — so the
+ * notification flow reads top-to-bottom without storage details.
+ */
+
+import { signForBot } from "./bot_auth.ts";
+import { getFirebaseEnv } from "./env.ts";
+import { type NotificationMessage, sendNotifications } from "./fcm.ts";
+import {
+  type Db,
+  pruneFids,
+  readDisplayNames,
+  readGameInviteContext,
+  readGameState,
+  readSeatObservation,
+  readUserFids,
+  type Seat,
+} from "./repo.ts";
+
+/** Send `message` to every FID registered to `userId` via FCM, then prune any
+ * permanently unregistered devices. */
+export async function pushToUser(
+  db: Db,
+  userId: string,
+  message: NotificationMessage,
+): Promise<void> {
+  const firebaseEnv = getFirebaseEnv();
+  if (!firebaseEnv) {
+    console.warn(`Push skipped for ${userId}: FCM not configured`);
+    return;
+  }
+
+  const fids = await readUserFids(db, userId);
+  if (fids.length === 0) return;
+
+  const responses = await sendNotifications(firebaseEnv, message, fids);
+
+  const stale = responses.flatMap((r) =>
+    r.status === "fulfilled" && r.value.prunable ? [r.value.fid] : []
+  );
+  if (stale.length > 0) await pruneFids(db, userId, stale);
+}
+
+/** Fan one push out to a set of users, best-effort. Shared by the social
+ * handlers (friend request/accept) and the game-invite notifier. */
+export async function notifyUsers(
+  db: Db,
+  recipients: string[],
+  msg: NotificationMessage,
+): Promise<void> {
+  await Promise.allSettled(
+    recipients.map((userId) => pushToUser(db, userId, msg)),
+  );
+}
+
+/** Push a friends-game invite to every accepted friend of the creator. Called
+ * post-commit from the `/game/create` route (replaces the `notify_game_invite`
+ * trigger). No-op for non-friends games / a creator with no friends. Never
+ * throws. */
+export async function notifyGameInvite(db: Db, gameId: string): Promise<void> {
+  try {
+    const invite = await readGameInviteContext(db, gameId);
+    if (!invite || invite.friendIds.length === 0) return;
+
+    await notifyUsers(db, invite.friendIds, {
+      title: `${invite.creatorName ?? "A friend"} started a game`,
+      body: "Join now to play.",
+      data: { category: "game_invite", deep_link: `/join/${invite.shortCode}` },
+    });
+  } catch (e) {
+    console.error(`notifyGameInvite failed for ${gameId}:`, e);
+  }
+}
+
+/** Notify every seat that entered `finalPending` but was not in `prevPending`.
+ * Never throws. */
+export async function notifyTransition(
+  db: Db,
+  args: {
+    gameId: string;
+    prevPending: number[];
+    finalPending: number[];
+    roster: Seat[];
+  },
+): Promise<void> {
+  try {
+    const prev = new Set(args.prevPending);
+    const newly = args.finalPending.filter((seat) => !prev.has(seat));
+    if (newly.length === 0) return;
+
+    // Display names are only needed to personalise a human's "your turn" push,
+    // so resolve them only when a human newly acts.
+    const hasHumanRecipient = newly.some(
+      (seat) => args.roster.find((r) => r.player_index === seat)?.user_id,
+    );
+    const names = hasHumanRecipient
+      ? await readDisplayNames(db, args.roster)
+      : new Map<number, string>();
+
+    for (const seat of newly) {
+      const ref = args.roster.find((r) => r.player_index === seat);
+      if (!ref) continue;
+      try {
+        if (ref.user_id) {
+          await pushToUser(
+            db,
+            ref.user_id,
+            turnPush(args.gameId, seat, args.roster, names),
+          );
+        } else if (ref.bot_id && !ref.is_local && ref.webhook_url) {
+          await wakeBot(db, args.gameId, seat, ref.bot_id, ref.webhook_url);
+        }
+      } catch (e) {
+        console.error(`notify seat ${seat} failed:`, e);
+      }
+    }
+  } catch (e) {
+    console.error(`notifyTransition failed for ${args.gameId}:`, e);
+  }
+}
+
+/** Notify the opening mover(s) after a start commit. The roster (with bot wake
+ * fields) is re-read because the start commit doesn't return it. Never throws. */
+export async function notifyGameStarted(
+  db: Db,
+  gameId: string,
+  finalPending: number[],
+): Promise<void> {
+  try {
+    const read = await readGameState(db, gameId);
+    await notifyTransition(db, {
+      gameId,
+      prevPending: [],
+      finalPending,
+      roster: read.roster,
+    });
+  } catch (e) {
+    console.error(`notifyGameStarted failed for ${gameId}:`, e);
+  }
+}
+
+/** Build the "your turn" push for `seat`. With exactly one identified opponent
+ * the body names them ("It's your move against Ada."); otherwise it stays
+ * generic, since the engine has no game title to lean on. */
+function turnPush(
+  gameId: string,
+  seat: number,
+  roster: Seat[],
+  names: Map<number, string>,
+): NotificationMessage {
+  const data = { category: "your_turn", deep_link: `/game/${gameId}` };
+  const opponents = roster.filter(
+    (r) => r.player_index !== seat && (r.user_id || r.bot_id),
+  );
+  if (opponents.length === 1) {
+    const name = names.get(opponents[0].player_index);
+    if (name) {
+      return {
+        title: "Your turn",
+        body: `It's your move against ${name}.`,
+        data,
+      };
+    }
+  }
+  return { title: "Your turn", body: "It's your move.", data };
+}
+
+/** Post a signed wake to a server bot, carrying its freshly-committed
+ * observation so the bot needs no callback to fetch state. */
+async function wakeBot(
+  db: Db,
+  gameId: string,
+  playerIndex: number,
+  botId: string,
+  webhookUrl: string,
+): Promise<void> {
+  const obs = await readSeatObservation(db, gameId, playerIndex);
+  if (!obs) {
+    console.error(`bot wake skipped (no observation) for seat ${playerIndex}`);
+    return;
+  }
+
+  const body = JSON.stringify({
+    game_id: gameId,
+    bot_id: botId,
+    player_index: playerIndex,
+    observation: obs.data,
+    version: obs.version,
+    pending_players: obs.pending_players,
+    turn_deadline: obs.turn_deadline,
+  });
+  const signature = await signForBot(botId, "wake", body);
+
+  await fetch(webhookUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-wake-signature": signature,
+    },
+    body,
+  });
+}
