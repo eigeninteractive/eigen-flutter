@@ -4,7 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import '../helpers/fakes.dart';
 
 void main() {
-  final engine = SampleEngine();
+  const rules = SampleRules();
+  const config = SampleConfig();
   const empty = SampleObservation([
     null,
     null,
@@ -20,13 +21,25 @@ void main() {
   group('isValidAction', () {
     test('allows a pending player to play an empty cell', () {
       check(
-        engine.isValidAction(empty, [0], const SampleAction(4), 0),
+        rules.isValidAction(
+          obs: empty,
+          pending: [0],
+          data: const SampleAction(4),
+          playerIndex: 0,
+          config: config,
+        ),
       ).isTrue();
     });
 
     test("rejects when it is not the player's turn", () {
       check(
-        engine.isValidAction(empty, [1], const SampleAction(4), 0),
+        rules.isValidAction(
+          obs: empty,
+          pending: [1],
+          data: const SampleAction(4),
+          playerIndex: 0,
+          config: config,
+        ),
       ).isFalse();
     });
 
@@ -42,31 +55,51 @@ void main() {
         null,
         null,
       ]);
-      check(engine.isValidAction(obs, [1], const SampleAction(0), 1)).isFalse();
+      check(
+        rules.isValidAction(
+          obs: obs,
+          pending: [1],
+          data: const SampleAction(0),
+          playerIndex: 1,
+          config: config,
+        ),
+      ).isFalse();
     });
 
     test('rejects an out-of-range cell', () {
       check(
-        engine.isValidAction(empty, [0], const SampleAction(9), 0),
+        rules.isValidAction(
+          obs: empty,
+          pending: [0],
+          data: const SampleAction(9),
+          playerIndex: 0,
+          config: config,
+        ),
       ).isFalse();
     });
   });
 
   test('parseObservation reads the board payload', () {
-    final obs = engine.parseObservation(<String, dynamic>{
+    final obs = rules.parseObservation(<String, dynamic>{
       'board': [0, null, 1],
     });
     check(obs.board).deepEquals([0, null, 1]);
   });
 
-  group('GameModule.supportsSchema', () {
-    const module = SampleModule(); // schemaVersion == 1
+  test('action codec round-trips through JSON', () {
+    final json = rules.serializeAction(const SampleAction(4));
+    check(rules.parseAction(json).cell).equals(4);
+  });
 
-    test('accepts its own and older schema versions', () {
+  group('GameModule.supportsSchema', () {
+    const module = SampleModule(); // versions == {1}
+
+    test('accepts a version this build ships rules for', () {
       check(module.supportsSchema(1)).isTrue();
+      check(module.latestSchemaVersion).equals(1);
     });
 
-    test('rejects a newer schema version (created by a newer build)', () {
+    test('rejects a version with no rules entry (newer build or retired)', () {
       check(module.supportsSchema(2)).isFalse();
     });
   });

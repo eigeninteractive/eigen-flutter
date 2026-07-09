@@ -1,5 +1,4 @@
 import 'package:flutter/widgets.dart';
-import 'package:eigen_engine/core/game/base_engine.dart';
 import 'package:eigen_engine/core/game/game_creation_spec.dart';
 import 'package:eigen_engine/core/game/game_module.dart';
 import 'package:eigen_engine/features/game/data/models/game.dart'
@@ -20,6 +19,9 @@ class SampleObservation {
 class SampleAction {
   const SampleAction(this.cell);
 
+  factory SampleAction.fromJson(Map<String, dynamic> json) =>
+      SampleAction(json['cell'] as int);
+
   final int cell;
 
   Map<String, dynamic> toJson() => {'cell': cell};
@@ -30,32 +32,64 @@ class SampleConfig {
   const SampleConfig();
 }
 
-/// A trivial [BaseEngine] used to exercise and demonstrate the engine contract.
+/// The schema-version-1 rules unit of the sample game.
 ///
-/// This is the template downstream games follow: pure, infra-free
-/// action-legality logic that a game package can unit-test in isolation.
-class SampleEngine
-    extends BaseEngine<SampleObservation, SampleAction, SampleConfig> {
-  SampleEngine({super.schemaVersion = 1}) : super(const SampleConfig());
+/// This is the template downstream games follow: the payload codec plus pure,
+/// infra-free action-legality logic that a game package can unit-test in
+/// isolation.
+class SampleRules
+    extends GameRules<SampleObservation, SampleAction, SampleConfig> {
+  const SampleRules();
+
+  @override
+  SampleConfig parseConfig(Map<String, dynamic> json) => const SampleConfig();
 
   @override
   SampleObservation parseObservation(Map<String, dynamic> json) =>
       SampleObservation.fromJson(json);
 
   @override
+  SampleAction parseAction(Map<String, dynamic> json) =>
+      SampleAction.fromJson(json);
+
+  @override
   Map<String, dynamic> serializeAction(SampleAction action) => action.toJson();
 
   @override
-  bool isValidAction(
-    SampleObservation obs,
-    List<int> pendingPlayers,
-    SampleAction action,
-    int playerIndex,
-  ) {
-    if (!pendingPlayers.contains(playerIndex)) return false;
-    if (action.cell < 0 || action.cell >= obs.board.length) return false;
-    return obs.board[action.cell] == null;
+  bool isValidAction({
+    required SampleObservation obs,
+    required List<int> pending,
+    required SampleAction data,
+    required int playerIndex,
+    required SampleConfig config,
+  }) {
+    if (!pending.contains(playerIndex)) return false;
+    if (data.cell < 0 || data.cell >= obs.board.length) return false;
+    return obs.board[data.cell] == null;
   }
+
+  @override
+  SampleObservation? previewAction({
+    required SampleObservation obs,
+    required List<int> pending,
+    required SampleAction data,
+    required int playerIndex,
+    required SampleConfig config,
+  }) {
+    final board = List<int?>.of(obs.board);
+    board[data.cell] = playerIndex;
+    return SampleObservation(board);
+  }
+
+  @override
+  Widget buildContent(GameContentContext context) => const SizedBox.shrink();
+
+  @override
+  String? ratingPool(RatingPoolArgs args) =>
+      args.access == GameAccess.public ? 'casual' : null;
+
+  @override
+  bool botSeatable(BotSeatableArgs args) => true;
 }
 
 /// A minimal [GameModule] for use as a `currentGameModuleProvider` override.
@@ -63,7 +97,7 @@ class SampleModule extends GameModule {
   const SampleModule();
 
   @override
-  int get schemaVersion => 1;
+  Map<int, GameRules> get versions => const {1: SampleRules()};
 
   @override
   GameCreationSpec get creationSpec =>
@@ -75,29 +109,5 @@ class SampleModule extends GameModule {
   }) => null;
 
   @override
-  BaseEngine createEngine(Map<String, dynamic> configJson, int schemaVersion) =>
-      SampleEngine();
-
-  @override
-  Widget buildContent(GameContentContext context) => const SizedBox.shrink();
-
-  @override
   Widget buildRules(BuildContext context) => const Text('Sample rules');
-
-  @override
-  String? ratingPool({
-    required GameAccess access,
-    int? turnSeconds,
-    int? budgetSeconds,
-    int? incrementSeconds,
-    required int minPlayers,
-    required int maxPlayers,
-    required Map<String, dynamic> config,
-  }) => access == GameAccess.public ? 'casual' : null;
-
-  @override
-  bool botSeatable(
-    Map<String, dynamic> gameConfig,
-    Map<String, dynamic> botConfig,
-  ) => true;
 }

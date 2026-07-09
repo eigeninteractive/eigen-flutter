@@ -2,7 +2,8 @@ part of 'game_screen.dart';
 
 /// The active/finished game board and status.
 ///
-/// Uses [currentGameModuleProvider] to render game-specific content, keeping
+/// Uses the game's [GameRules] version unit to render game-specific content,
+/// keeping
 /// [game_screen.dart] decoupled from any concrete game implementation.
 ///
 /// Owns [gameFrameProvider] and [gamePlayersProvider] subscriptions so
@@ -19,24 +20,28 @@ class _ActiveGameContent extends ConsumerWidget {
   final Game game;
   final bool isSubmittingAction;
   final bool isForfeiting;
-  final Future<void> Function(Map<String, dynamic>, int) onAction;
+  final Future<ActionSubmitResult> Function(Map<String, dynamic>, int) onAction;
   final Future<void> Function() onForfeit;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // gameEngineProvider (engine/data layer) is the single authority on whether
-    // this build can load the game; here we only render its verdict. A game from
+    // gameConfigProvider (data layer) is the single authority on whether this
+    // build can load the game; here we only render its verdict. A game from
     // a newer build surfaces as UnsupportedGameSchemaException.
-    final engineAsync = ref.watch(gameEngineProvider(gameId: game.id));
-    if (engineAsync.error is UnsupportedGameSchemaException) {
+    final configAsync = ref.watch(gameConfigProvider(gameId: game.id));
+    if (configAsync.error is UnsupportedGameSchemaException) {
       return const _UnsupportedSchemaContent();
     }
 
-    final engine = engineAsync.value;
+    final config = configAsync.value;
+    // Resolved before the config (the config provider awaits it), so a
+    // non-null config implies non-null rules.
+    final rules = ref.watch(gameRulesProvider(gameId: game.id)).value;
     final frame = ref.watch(gameFrameProvider(gameId: game.id));
     final gamePlayersAsync = ref.watch(gamePlayersProvider(gameId: game.id));
 
-    if (engine == null ||
+    if (config == null ||
+        rules == null ||
         frame == null ||
         frame.observation == null ||
         !gamePlayersAsync.hasValue) {
@@ -44,7 +49,6 @@ class _ActiveGameContent extends ConsumerWidget {
     }
 
     final gamePlayers = gamePlayersAsync.value!;
-    final module = ref.watch(currentGameModuleProvider);
     final myPlayerIndex = gamePlayers.myPlayerIndex;
 
     // Outcomes are fetched once when the game finishes (invalidated by the
@@ -68,9 +72,9 @@ class _ActiveGameContent extends ConsumerWidget {
               myPlayerIndex: myPlayerIndex,
             ),
           Expanded(
-            child: module.buildContent(
+            child: rules.buildContent(
               GameContentContext(
-                engine: engine,
+                config: config,
                 frame: frame,
                 gameStatus: game.status,
                 outcomes: outcomes,

@@ -157,6 +157,7 @@ class _PreGameContent extends ConsumerWidget {
                   gameId: game.id,
                   rated: game.rated,
                   config: game.config,
+                  schemaVersion: game.schemaVersion,
                 ),
               ),
               icon: const Icon(Icons.smart_toy_outlined),
@@ -221,11 +222,16 @@ class _AddBotDialog extends ConsumerStatefulWidget {
     required this.gameId,
     required this.rated,
     required this.config,
+    required this.schemaVersion,
   });
 
   final String gameId;
   final bool rated;
   final Map<String, dynamic> config;
+
+  /// The game's `schema_version` — seating gates run against *this* game's
+  /// rules unit, not the latest.
+  final int schemaVersion;
 
   @override
   ConsumerState<_AddBotDialog> createState() => _AddBotDialogState();
@@ -268,21 +274,31 @@ class _AddBotDialogState extends ConsumerState<_AddBotDialog> {
     );
   }
 
-  /// Server bots seatable into this game: server-only, schema-compatible, rated
-  /// guard, and accepted by the game's own botSeatable rule for the game's fixed
-  /// config (the Dart twin of the server's GameEngine.botSeatable, which enforces
-  /// it at seating). [_selectedBotId] defaults to the first available.
+  /// Server bots seatable into this game: server-only, schema-compatible
+  /// (the bot's declared max schema covers this game's version), rated guard,
+  /// and accepted by *this game's version* of the botSeatable rule (the Dart
+  /// twin of the server's GameRules.botSeatable, which enforces it at
+  /// seating). [_selectedBotId] defaults to the first available.
   Widget _picker(List<BotInfo> bots) {
-    final module = ref.read(currentGameModuleProvider);
-    final usable = bots
-        .where(
-          (b) =>
-              !b.isLocal &&
-              b.schemaVersion <= module.schemaVersion &&
-              (!widget.rated || b.ratedEligible) &&
-              module.botSeatable(widget.config, b.config),
-        )
-        .toList();
+    final rules = ref
+        .read(currentGameModuleProvider)
+        .versions[widget.schemaVersion];
+    final usable = rules == null
+        ? const <BotInfo>[]
+        : bots
+              .where(
+                (b) =>
+                    !b.isLocal &&
+                    widget.schemaVersion <= b.schemaVersion &&
+                    (!widget.rated || b.ratedEligible) &&
+                    rules.botSeatable(
+                      BotSeatableArgs(
+                        gameConfig: widget.config,
+                        botConfig: b.config,
+                      ),
+                    ),
+              )
+              .toList();
     if (usable.isEmpty) {
       return Text(
         widget.rated

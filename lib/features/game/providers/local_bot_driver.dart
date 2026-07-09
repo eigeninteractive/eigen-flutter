@@ -46,15 +46,17 @@ class LocalBotStateCache {
 /// rebuilds the screen; it exists only to react. It evaluates the **solo gate
 /// once** (exactly one human — a local bot is sound only when there is no other
 /// human to cheat against) and, for every bot seat whose `username` matches a
-/// shipped `GameModule.localBots` implementation, watches that seat's driver.
+/// shipped `GameRules.localBots` implementation (the game's own version unit),
+/// watches that seat's driver.
 /// Server-bot seats (no matching local impl) are skipped — their webhook drives
 /// them.
 @riverpod
 class LocalBotDriver extends _$LocalBotDriver {
   @override
   void build({required String gameId}) {
-    final module = ref.read(currentGameModuleProvider);
-    if (module.localBots.isEmpty) return;
+    // The game's own version unit owns its local bots; rebuilds once resolved.
+    final rules = ref.watch(gameRulesProvider(gameId: gameId)).value;
+    if (rules == null || rules.localBots.isEmpty) return;
 
     final players = ref.watch(gamePlayersProvider(gameId: gameId)).value;
     if (players == null) return;
@@ -67,7 +69,7 @@ class LocalBotDriver extends _$LocalBotDriver {
     for (final entry in players.players.entries) {
       final seat = entry.value;
       if (seat.type != ParticipantType.bot) continue;
-      final hasLocalImpl = module.localBots.any(
+      final hasLocalImpl = rules.localBots.any(
         (b) => b.username == seat.info.username,
       );
       if (!hasLocalImpl) continue;
@@ -115,12 +117,14 @@ class LocalBotSeatDriver extends _$LocalBotSeatDriver {
 
   Future<void> _spawn(String gameId, int seatIndex) async {
     try {
-      final module = ref.read(currentGameModuleProvider);
-      // Await prerequisites instead of bail-and-retry: the engine future may
+      // Await prerequisites instead of bail-and-retry: the config future may
       // still be resolving on the first turn, and this lets one observation
       // trigger suffice (players is already resolved — the supervisor gated on
       // it — so its await returns immediately).
-      final engine = await ref.read(gameEngineProvider(gameId: gameId).future);
+      final rules = await ref.read(gameRulesProvider(gameId: gameId).future);
+      final gameConfig = await ref.read(
+        gameConfigProvider(gameId: gameId).future,
+      );
       final players = await ref.read(
         gamePlayersProvider(gameId: gameId).future,
       );
@@ -128,20 +132,23 @@ class LocalBotSeatDriver extends _$LocalBotSeatDriver {
 
       final seat = players.players[seatIndex];
       if (seat == null || seat.type != ParticipantType.bot) return;
-      final bot = module.localBots
+      final bot = rules.localBots
           .where((b) => b.username == seat.info.username)
           .firstOrNull;
       if (bot == null) return;
 
-      // Bot capability (config) comes from the cached catalog, keyed by bot id.
+      // Bot capability (botConfig) comes from the cached catalog, keyed by
+      // bot id.
       final catalog = await ref.read(botCatalogByIdProvider.future);
       if (!ref.mounted) return;
-      final config = catalog[seat.info.id]?.config ?? const <String, dynamic>{};
+      final botConfig =
+          catalog[seat.info.id]?.config ?? const <String, dynamic>{};
 
       _committed ??= bot.createState(
-        engine: engine,
+        rules: rules,
+        gameConfig: gameConfig,
         seatIndex: seatIndex,
-        config: config,
+        botConfig: botConfig,
       );
 
       final repo = ref.read(gameRepositoryProvider);
@@ -154,14 +161,16 @@ class LocalBotSeatDriver extends _$LocalBotSeatDriver {
       if (obs == null || !obs.pendingPlayers.contains(seatIndex)) return;
       if (_superseded(gameId, obs.version)) return;
 
-      final parsed = engine.parseObservation(obs.data);
+      final parsed = rules.parseObservation(obs.data);
 
       // Run the pure compute off the UI thread. Capture only sendable locals
-      // (never `this`): the bot, engine, parsed observation and committed state.
+      // (never `this`): the bot, rules unit, configs, parsed observation and
+      // committed state.
       final committed = _committed;
       final result = await Isolate.run(
         () => bot.chooseAction(
-          engine: engine,
+          rules: rules,
+          gameConfig: gameConfig,
           observation: parsed,
           seatIndex: seatIndex,
           state: committed,
@@ -174,7 +183,7 @@ class LocalBotSeatDriver extends _$LocalBotSeatDriver {
       await repo.submitLocalBotAction(
         gameId: gameId,
         playerIndex: seatIndex,
-        actionData: engine.serializeAction(result.action),
+        actionData: rules.serializeAction(result.action),
         expectedVersion: obs.version,
       );
       // The submit was accepted (a version conflict would have thrown), and it

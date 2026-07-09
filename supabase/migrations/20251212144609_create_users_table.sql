@@ -54,7 +54,7 @@ CREATE TABLE public.bots (
   -- without code changes (distinct rows share a local class or server webhook_url
   -- but differ by config); (2) capability declaration — what game configs the bot
   -- supports (e.g. {"variants":["standard"]}), interpreted by the game's
-  -- botSeatable hook — in TypeScript on the server (GameEngine.botSeatable, the
+  -- botSeatable hook — in TypeScript on the server (GameRules.botSeatable, the
   -- seating authority) and its Dart twin (GameModule.botSeatable) for local picker
   -- filtering. Public read-only
   -- reference data: app_bots exposes it for BOTH local and server bots, so never
@@ -101,7 +101,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
          b.is_local,
          b.rated_eligible,
          -- Exposed for both local and server bots: persona tuning + capability
-         -- declaration (read by GameEngine/GameModule.botSeatable). Never secret.
+         -- declaration (read by the TS/Dart GameRules.botSeatable twins). Never secret.
          b.config
   FROM public.bots b
   -- Deterministic order so the pickers' "first available" default is stable.
@@ -232,12 +232,13 @@ BEGIN
   current_user_id := auth.uid();
   
   IF current_user_id IS NULL THEN
-    RAISE EXCEPTION 'Not authenticated';
+    RAISE EXCEPTION 'Not authenticated' USING ERRCODE = 'EIG15';
   END IF;
   
   -- Validate username format (alphanumeric, underscores, dots, 3-20 chars)
   IF new_username !~ '^[a-zA-Z0-9_.]{3,20}$' THEN
-    RAISE EXCEPTION 'Username must be 3-20 characters, alphanumeric, underscores, or dots only';
+    RAISE EXCEPTION 'Username must be 3-20 characters, alphanumeric, underscores, or dots only'
+      USING ERRCODE = 'EIG13';
   END IF;
   
   -- Check uniqueness (case-insensitive)
@@ -246,7 +247,7 @@ BEGIN
     WHERE LOWER(username) = LOWER(new_username) 
     AND id != current_user_id
   ) THEN
-    RAISE EXCEPTION 'Username already taken';
+    RAISE EXCEPTION 'Username already taken' USING ERRCODE = 'EIG14';
   END IF;
   
   -- Update username

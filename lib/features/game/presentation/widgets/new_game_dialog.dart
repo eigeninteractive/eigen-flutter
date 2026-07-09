@@ -39,7 +39,7 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
   bool _isLoading = false;
 
   // Rated toggle: on by default. Only meaningful when the config is rating-
-  // eligible (see [GameModule.ratingPool]); the server is the final authority.
+  // eligible (see [GameRules.ratingPool]); the server is the final authority.
   bool _rated = true;
 
   @override
@@ -54,7 +54,7 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
     _maxPlayers = max;
     _creationConfigWidget = _module.buildCreationConfig(
       // Rebuild on config change so the rating toggle's eligibility (which depends
-      // on the config) recomputes locally via [GameModule.ratingPool].
+      // on the config) recomputes locally via [GameRules.ratingPool].
       onChanged: (config) => setState(() {
         _gameConfig = config;
         final (newMin, newMax) = _module.playersForConfig(config);
@@ -73,17 +73,21 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
     // enforces both regardless).
     final isAnonymous = ref.watch(isAnonymousProvider);
 
-    // Local rating eligibility (the Dart twin of the server's GameEngine.ratingPool,
-    // which recomputes the authoritative pool at creation). Null pool ⇒ this config
-    // is casual-only, so the toggle is hidden; guests are always unrated.
-    final pool = _module.ratingPool(
-      access: _access,
-      turnSeconds: _timing.turnSeconds,
-      budgetSeconds: _timing.budgetSeconds,
-      incrementSeconds: _timing.incrementSeconds,
-      minPlayers: _minPlayers,
-      maxPlayers: _maxPlayers,
-      config: _gameConfig,
+    // Local rating eligibility (the Dart twin of the server's
+    // GameRules.ratingPool, which recomputes the authoritative pool at
+    // creation). Creation targets the latest version's rules. Null pool ⇒ this
+    // config is casual-only, so the toggle is hidden; guests are always
+    // unrated.
+    final pool = _module.latestRules.ratingPool(
+      RatingPoolArgs(
+        access: _access,
+        turnSeconds: _timing.turnSeconds,
+        budgetSeconds: _timing.budgetSeconds,
+        incrementSeconds: _timing.incrementSeconds,
+        minPlayers: _minPlayers,
+        maxPlayers: _maxPlayers,
+        config: _gameConfig,
+      ),
     );
     final ratingEligible = !isAnonymous && pool != null;
     final effectiveRated = ratingEligible && _rated;
@@ -142,7 +146,7 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
 
               // ── Rated toggle ──────────────────────────────────────────
               // Shown only when this config is rating-eligible (and the user is
-              // not a guest), decided locally by GameModule.ratingPool. An
+              // not a guest), decided locally by GameRules.ratingPool. An
               // ineligible config is casual-only, so there is nothing to toggle.
               if (ratingEligible) ...[
                 const SizedBox(height: 8),
@@ -154,7 +158,7 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
                 ),
               ],
 
-              // Local Rated/Casual badge derived from GameModule.ratingPool (the
+              // Local Rated/Casual badge derived from GameRules.ratingPool (the
               // server recomputes the authoritative pool at creation).
               const SizedBox(height: 4),
               Row(
@@ -213,16 +217,19 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
     setState(() => _isLoading = true);
     try {
       // `rated` is a concrete assertion validated by the server (rejected on
-      // mismatch, not coerced), so compute the eligibility-gated value here — the
-      // same Dart twin of GameEngine.ratingPool used to show the toggle in build.
-      final pool = _module.ratingPool(
-        access: _access,
-        turnSeconds: _timing.turnSeconds,
-        budgetSeconds: _timing.budgetSeconds,
-        incrementSeconds: _timing.incrementSeconds,
-        minPlayers: _minPlayers,
-        maxPlayers: _maxPlayers,
-        config: _gameConfig,
+      // mismatch, not coerced), so compute the eligibility-gated value here —
+      // the same Dart twin of GameRules.ratingPool used to show the toggle in
+      // build.
+      final pool = _module.latestRules.ratingPool(
+        RatingPoolArgs(
+          access: _access,
+          turnSeconds: _timing.turnSeconds,
+          budgetSeconds: _timing.budgetSeconds,
+          incrementSeconds: _timing.incrementSeconds,
+          minPlayers: _minPlayers,
+          maxPlayers: _maxPlayers,
+          config: _gameConfig,
+        ),
       );
       final rated = !ref.read(isAnonymousProvider) && pool != null && _rated;
 
@@ -237,7 +244,7 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
             maxPlayers: _maxPlayers,
             config: _gameConfig,
             rated: rated,
-            schemaVersion: ref.read(currentGameModuleProvider).schemaVersion,
+            schemaVersion: _module.latestSchemaVersion,
           );
       ref
           .read(analyticsServiceProvider)

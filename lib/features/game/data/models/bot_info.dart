@@ -12,7 +12,7 @@ part 'bot_info.g.dart';
 /// [username] must ship in this build); false means a server bot, driven by its
 /// webhook. [config] is exposed for **both** local and server bots (persona tuning
 /// plus capability declaration — what game configs the bot supports, read
-/// by [GameModule.botSeatable] — the pickers filter on it locally, and the server
+/// by [GameRules.botSeatable] — the pickers filter on it locally, and the server
 /// enforces the same rule at seating). The local-bot driver also reads it (cached) to pass
 /// to `LocalBot.chooseAction`. `{}` when none is set; the engine imposes no schema on
 /// it, and it never holds secrets.

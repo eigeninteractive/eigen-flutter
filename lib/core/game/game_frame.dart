@@ -6,10 +6,17 @@ import 'package:eigen_engine/core/game/timing_context.dart';
 /// parsed observation, the optimistic-lock version, the players whose turn is
 /// active, and the turn timing. Rebuilt on every Realtime observation event.
 ///
-/// The engine is deliberately not part of the frame. It is created once from
-/// the immutable game config and lives for the whole game, so it is a separate,
-/// longer-lived concern carried alongside the frame (see `gameEngineProvider`
-/// and [GameContentContext.engine]) rather than re-bundled into every snapshot.
+/// The parsed game config is deliberately not part of the frame. It is parsed
+/// once from the immutable game config and lives for the whole game, so it is
+/// a separate, longer-lived concern carried alongside the frame (see
+/// `gameConfigProvider` and [GameContentContext.config]) rather than
+/// re-bundled into every snapshot.
+///
+/// Frames arrive as an ordered, gap-recovered stream (observations are
+/// append-only server-side; the repository fetches any versions Realtime
+/// skipped), so a game may animate the transition between consecutive frames
+/// and trust that it sees every one — falling back to a snap only after a
+/// cold (re)load, where no predecessor was rendered.
 class GameFrame {
   const GameFrame({
     required this.observation,

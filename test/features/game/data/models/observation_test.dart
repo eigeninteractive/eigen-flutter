@@ -18,7 +18,6 @@ void main() {
       'player_times': [60000, 55000],
       'turn_started_at': '2026-06-15T10:30:00.000Z',
       'created_at': '2026-06-15T10:30:00.000Z',
-      'updated_at': '2026-06-15T10:30:00.000Z',
     };
     check(Observation.fromJson(json).toJson()).deepEquals(json);
   });
@@ -36,7 +35,6 @@ void main() {
       'player_times': null,
       'turn_started_at': null,
       'created_at': '2026-06-15T10:30:00.000Z',
-      'updated_at': '2026-06-15T10:30:00.000Z',
     };
     check(Observation.fromJson(json).toJson()).deepEquals(json);
   });
@@ -56,7 +54,6 @@ void main() {
       'player_times': null,
       'turn_started_at': null,
       'created_at': '2026-06-15T10:30:00.000Z',
-      'updated_at': '2026-06-15T10:30:00.000Z',
     };
     check(Observation.fromJson(json).toJson()).deepEquals(json);
   });

@@ -5,7 +5,7 @@
 /// app's `supabase/`. The engine owns and ships:
 ///   - `migrations/*.sql`              framework/infra schema + RPCs
 ///   - `functions/_engine/`            the edge-function framework (Hono app,
-///                                     GameEngine contract, rpc/runtime, FCM,
+///                                     GameModule contract, rpc/runtime, FCM,
 ///                                     ratings, notify, bot auth, PRNG)
 ///   - `functions/_types/`             generated `database.types.ts` +
 ///                                     hand-authored `engine.types.ts`
@@ -15,7 +15,8 @@
 ///   - `seed.sql`                      engine app_config seed
 ///
 /// The app owns exactly one thing under `functions/`: `_lib/`, where it
-/// implements its `GameEngine` (in `game.ts` and any files it adds). That dir is
+/// implements its `GameModule` — `game.ts` assembling one `GameRules` unit per
+/// schema version from `game/v1.ts`, `game/v2.ts`, …. That dir is
 /// **scaffolded once** from the engine's example and then never touched, so an
 /// app's game is safe across re-syncs. Everything else — including the
 /// `engine/` harness — is engine-owned and re-vendored (mirror + prune) each
@@ -44,7 +45,7 @@ const _enginePackage = 'eigen_engine';
 /// The app-owned game dir inside `functions/`. The engine ships an example
 /// `_lib/game.ts`; on first sync it is scaffolded into the app, then the app
 /// owns `_lib/` entirely — the engine never mirrors or prunes it again, so the
-/// app's `GameEngine` (and any files it adds) survive re-syncs.
+/// app's `GameModule` (and any files it adds) survive re-syncs.
 const _appLibDir = '_lib';
 
 /// The seam file the engine scaffolds into [_appLibDir]. Its presence in the app
@@ -145,8 +146,9 @@ Future<void> main(List<String> args) async {
   if (scaffoldedLib) {
     stdout.writeln(
       'Scaffolded $out/functions/$_appLibDir/ from the engine example — '
-      'implement your GameEngine in $_appSeamFile there (the rest, including '
-      'the engine/ harness, is engine-owned and re-vendored each sync).',
+      'implement your game in game/v1.ts and register it in $_appSeamFile '
+      '(the rest, including the engine/ harness, is engine-owned and '
+      're-vendored each sync).',
     );
     stdout.writeln(
       'Then add a [functions.engine] block (verify_jwt=false; '
@@ -158,7 +160,7 @@ Future<void> main(List<String> args) async {
 
 /// Scaffolds the app-owned [_appLibDir] from the engine's example, but only when
 /// the app doesn't already have one (detected via [_appSeamFile]). After the
-/// first sync the app owns `_lib/` entirely — its `GameEngine` implementation
+/// first sync the app owns `_lib/` entirely — its `GameModule` implementation
 /// plus any files it adds — so the engine never copies into it or prunes it
 /// again, and re-syncs leave the app's game untouched. Returns `true` if the dir
 /// was freshly scaffolded.

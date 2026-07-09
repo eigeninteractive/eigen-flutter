@@ -22,6 +22,8 @@
 
 # Migration Tasks
 
+- Per game object needed in Dart or Typescript?
+- Is the observation stream idiomatic?
 - On new pending, compare against old pending (should we?) and send
   notifications and bot wakes
 - Given we have moved to EF, do we prefer HMAC or public-private key?

@@ -17,7 +17,7 @@ DECLARE
   v_user_id UUID := auth.uid();
 BEGIN
   IF v_user_id IS NULL THEN
-    RAISE EXCEPTION 'Not authenticated';
+    RAISE EXCEPTION 'Not authenticated' USING ERRCODE = 'EIG15';
   END IF;
   RETURN v_user_id;
 END;
@@ -39,7 +39,7 @@ DECLARE
 BEGIN
   SELECT * INTO v_result FROM private.get_participant(p_game_id, p_user_id);
   IF v_result.participant_id IS NULL THEN
-    RAISE EXCEPTION 'Not a participant in this game';
+    RAISE EXCEPTION 'Not a participant in this game' USING ERRCODE = 'EIG07';
   END IF;
   RETURN QUERY SELECT v_result.participant_id, v_result.player_index;
 END;
@@ -218,11 +218,11 @@ $$ LANGUAGE plpgsql IMMUTABLE SET search_path = '';
 -- ENGINE EDGE-FUNCTION BRIDGE
 -- ============================================
 -- The four heavy game hooks (initial_state, apply_action, handle_system_action,
--- compute_observation) run as a TypeScript gameEngine module inside the
+-- compute_observation) run as a TypeScript gameModule inside the
 -- `game` Edge Function. Postgres does not compute rules; it keeps the
 -- lock, the optimistic version check, timing/bank math, persistence and the
 -- hidden-info fan-out behind these **service-role-only** RPCs. The EF reads
--- ground-truth state, runs the gameEngine + projects observations, then commits.
+-- ground-truth state, runs the gameModule + projects observations, then commits.
 -- See docs/game_logic_serverless_migration.md.
 --
 -- Trust boundary: every engine_* RPC here is REVOKEd from PUBLIC/anon/authenticated
@@ -230,9 +230,11 @@ $$ LANGUAGE plpgsql IMMUTABLE SET search_path = '';
 -- Clients submit *intents* to the EF; only the EF submits *computed states*.
 -- ============================================
 
--- Writes EF-computed observation slices to existing observation rows, stamping
--- the infra-owned version + timing columns (the slice `data`/`pending_players`
--- come from the EF; only the timing/version is infra's to set).
+-- Appends EF-computed observation slices as new per-seat rows at p_version
+-- (observations are append-only history, one row per seat per version),
+-- stamping the infra-owned version + timing columns (the slice
+-- `data`/`pending_players` come from the EF) and joining each seat's identity
+-- from participants, mirroring engine_commit_start's v0 insert.
 CREATE OR REPLACE FUNCTION private.write_observation_slices(
   p_game_id         UUID,
   p_observations    JSONB,
@@ -242,20 +244,17 @@ CREATE OR REPLACE FUNCTION private.write_observation_slices(
   p_turn_started_at TIMESTAMPTZ
 )
 RETURNS VOID AS $$
-DECLARE
-  v_e JSONB;
 BEGIN
-  FOR v_e IN SELECT * FROM jsonb_array_elements(p_observations) LOOP
-    UPDATE public.observations
-    SET data            = v_e->'data',
-        pending_players = ARRAY(SELECT jsonb_array_elements_text(v_e->'pending_players')::INT),
-        version         = p_version,
-        turn_deadline   = p_deadline,
-        player_times    = p_player_times,
-        turn_started_at = p_turn_started_at,
-        updated_at      = NOW()
-    WHERE game_id = p_game_id AND player_index = (v_e->>'player_index')::INT;
-  END LOOP;
+  INSERT INTO public.observations
+    (game_id, user_id, bot_id, player_index, data, pending_players, version,
+     turn_deadline, player_times, turn_started_at)
+  SELECT p_game_id, part.user_id, part.bot_id, (e->>'player_index')::INT,
+         e->'data',
+         ARRAY(SELECT jsonb_array_elements_text(e->'pending_players')::INT),
+         p_version, p_deadline, p_player_times, p_turn_started_at
+  FROM jsonb_array_elements(p_observations) e
+  JOIN public.participants part
+    ON part.game_id = p_game_id AND part.player_index = (e->>'player_index')::INT;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
@@ -279,11 +278,11 @@ CREATE OR REPLACE FUNCTION private.commit_should_abstain(
 RETURNS BOOLEAN AS $$
 BEGIN
   IF p_status IS NULL THEN
-    RAISE EXCEPTION 'Game not found';
+    RAISE EXCEPTION 'Game not found' USING ERRCODE = 'EIG06';
   END IF;
   IF p_status != 'active' THEN
     IF p_mode = 'timeout' THEN RETURN TRUE; END IF;
-    RAISE EXCEPTION 'Game is not active';
+    RAISE EXCEPTION 'Game is not active' USING ERRCODE = 'EIG05';
   END IF;
   -- Every mode sends the version it computed against; a NULL would silently
   -- skip the optimistic guard, so it is a caller bug and raises.
@@ -386,7 +385,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- (Former seatable_bot_ids RPC removed.) The bot pickers now filter the cached
 -- app_bots catalog locally via GameModule.botSeatable, and the EF enforces the
--- same rule (GameEngine.botSeatable) before seating — no DB round-trip per config.
+-- same rule (GameRules.botSeatable) before seating — no DB round-trip per config.
 
 -- Participants are read directly from the participants table (RLS-gated by game
 -- visibility) — they are ephemeral, per-game data. A bot seat's static reference
@@ -418,7 +417,7 @@ BEGIN
   FOR UPDATE;
 
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'Game not found';
+    RAISE EXCEPTION 'Game not found' USING ERRCODE = 'EIG06';
   END IF;
   IF v_created_by IS NULL OR v_created_by != p_user_id THEN
     RAISE EXCEPTION 'Only the game creator can cancel the game';
@@ -460,7 +459,7 @@ BEGIN
   FOR UPDATE;
 
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'Game not found';
+    RAISE EXCEPTION 'Game not found' USING ERRCODE = 'EIG06';
   END IF;
   IF v_created_by = p_user_id THEN
     RAISE EXCEPTION 'Creator cannot leave — use app_cancel_game instead';
@@ -506,7 +505,7 @@ DECLARE
   v_human_count INT;
 BEGIN
   IF NOT private.is_game_participant(p_game_id, p_caller) THEN
-    RAISE EXCEPTION 'Not a participant in this game';
+    RAISE EXCEPTION 'Not a participant in this game' USING ERRCODE = 'EIG07';
   END IF;
 
   SELECT p.bot_id, b.is_local INTO v_bot_id, v_is_local

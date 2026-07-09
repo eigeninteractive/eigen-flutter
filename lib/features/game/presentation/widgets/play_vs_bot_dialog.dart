@@ -119,17 +119,24 @@ class _PlayVsBotDialogState extends ConsumerState<PlayVsBotDialog> {
     required bool timed,
     required bool isGuest,
   }) => bots.where((b) {
-    if (b.schemaVersion > module.schemaVersion) return false;
+    // Solo creation always targets the latest version, so bots are gated
+    // against the latest rules unit.
+    final rules = module.latestRules;
+    if (b.schemaVersion > module.latestSchemaVersion) return false;
     // Config gate: the game's own botSeatable rule decides which bots support the
-    // chosen config (the Dart twin of the server's GameEngine.botSeatable, which
+    // chosen config (the Dart twin of the server's GameRules.botSeatable, which
     // enforces it at seating). Local UX only — no network round-trip per config.
-    if (!module.botSeatable(_config, b.config)) return false;
+    if (!rules.botSeatable(
+      BotSeatableArgs(gameConfig: _config, botConfig: b.config),
+    )) {
+      return false;
+    }
     // Partition by timing: a local bot runs on the present human's client (no
     // deadline backstop needed), so it is offered only in an *untimed* game; a
     // server bot requires a timed game (its endpoint may be unreachable). The
     // server enforces both, and the split means timing selects the bot class.
     if (b.isLocal) {
-      return !timed && module.localBots.any((l) => l.username == b.username);
+      return !timed && rules.localBots.any((l) => l.username == b.username);
     }
     return timed && !isGuest;
   }).toList();
@@ -259,7 +266,7 @@ class _PlayVsBotDialogState extends ConsumerState<PlayVsBotDialog> {
           .read(gameRepositoryProvider)
           .createSoloGame(
             botIds: botIds,
-            schemaVersion: module.schemaVersion,
+            schemaVersion: module.latestSchemaVersion,
             turnSeconds: _timing.turnSeconds,
             budgetSeconds: _timing.budgetSeconds,
             incrementSeconds: _timing.incrementSeconds,

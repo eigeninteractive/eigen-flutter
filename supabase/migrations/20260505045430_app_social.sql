@@ -82,6 +82,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 REVOKE EXECUTE ON FUNCTION public.engine_send_friend_request(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.engine_send_friend_request(uuid, uuid) TO service_role;
 
 -- Returns: accepted — a pending request was transitioned to accepted (notify the
 -- original requester "<accepter> accepted your friend request"); requester_id —
@@ -120,6 +121,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 REVOKE EXECUTE ON FUNCTION public.engine_accept_friend_request(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.engine_accept_friend_request(uuid, uuid) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.engine_remove_friend(
   p_caller_id      UUID,
@@ -140,6 +142,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 REVOKE EXECUTE ON FUNCTION public.engine_remove_friend(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.engine_remove_friend(uuid, uuid) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.app_search_users(p_query TEXT)
 RETURNS TABLE (

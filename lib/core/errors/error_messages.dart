@@ -1,48 +1,57 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:eigen_engine/core/errors/engine_exception.dart';
 
 /// Converts a raw exception into a human-readable message suitable for display
 /// in snackbars.
 ///
-/// Known server-raised messages (from the game RPCs) are mapped to friendly
-/// copy; for [PostgrestException] the match runs against the bare server
-/// message so surrounding noise can never produce a false positive. Anything
-/// unrecognised falls back to a generic message.
+/// Structured engine errors dispatch on their stable code
+/// ([EngineErrorCodes], carried by [EngineException] for edge-function routes
+/// and [PostgrestException.code] for client-direct RPCs) — copy edits on the
+/// server can never change which message the user sees. Everything without a
+/// code is either a transport failure (detected by exception shape) or an
+/// unexpected error, which gets the generic message; there is deliberately no
+/// message-text matching.
 String humanize(Object e) {
-  final s = e is PostgrestException ? e.message : e.toString();
-  if (s.contains('Stale state')) return 'The game updated — try again.';
-  if (s.contains('Not your turn')) return "It's not your turn.";
-  if (s.contains('Turn has expired')) return 'Time ran out for this turn.';
-  if (s.contains('Game is full')) return 'This game is already full.';
-  if (s.contains('Already joined this game')) {
-    return "You're already in this game.";
-  }
-  if (s.contains('Game is not accepting players')) {
-    return 'This game has already started.';
-  }
-  if (s.contains('Only friends of the creator')) {
-    return 'Only friends of the host can join this game.';
-  }
-  if (s.contains('Game not found')) {
-    return 'Game not found. Check the code and try again.';
-  }
-  if (s.contains('Unsupported game schema')) {
-    return 'Update your app to join this game.';
-  }
-  if (s.contains('Game is not active')) return 'This game has already ended.';
-  if (s.contains('Not a participant')) return "You're not in this game.";
-  if (s.contains('Username already taken')) {
-    return 'That username is already taken.';
-  }
-  if (s.contains('Username must be')) {
-    return 'Usernames are 3-20 letters, numbers, dots, or underscores.';
-  }
-  if (s.contains('duplicate key')) return 'That seat just filled up.';
-  if (s.contains('Not authenticated')) return 'Please sign in again.';
-  if (_isNetworkError(s)) {
+  final code = switch (e) {
+    EngineException(:final code) => code,
+    PostgrestException(:final code) => code,
+    _ => null,
+  };
+  final coded = _messageForCode(code);
+  if (coded != null) return coded;
+
+  if (_isNetworkError(e.toString())) {
     return "Can't reach the server. Check your connection.";
   }
   return 'Something went wrong. Please try again.';
 }
+
+/// Friendly copy for a stable engine error code, or null when the code is
+/// unknown. `23505` is Postgres's unique-violation SQLSTATE — the seat-insert
+/// race on a filling game.
+String? _messageForCode(String? code) => switch (code) {
+  EngineErrorCodes.staleVersion ||
+  EngineErrorCodes.ratingConflict => 'The game updated — try again.',
+  EngineErrorCodes.notYourTurn => "It's not your turn.",
+  EngineErrorCodes.turnExpired => 'Time ran out for this turn.',
+  EngineErrorCodes.gameNotActive => 'This game has already ended.',
+  EngineErrorCodes.gameNotFound =>
+    'Game not found. Check the code and try again.',
+  EngineErrorCodes.notParticipant => "You're not in this game.",
+  EngineErrorCodes.gameFull => 'This game is already full.',
+  EngineErrorCodes.alreadyJoined => "You're already in this game.",
+  EngineErrorCodes.notAcceptingPlayers => 'This game has already started.',
+  EngineErrorCodes.friendsOnly =>
+    'Only friends of the host can join this game.',
+  EngineErrorCodes.unsupportedSchema => 'Update your app to join this game.',
+  EngineErrorCodes.usernameInvalid =>
+    'Usernames are 3-20 letters, numbers, dots, or underscores.',
+  EngineErrorCodes.usernameTaken => 'That username is already taken.',
+  EngineErrorCodes.notAuthenticated => 'Please sign in again.',
+  EngineErrorCodes.illegalMove => "That move isn't allowed.",
+  '23505' => 'That seat just filled up.',
+  _ => null,
+};
 
 bool _isNetworkError(String message) =>
     message.contains('SocketException') ||

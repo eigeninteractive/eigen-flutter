@@ -9,7 +9,7 @@ library;
 export 'app_runner.dart' show runEngineApp, MyApp;
 export 'core/config/app_config.dart'
     show AppConfig, Branding, EngineConfig, appConfigProvider;
-export 'core/game/base_engine.dart';
+export 'core/errors/engine_exception.dart';
 export 'core/game/local_bot.dart';
 export 'core/game/game_creation_spec.dart';
 export 'core/game/game_frame.dart';

@@ -1,11 +1,12 @@
 import 'dart:async';
 
-import 'package:eigen_engine/core/game/base_engine.dart';
+import 'package:eigen_engine/core/game/game_module.dart';
 
 /// A local bot: a pure function that computes a bot seat's move, client-side.
 ///
-/// Game-specific logic, so implementations live in the game package (alongside
-/// the `GameModule`), not the engine — the engine owns only this contract and
+/// Game-specific logic, so implementations live in the game package (listed on
+/// their version's `GameRules`), not the engine — the engine owns only this
+/// contract and
 /// the wiring. A local bot is only ever driven in a *solo* game (one human +
 /// bot(s)); the engine enforces that and reveals a bot seat's observation to the
 /// human's client only when no other human is present.
@@ -20,11 +21,11 @@ import 'package:eigen_engine/core/game/base_engine.dart';
 ///
 /// - **It (and its inputs/results) must be isolate-sendable** — plain logic and
 ///   data, no Supabase clients, ports, or `dart:ui` handles in [TState], the
-///   bot, or the engine.
-/// - **The bot instance and [BaseEngine] are copied in on every call**, so keep
-///   them lightweight. A bot needing large static data (a pretrained neural net,
-///   big tables) belongs **server-side**, not here — it would be re-shipped into
-///   the isolate every move.
+///   bot, or the rules unit.
+/// - **The bot instance, rules unit and game config are copied in on every
+///   call**, so keep them lightweight. A bot needing large static data (a
+///   pretrained neural net, big tables) belongs **server-side**, not here — it
+///   would be re-shipped into the isolate every move.
 ///
 /// ## State rules
 ///
@@ -43,21 +44,21 @@ import 'package:eigen_engine/core/game/base_engine.dart';
 ///   rejected/superseded action means the next call resumes from the last
 ///   *accepted* state against a newer observation.
 ///
-/// Generic over the same `<TObservationData, TActionData, TConfigData>` triple as
-/// [BaseEngine], plus [TState] for the bot's private per-(game, seat) brain
+/// Generic over the same `<TObs, TAction, TConfig>` triple as the version's
+/// [GameRules], plus [TState] for the bot's private per-(game, seat) brain
 /// (client-only — never serialised to the server). Declare it alongside the
-/// engine, e.g.
+/// rules unit, e.g.
 ///
 /// ```dart
 /// class MctsBot
 ///     extends LocalBot<ObservationData, ActionData, GameConfigData, MctsState>
 /// ```
 ///
-/// The infra driver holds bots erased (`List<LocalBot>` on
-/// `GameModule`) and serialises the returned action via
-/// [BaseEngine.serializeAction], mirroring how it parses observations through the
-/// erased engine.
-abstract class LocalBot<TObservationData, TActionData, TConfigData, TState> {
+/// The infra driver holds bots erased (`List<LocalBot>` on the game's
+/// `GameRules` version unit) and serialises the returned action via
+/// [GameRules.serializeAction], mirroring how it parses observations through
+/// the erased rules unit.
+abstract class LocalBot<TObs, TAction, TConfig, TState> {
   const LocalBot();
 
   /// Matches a `bots.username` row. The client drives this bot for a seat whose
@@ -68,14 +69,16 @@ abstract class LocalBot<TObservationData, TActionData, TConfigData, TState> {
   /// game (e.g. an empty search tree or a prior belief).
   ///
   /// Runs once on the main isolate when the seat starts being driven, so keep it
-  /// light. [engine] is the game's engine, [seatIndex] the bot's seat, and
-  /// [config] the bot's `bots.config` row (empty when unset) — for DB-tuned
-  /// personas; ignore it if parameterised in the constructor. [TState] is
-  /// client-only and never crosses to the server.
+  /// light. [rules] is the game's version unit, [gameConfig] the game's parsed
+  /// config, [seatIndex] the bot's seat, and [botConfig] the bot's
+  /// `bots.config` row (empty when unset) — for DB-tuned personas; ignore it if
+  /// parameterised in the constructor. [TState] is client-only and never
+  /// crosses to the server.
   TState createState({
-    required BaseEngine<TObservationData, TActionData, TConfigData> engine,
+    required GameRules<TObs, TAction, TConfig> rules,
+    required TConfig gameConfig,
     required int seatIndex,
-    required Map<String, dynamic> config,
+    required Map<String, dynamic> botConfig,
   });
 
   /// Returns the bot's move for its seat plus the next state, given the latest
@@ -84,15 +87,17 @@ abstract class LocalBot<TObservationData, TActionData, TConfigData, TState> {
   /// **Pure** — see the class doc for the sendability, side-effect, RNG, and
   /// commit-on-accept rules. The action is your game's **typed action** (the same
   /// model your content widget builds for a human tap); infra serialises it
-  /// through [BaseEngine.serializeAction], so a human move and a bot move are
+  /// through [GameRules.serializeAction], so a human move and a bot move are
   /// interchangeable inputs — never hand-roll the JSON.
   ///
-  /// [observation] is the bot seat's parsed observation, [engine] the game's
-  /// engine (use it for legality checks / legal-move generation), and
+  /// [observation] is the bot seat's parsed observation, [rules] the game's
+  /// version unit (use [GameRules.isValidAction] for legality checks /
+  /// legal-move generation), [gameConfig] the game's parsed config, and
   /// [seatIndex] the bot's seat index.
-  FutureOr<({TActionData action, TState state})> chooseAction({
-    required BaseEngine<TObservationData, TActionData, TConfigData> engine,
-    required TObservationData observation,
+  FutureOr<({TAction action, TState state})> chooseAction({
+    required GameRules<TObs, TAction, TConfig> rules,
+    required TConfig gameConfig,
+    required TObs observation,
     required int seatIndex,
     required TState state,
   });

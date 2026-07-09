@@ -1,8 +1,10 @@
 # Eigen Engine — System Design
 
 > **Architecture at a glance.** The game's **rules are TypeScript** — a
-> `GameEngine` (six methods, §4) the engine's **edge function** invokes at its
-> commit chokepoint; the client carries a Dart `GameModule` (rendering, action
+> `GameModule` registering one **`GameRules` unit per `schema_version`** (six
+> hooks + Zod schemas each, §4) that the engine's **edge function** resolves
+> and invokes at its commit chokepoint; the client carries a Dart `GameModule`
+> (a same-keyed registry of client `GameRules` units — rendering, action
 > validation, local twins of `ratingPool`/`botSeatable`) but never decides
 > rules. There is **one `engine` edge function** with four auth-tiered route
 > groups (`game`, `social`, `internal`, `bot`, §21). Every state-changing
@@ -34,13 +36,16 @@ underlying `core` codebase is identical.
   transition.
 - **Game Module (The "Implementation")**: The specific rules, board rendering,
   and action validation for this specific app. It supplies the rules as a
-  **TypeScript `GameEngine`** — six methods (`initialState`, `applyAction`,
+  **TypeScript `GameModule`** — a registry of **`GameRules` units keyed by
+  `schema_version`**, each bundling six hooks (`initialState`, `applyAction`,
   `computeObservation`, plus optional `ratingPool`, `handleEvent`,
-  `botSeatable`) the edge function invokes, and per-`schema_version` **Zod
-  schemas** the edge function parses every payload through before a hook runs —
-  and a **Dart `GameModule`** for the client (rendering, action validation, and
-  local twins of `ratingPool` / `botSeatable`). The pure game logic is
-  platform-shared TypeScript run on the server; the client never decides rules.
+  `botSeatable`) and the **Zod schemas** the edge function parses every payload
+  through before a hook runs — and a **Dart `GameModule`** for the client (a
+  same-keyed registry of client `GameRules` units: rendering, action
+  validation, and local twins of `ratingPool` / `botSeatable`). The framework
+  owns version dispatch — each game row resolves its own unit, so game code
+  never branches on version. The pure game logic is platform-shared TypeScript
+  run on the server; the client never decides rules.
 
 ### Design target — game variety
 
@@ -198,16 +203,26 @@ via the `game/replay` route — no action log re-execution needed.
 
 #### `observations` (Player-Specific Projections)
 
-- `game_id`, `player_index` (**PK composite**) — one row per participant, human
-  **or** bot. The table is generalised so bot seats receive observations too,
-  which is what lets the turn-notification trigger wake a server bot with its
-  view already computed (see §26).
+- `game_id`, `player_index`, `version` (**PK composite**) — **append-only
+  history**, mirroring `game_states`: one row per participant per state
+  version, human **or** bot; rows are immutable once written. Append-only is
+  what makes the client's frame stream *reliable*: Realtime can drop INSERT
+  events, but a client that sees a version gap fetches the missing rows and
+  animates through them in order — and the live stream and a replay become
+  the same shape (an ordered per-seat frame sequence). "Current observation"
+  = a seat's highest-version row. The table is generalised so bot seats
+  receive observations too, which is what lets the turn-notification trigger
+  wake a server bot with its view already computed (see §26).
 - `user_id` (uuid, nullable fk to users, ON DELETE CASCADE) — set for a human
   seat
 - `bot_id` (uuid, nullable fk to bots, ON DELETE CASCADE) — set for a bot seat
 - `data` (jsonb) — game-specific state slice computed by `computeObservation`.
   Perfect-info games see the full state; hidden-info games see only their
-  permitted slice.
+  permitted slice. May embed per-seat transition cues (e.g. a `lastMove`
+  field): the hook receives the transition's `cause` (move / event / null for
+  the initial frame) precisely so games can tell each seat what happened —
+  the animation channel is the observation itself, never a side channel that
+  could leak hidden info.
 - `pending_players` (int[]) — this seat's view of the pending set. For
   perfect-info games mirrors `game_states.pending_players`; hidden-info games
   may narrow it (e.g. Exploding Kittens Nope window), but must never drop the
@@ -224,15 +239,18 @@ via the `game/replay` route — no action log re-execution needed.
   `game_states.turn_started_at`. Combined with `player_times`, clients animate
   the active player's live countdown without polling:
   `remaining = player_times[myIndex] - elapsed_since(turn_started_at)`.
-- `created_at`, `updated_at`
-- **Realtime**: enabled. Game screen subscribes by `game_id`; home screen uses
-  fetch-on-enter + pull-to-refresh.
+- `created_at`
+- **Realtime**: enabled (INSERT events). The game screen subscribes by
+  `game_id`; the repository delivers frames **in version order with gaps
+  recovered** (a missed version is fetched by range), starting from the
+  latest frame on a cold (re)connect. Home screen uses fetch-on-enter +
+  pull-to-refresh.
 - **Identity constraint**: `(user_id IS NULL) != (bot_id IS NULL)` — exactly one
   identity per row.
-- **RLS**: Users see only their own row (`user_id = auth.uid()`). Bot rows
+- **RLS**: Users see only their own rows (`user_id = auth.uid()`). Bot rows
   (`user_id` NULL) are invisible to clients and Realtime — bots never subscribe;
-  a server bot's row is pushed to its webhook and a local bot's is read by a
-  gated RPC (see §26).
+  a server bot's row is pushed to its webhook and a local bot's latest is read
+  by a gated RPC (see §26).
 
 #### `participants`
 
@@ -312,7 +330,7 @@ via the `game/replay` route — no action log re-execution needed.
 - `id` (uuid, PK)
 - `username` (text, unique) — short handle (e.g. `'easy_ai'`), displayed like a
   player username. For a **local** bot this is also the key that selects the
-  matching `GameModule.localBots` implementation (`LocalBot.username`).
+  matching `GameRules.localBots` implementation (on the game's version unit) (`LocalBot.username`).
 - `display_name` (text) — human-readable name (e.g. `'Easy AI'`)
 - `avatar_url` (text, nullable) — bot avatar
 - `schema_version` (int, NOT NULL) — highest game schema this bot supports;
@@ -720,7 +738,7 @@ if `turnDeadline != null`, nothing if untimed. Shown above the game content
 widget.
 
 **`TimingContext`** (`core/game/timing_context.dart`): passed as a required
-argument to `GameModule.buildContent`. Carries `playerTimes`, `turnStartedAt`,
+argument to `GameRules.buildContent`. Carries `playerTimes`, `turnStartedAt`,
 and `turnDeadline` from the latest observation so game content widgets can
 render custom timing UI without depending on Riverpod providers directly.
 
@@ -751,15 +769,19 @@ on multi-player-pending phases should be aware of this visual inaccuracy.
 
 ## 4. Game Hooks (Infra ↔ Game Contract)
 
-The entire game-specific rules surface is **six methods on a TypeScript
-`GameEngine`** (the app's rules module, vendored into the edge function).
-Replacing them produces a completely different game with no other changes. The
-interface and its argument/return types live in
-`supabase/functions/_types/engine.types.ts`; the edge function calls them at its
-commit chokepoint and persists the result atomically via the gated SQL RPCs.
+The entire game-specific rules surface is a **TypeScript `GameModule`: one
+`GameRules` unit per `schema_version`, each bundling six hooks + the Zod
+payload schemas** (the app's rules module, vendored into the edge function).
+Replacing it produces a completely different game with no other changes. The
+interfaces and their argument/return types live in
+`supabase/functions/_types/engine.types.ts`; the edge function resolves the
+game row's version unit (`rulesFor` in `_engine/game-engine.ts`), calls its
+hooks at the commit chokepoint, and persists the result atomically via the
+gated SQL RPCs.
 
-All hooks receive a `HookContext` (`config`: the opaque game blob;
-`schemaVersion`: the game row's schema, so a build can branch on either).
+All hooks receive a `HookContext` (`config`: the game blob, parsed against the
+unit's own config schema). No hook receives a version — a `GameRules` unit is
+version-specific by construction, so hooks never branch on it.
 `initialState`, `applyAction`, and `handleEvent` return an **`Envelope`**;
 `applyAction` additionally rejects a rule-breaking move by throwing
 `IllegalMoveError` (rendered as a 400 — the hook's one expected failure).
@@ -789,7 +811,7 @@ Optional. The edge function calls this before seating a bot (the `add-bot` and
 `create-solo` routes) to decide whether a bot may join a game with the chosen
 `config`. `args` carries `botConfig` (the bot's declared capabilities) and
 `gameConfig`. Return `true` to allow. This is the **single source of truth** for
-config compatibility; the Dart `GameModule` keeps a **twin** that filters the
+config compatibility; the same version's Dart `GameRules` keeps a **twin** that filters the
 bot pickers locally, so the rule is never re-encoded by hand. Default: `true`.
 Gates the variant axis `schema_version` cannot (a bot can match the schema yet
 not support the rules variant).
@@ -802,7 +824,7 @@ Returns a pool name (e.g. `'rapid'`, `'daily'`) or `null` for unrated.
 The edge function computes `canBeRated = pool != null && !guest` and validates
 the client's concrete **`rated` assertion** against it — **rejecting a mismatch
 (422)** rather than coercing. There is no _forced-rated_ mode (only
-forced-unrated and toggle). The Dart `GameModule` keeps a **twin** so the create
+forced-unrated and toggle). The same version's Dart `GameRules` keeps a **twin** so the create
 dialog gates the Rated/Casual toggle and sends the same value the server will
 compute. See the Game Implementation Guide §Hook 0 for the full contract and an
 example override.
@@ -879,11 +901,12 @@ There are **two tiers** of server entry point:
    the `engine` function's route groups (`game`, `social`, `internal`, `bot` —
    see §21). Each route runs in TypeScript: a **Zod request schema** on the
    route validates the body shape (a malformed request 400s before any handler
-   runs), the handler verifies the caller, parses every game payload (state,
-   action data, config) through the app's **Zod schemas** — declared per
-   `schema_version` on `GameEngine.schemas`, so hooks receive typed, validated
-   values and the state a hook returns is re-validated before commit — runs the
-   relevant `GameEngine` hook(s), and calls a **service-role, gated `engine_*`
+   runs), the handler verifies the caller, resolves the game row's
+   `schema_version` unit from `GameModule.versions`, parses every game payload
+   (state, action data, config) through **that unit's Zod schemas** — so hooks
+   receive typed, validated values and the state a hook returns is re-validated
+   before commit — runs the relevant `GameRules` hook(s), and calls a
+   **service-role, gated `engine_*`
    SQL RPC** for the atomic write through `_engine/repo.ts`, the single module
    that touches the database. **Policy lives in TS** (request validation, the
    schema boundary, guest gating from the JWT `is_anonymous` claim, the rating
@@ -951,7 +974,7 @@ is split by tier across dependency-ordered migrations (`…_engine_helpers`,
 | `app_players(...)`                                   | Embedded participant identity for a set of games.                                                                                                                                                                                                                                                                                                                                       |
 | `app_update_username(new_username)`                  | Validates format + case-insensitive uniqueness, updates `users.username`.                                                                                                                                                                                                                                                                                                               |
 
-> The Dart `GameModule` keeps **local twins** of `ratingPool` and `botSeatable`,
+> The Dart `GameRules` units keep **local twins** of `ratingPool` and `botSeatable`,
 > so the create dialog gates the Rated/Casual toggle and the bot pickers filter
 > their lists without any extra RPC (the old `preview_game_rating` /
 > `seatable_bot_ids` RPCs are gone). The server remains authoritative — it
@@ -1334,8 +1357,8 @@ client-readable (RLS).
 
 ### Rating Pools
 
-The `GameEngine.ratingPool` hook (§4) derives the pool name — a string like
-`'rapid'`, or `null` for unrated. The Dart `GameModule` keeps a **twin** of it
+The `GameModule.ratingPool` hook (§4) derives the pool name — a string like
+`'rapid'`, or `null` for unrated. The same version's Dart `GameRules` keeps a **twin** of it
 so the create dialog can show a live **Rated / Casual** badge and gate the
 toggle locally, with no extra RPC. `rated` is a **validated assertion**: the
 client computes it from the twin plus its guest status and sends it; the edge
@@ -1599,10 +1622,9 @@ lib/
 │   ├── config/
 │   │   └── app_config.dart              # AppConfig (Branding + EngineConfig)
 │   ├── game/
-│   │   ├── base_engine.dart              # BaseEngine abstraction (local legality only)
 │   │   ├── game_creation_spec.dart       # GameCreationSpec, TimingModeConfig variants
 │   │   ├── game_frame.dart               # GameFrame — per-event observation snapshot
-│   │   ├── game_module.dart              # GameModule contract + GameContentContext
+│   │   ├── game_module.dart              # GameModule + GameRules contracts, GameContentContext, args twins
 │   │   ├── game_outcome.dart             # GameOutcome, OutcomeResult
 │   │   ├── game_player.dart              # GamePlayer — unified game-level player concept
 │   │   ├── game_status.dart              # GameStatus enum
@@ -1674,7 +1696,7 @@ lib/
 │   │   │       └── turn_countdown.dart   # Infra-owned per-action countdown (stateless shell)
 │   │   └── providers/
 │   │       ├── game_providers.dart       # gamePlayersProvider, activeGamesProvider, availableBots, soloPlayAvailable, etc.
-│   │       ├── game_frame_provider.dart  # gameFrameProvider, gameEngineProvider, currentGameModuleProvider
+│   │       ├── game_frame_provider.dart  # gameFrameProvider, gameRulesProvider, gameConfigProvider
 │   │       └── local_bot_driver.dart     # LocalBotDriver supervisor + LocalBotSeatDriver — client-side solo local-bot driving (§26)
 │   ├── profile/
 │   │   ├── data/
@@ -1722,10 +1744,11 @@ my_app/                                  # repo root (a standard Flutter app)
 │   ├── env/                             # Envied-generated env config (Env)
 │   ├── firebase_options.dart
 │   └── game/                            # the game
-│       ├── data/models/game_models.dart # ObservationData, ActionData, GameConfigData
-│       ├── logic/my_game_engine.dart    # BaseEngine implementation
-│       ├── presentation/{my_game_board,my_game_content}.dart
-│       └── game_module.dart             # MyGameModule
+│       ├── game_module.dart             # MyGameModule (versions map + creation UI)
+│       └── v1/                          # one folder per schema_version
+│           ├── rules.dart               # MyGameRulesV1 (client GameRules unit)
+│           ├── data/models/game_models.dart # ObservationData, ActionData, GameConfigData
+│           └── presentation/{my_game_board,my_game_content}.dart
 ├── android/ ios/ web/ macos/ linux/ windows/
 ├── assets/                              # google_fonts, icons
 └── supabase/                            # config.toml, functions, seed.sql, migrations/ (committed)
@@ -2291,17 +2314,24 @@ No package is required; `HapticFeedback` ships with `flutter/services.dart`.
 
 ### `onInvalidAction` Contract
 
-`GameModule.buildContent()` receives an `onInvalidAction: VoidCallback`
+`GameRules.buildContent()` receives an `onInvalidAction: VoidCallback`
 parameter provided by infra. Game content widgets call it whenever
-`BaseEngine.isValidAction` returns false on a player-initiated tap. Infra wires
+`GameRules.isValidAction` returns false on a player-initiated tap. Infra wires
 it to `HapticFeedback.selectionClick()`; game implementors do not choose the
 haptic.
 
 ```dart
 onCellTap: (position) {
   final action = ActionData(position: position);
-  if (engine.isValidAction(observation, pendingPlayers, action, myPlayerIndex)) {
-    onAction(action.toJson());
+  final legal = rules.isValidAction(
+    obs: observation,
+    pending: pendingPlayers,
+    data: action,
+    playerIndex: myPlayerIndex,
+    config: config,
+  );
+  if (legal) {
+    onAction(rules.serializeAction(action));
   } else {
     onInvalidAction(); // infra fires selectionClick
   }
@@ -3113,7 +3143,7 @@ lives in Vault as `secret_api_key` — §8).
 
 ### Why rules run as TypeScript in Edge Functions
 
-Game rules are **pure TypeScript** (the app's `_lib/game.ts` gameEngine) run in
+Game rules are **pure TypeScript** (the app's `_lib/game.ts` gameModule) run in
 an Edge Function, while the DB keeps lock/version/timing/persistence behind
 gated `engine_*` RPCs. TypeScript is the right home for complex rules (Poker
 side-pots/hand-ranking, multi-player elimination): expressive, testable, and
@@ -3153,7 +3183,7 @@ route group inside the function, so the platform-level JWT check must not reject
 the non-JWT callers). One function means one warm worker (fewer cold starts),
 one deploy, and one import map — the consolidation Supabase itself recommends
 for related routes. It is built on the `_engine/*` framework and the app's
-single `_lib/game.ts` gameEngine, and serves four route groups split by
+single `_lib/game.ts` gameModule, and serves four route groups split by
 `withSupabase` auth mode:
 
 - **`/engine/game/*`** — client-facing, `auth: 'user'`. Every route requires a
@@ -3163,7 +3193,7 @@ single `_lib/game.ts` gameEngine, and serves four route groups split by
   nudge).
 - **`/engine/social/*`** — client-facing friend writes, `auth: 'user'`. Routes:
   friend-request / accept / remove. Game-agnostic (never touches the
-  gameEngine); emits friend-request / accepted pushes directly.
+  gameModule); emits friend-request / accepted pushes directly.
 - **`/engine/internal/*`** — DB/cron, `auth: 'secret'`. Driven by Postgres
   (`pg_cron` → `pg_net`) posting the project's secret API key as the `apikey`
   header (from Vault `secret_api_key` — §8). Two **batched** routes: `expire`
@@ -3728,7 +3758,7 @@ started under the old rules, do when they meet the new code?"_
 | Axis                     | Granularity              | Where it lives                                                                                                               | Who reads it                                              |
 | ------------------------ | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | **Engine semver**        | per engine release       | git tag `vX.Y.Z`, `pubspec.yaml`                                                                                             | build/release                                             |
-| **Game schema version**  | per game _type_ revision | `games.schema_version` column (threaded to the TS hooks as the `schemaVersion` argument; on `Game`/`BaseEngine` client-side) | `applyAction` (TS) + `BaseEngine.parseObservation` (Dart) |
+| **Game schema version**  | per game _type_ revision | `games.schema_version` column (selects the `GameRules` unit on both sides; surfaced on `Game` client-side)                   | `rulesFor` (TS harness) + `gameRulesProvider` (Dart)      |
 | **Cache schema version** | per persisted model      | each provider's `destroyKey`                                                                                                 | `riverpod_sqflite` on cold start                          |
 
 An engine release may touch none, one, or several of these.
@@ -3737,13 +3767,13 @@ An engine release may touch none, one, or several of these.
 
 | # | Surface                                                                                    | Breaks when                               | Mechanism                                                                                                           |
 | - | ------------------------------------------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| 1 | **Engine Dart API** (barrel, `runEngineApp`, `GameModule`/`BaseEngine`)                    | compile time                              | engine semver — [README](../README.md#versioning--backward-compatibility)                                           |
+| 1 | **Engine Dart API** (barrel, `runEngineApp`, `GameModule`/`GameRules`)                    | compile time                              | engine semver — [README](../README.md#versioning--backward-compatibility)                                           |
 | 2 | **Engine SQL** (infra migrations + the app-owned hooks)                                    | runtime, vs live DBs + installed binaries | expand/contract — [README](../README.md#versioning--backward-compatibility)                                         |
 | 3 | **Game JSONB** (`games.config`, `game_states.state`, `observations.data`, action `p_data`) | in-flight games                           | **game schema version** (below)                                                                                     |
 | 4 | **Client caches** (`riverpod.db`, SharedPreferences, image cache)                          | cold-start decode of stale rows           | **`destroyKey` discipline + tolerant decode** (below)                                                               |
 | 5 | **Client↔server version**                                                                  | old client meets new backend              | **client-version header + `min_supported_version` gate** (designed; **deferred** — Android uses Play in-app-update) |
 
-**Authority note.** The client `BaseEngine.isValidAction` is **UX-only** (it
+**Authority note.** The client `GameRules.isValidAction` is **UX-only** (it
 greys out illegal taps); the authoritative rule check is the server hook
 `applyAction`. This is what lets many rule changes ship **server-side only**
 (see the decision checklist).
@@ -3756,38 +3786,38 @@ and that version is honored for the game's whole life.
 
 **Where it lives.** A first-class **`games.schema_version` column**
 (`INT NOT NULL DEFAULT 1`) — set once at creation (from the client's
-`GameModule.schemaVersion`, written by `engine_create_game`) and immutable. It
-is kept **out of** the opaque `config`/`state`/observation JSONB so those
-payloads stay game-owned and the drain query is a plain column scan. The engine
-threads it to the game hooks as an explicit `schemaVersion` argument, and
-surfaces it on the `Game` model (`required int schemaVersion` — the `NOT NULL`
-column always provides it) and on `BaseEngine.schemaVersion`.
+`GameModule.latestSchemaVersion`, written by `engine_create_game`) and
+immutable. It is kept **out of** the opaque `config`/`state`/observation JSONB
+so those payloads stay game-owned and the drain query is a plain column scan.
+It is the dispatch key on both sides — the TS harness resolves
+`GameModule.versions[schema_version]` (`rulesFor`) around every hook call, the
+client resolves `GameModule.versions[schemaVersion]` (`gameRulesProvider`) —
+and it is surfaced on the `Game` model (`required int schemaVersion` — the
+`NOT NULL` column always provides it). Hooks and engines never receive a
+version argument: a `GameRules` unit *is* its version.
 
-**Client gating.** `gameEngineProvider` reads the game's `schemaVersion` and
-calls `GameModule.supportsSchema(version)` (`version <= schemaVersion`). A game
-created by a _newer_ build raises `UnsupportedGameSchemaException` rather than
-mis-parsing with old code; otherwise it builds the engine stamped at the game's
-version.
+**Client gating.** `gameRulesProvider` reads the game's `schemaVersion` and
+looks it up in `GameModule.versions` (`supportsSchema` = key membership —
+sparse, matching the TS side, so a drained-and-retired old version is
+unsupported even though it is lower than the latest). A game created by a
+_newer_ build raises `UnsupportedGameSchemaException` rather than mis-parsing
+with old code; otherwise everything downstream (engine, content, bots,
+seatability) consumes the resolved unit.
 
-**How both sides branch.**
+**How both sides version.** Neither side branches — each ships another unit:
 
 ```ts
-// server: applyAction({ config, schemaVersion, ... })
-switch (args.schemaVersion) {
-  case 1: /* original rules (kept until v1 games drain) */
-    break;
-  case 2: /* new rules */
-    break;
-}
+// server: _lib/game.ts — one GameRules unit per version
+export const gameModule: GameModule = {
+  versions: { 1: rulesV1, 2: rulesV2 }, // v1 kept until its games drain
+};
 ```
 
 ```dart
-// client: BaseEngine.parseObservation, branching on this.schemaVersion
-ObservationData parseObservation(Map<String, dynamic> json) =>
-    switch (schemaVersion) {
-      1 => ObservationDataV1.fromJson(json),
-      _ => ObservationData.fromJson(json),
-    };
+// client: game_module.dart — the same keys, client units
+@override
+Map<int, GameRules> get versions =>
+    const {1: MyGameRulesV1(), 2: MyGameRulesV2()};
 ```
 
 **Retiring an old version — two paths, two lifetimes.** Old code splits in two:
@@ -3799,7 +3829,7 @@ ObservationData parseObservation(Map<String, dynamic> json) =>
   _create_ that schema. Active games are the only callers of the write path, so
   once they drain it is dead.
 - **Read / projection / render path** (`computeObservation` on the server,
-  `BaseEngine.parseObservation` + rendering on the client) must survive **as
+  `GameRules.parseObservation` + rendering on the client) must survive **as
   long as you want to replay games created under that schema** — _not_ bounded
   by draining. Replay re-projects every historical `game_states` row through
   `computeObservation` at the game's own `schema_version`, so replays of an old
@@ -3872,9 +3902,9 @@ Same as
 compatibility](../README.md#versioning--backward-compatibility), applied to game
 changes:
 
-1. **Expand** — ship the additive DB change (new column / `_v2` RPC / new schema
-   branch in the hooks) **before or with** the app release; old shapes keep
-   working.
+1. **Expand** — ship the additive DB change (new column / `_v2` RPC / new
+   `GameRules` version unit) **before or with** the app release; old shapes
+   keep working.
 2. **Ship** — the new app creates games at the new schema; old apps keep
    creating/reading the old one against the same DB.
 3. **Contract** — retire old code per the two-path rule: the **write path** once
@@ -3888,9 +3918,10 @@ project; migrations are append-only/forward-only (fix forward, never roll back).
 ### Quick checklist — "I want to change the game"
 
 - Alters the **observation/action/config shape**, or makes in-flight games
-  inconsistent/unfair? → **breaking**: bump `GameModule.schemaVersion` (→
-  `games.schema_version`), add new server + client branches, drain old games,
-  raise the force-update floor before contracting.
+  inconsistent/unfair? → **breaking**: ship a new `GameRules` unit on both
+  sides (a `v2` folder + `versions` map entry each; new games then create at
+  the new key → `games.schema_version`), drain old games, raise the
+  force-update floor before contracting.
 - Purely additive (new optional field/feature)? → nullable / `@Default`, **no
   bump**; old clients ignore it, new clients default it.
 - Server-only rule logic, same shapes, in-flight games stay consistent? → change
@@ -3905,9 +3936,11 @@ Three of the four foundations are implemented (dev-phase, in-place); the version
 gate (Surface 5) is **designed but deliberately not built**.
 
 1. **Game schema version** — `games.schema_version` column; `engine_create_game`
-   stores it from `GameModule.schemaVersion`; threaded to the game hooks as a
-   `schemaVersion` argument; surfaced on `Game`/`BaseEngine.schemaVersion` and
-   gated by `GameModule.supportsSchema` in `gameEngineProvider` (render path).
+   stores it from `GameModule.latestSchemaVersion`; the dispatch key for the
+   per-version `GameRules` units on both sides (`rulesFor` in the TS harness,
+   `gameRulesProvider` on the client); surfaced on `Game` and gated by
+   `GameModule.supportsSchema` (key membership) in `gameRulesProvider` (render
+   path).
    **Join is gated too:** `app_join_game`/`app_join_game_by_code` take the
    client's max supported schema and refuse to seat the caller in a newer-schema
    game, so every join path (lobby, friends, by-code, deep link) is blocked
@@ -4293,5 +4326,5 @@ No per-bot secret is stored. The bot deployment derives its **HMAC key** the
 same way the edge function does — `HMAC-SHA256(BOT_SIGNING_SECRET, <bot_id>)` —
 and uses it to sign actions and verify wakes. Only the platform's single
 `BOT_SIGNING_SECRET` function secret needs provisioning. A local bot needs no
-key — just an `is_local` row whose `username` matches a `GameModule.localBots`
+key — just an `is_local` row whose `username` matches a `GameRules.localBots`
 entry.

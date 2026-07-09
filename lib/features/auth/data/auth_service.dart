@@ -139,7 +139,7 @@ class AuthService {
       }
 
       // Account teardown lives in the engine edge function: it forfeits the
-      // caller's active games via the TS gameEngine, then purges (cancel/leave +
+      // caller's active games via the TS rules, then purges (cancel/leave +
       // delete the auth user).
       await _supabase.functions.invoke('engine/game/delete-account');
 

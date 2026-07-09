@@ -54,16 +54,17 @@ BEGIN
   FOR UPDATE;
 
   IF v_game_status IS NULL THEN
-    RAISE EXCEPTION 'Game not found';
+    RAISE EXCEPTION 'Game not found' USING ERRCODE = 'EIG06';
   END IF;
 
   IF v_schema_version > p_client_schema_version THEN
     RAISE EXCEPTION 'Unsupported game schema: game requires schema %, client supports up to %',
-      v_schema_version, p_client_schema_version;
+      v_schema_version, p_client_schema_version
+      USING ERRCODE = 'EIG12';
   END IF;
 
   IF v_game_status NOT IN ('waiting', 'ready') THEN
-    RAISE EXCEPTION 'Game is not accepting players';
+    RAISE EXCEPTION 'Game is not accepting players' USING ERRCODE = 'EIG10';
   END IF;
 
   -- Guests play unrated only — they cannot create rated games (see create_game)
@@ -80,19 +81,20 @@ BEGIN
         AND user_id_2 = GREATEST(v_user_id, v_created_by)
         AND status = 'accepted'
     ) THEN
-      RAISE EXCEPTION 'Only friends of the creator can join this game';
+      RAISE EXCEPTION 'Only friends of the creator can join this game'
+        USING ERRCODE = 'EIG11';
     END IF;
   END IF;
 
   IF private.is_game_participant(p_game_id, v_user_id) THEN
-    RAISE EXCEPTION 'Already joined this game';
+    RAISE EXCEPTION 'Already joined this game' USING ERRCODE = 'EIG09';
   END IF;
 
   SELECT COUNT(*) INTO v_participant_count
   FROM public.participants WHERE game_id = p_game_id;
 
   IF v_participant_count >= v_max_players THEN
-    RAISE EXCEPTION 'Game is full';
+    RAISE EXCEPTION 'Game is full' USING ERRCODE = 'EIG08';
   END IF;
 
   INSERT INTO public.participants (game_id, user_id, player_index)
@@ -147,8 +149,9 @@ GRANT  EXECUTE ON FUNCTION public.app_leave_game(uuid) TO authenticated;
 -- in TS against the roster it already reads; this SQL copy backs the direct-client
 -- app_local_bot_observation RPC below, where the gate can only live in SQL.)
 
--- Reveals a local bot seat's full observation to the SOLE human of a solo game so
--- the client can run the local bot. Keyed by player_index (the client knows the
+-- Reveals a local bot seat's LATEST observation to the SOLE human of a solo
+-- game so the client can run the local bot (a bot acts on the current frame —
+-- it has no use for history). Keyed by player_index (the client knows the
 -- seat; allows duplicate local bots). The security gate lives in
 -- private.resolve_local_bot_seat (caller is sole human; seat is a *local* bot) —
 -- this is the only place the engine ever hands a bot's hidden view to a client.
@@ -168,7 +171,9 @@ BEGIN
   RETURN QUERY
   SELECT o.*
   FROM public.observations o
-  WHERE o.game_id = p_game_id AND o.player_index = p_player_index;
+  WHERE o.game_id = p_game_id AND o.player_index = p_player_index
+  ORDER BY o.version DESC
+  LIMIT 1;
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '';
 
@@ -264,7 +269,7 @@ BEGIN
   PERFORM private.require_auth();
   SELECT id INTO v_game_id FROM public.games WHERE short_code = upper(p_code);
   IF v_game_id IS NULL THEN
-    RAISE EXCEPTION 'Game not found';
+    RAISE EXCEPTION 'Game not found' USING ERRCODE = 'EIG06';
   END IF;
 
   -- Delegate to standard app_join_game, forwarding the schema gate so a by-code or

@@ -40,6 +40,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 REVOKE EXECUTE ON FUNCTION public.engine_purge_user(UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.engine_purge_user(UUID) TO service_role;
 
 -- The two sweeps below use net.http_post (pg_net, created in the foundation
 -- migration) to hop to the `internal` edge function (timeout expiry, stale-guest

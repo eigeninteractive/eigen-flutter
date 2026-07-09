@@ -8,18 +8,58 @@ This guide explains how to implement a new game using the **Eigen Engine**.
 
 Eigen Engine is a **whitelabel game engine** — the core infrastructure (auth,
 networking, real-time updates, timing) is shared, while each game provides its
-own rules and UI through two pieces:
+own rules and UI through two same-shaped containers, one per language:
 
-- a **TypeScript `GameEngine`** — six methods (three core: `initialState`,
-  `applyAction`, `computeObservation`; three optional: `ratingPool`,
-  `handleEvent`, `botSeatable`) that the engine's edge function runs server-side
-  (see **Backend Changes Required**), and
-- a **Dart `GameModule`** — the client side (board rendering, action validation,
-  and local twins of `ratingPool`/`botSeatable` for the create dialog and bot
-  pickers).
+- a **TypeScript `GameModule`** — a registry of **`GameRules` units keyed by
+  `schema_version`**. Each unit bundles the Zod payload schemas plus six hooks
+  (three core: `initialState`, `applyAction`, `computeObservation`; three
+  optional: `ratingPool`, `handleEvent`, `botSeatable`) that the engine's edge
+  function runs server-side (see **Backend Changes Required**), and
+- a **Dart `GameModule`** — a registry of **client-side `GameRules` units keyed
+  by the same versions** (payload codec + `isValidAction` legality, board
+  rendering, local bots, and display-only twins of
+  `ratingPool`/`botSeatable`), plus the version-independent creation/about UI.
 
-The authoritative method signatures are the `GameEngine` interface in
-`supabase/functions/_types/engine.types.ts`.
+**A version is a self-contained unit and the framework owns all dispatch**:
+every request/screen resolves the game row's `schema_version` entry and uses
+that unit — game code never branches on version. Shipping a breaking change
+means adding a `v2` unit on both sides (reusing unchanged pieces from `v1` by
+import), not editing `v1` (see **Shipping a new schema version**).
+
+The authoritative signatures are the `GameRules`/`GameModule` interfaces in
+`supabase/functions/_types/engine.types.ts` and the Dart
+`GameRules`/`GameModule` classes in `lib/core/game/game_module.dart` — the
+same two names mean the same two concepts in both languages.
+
+### Shared vocabulary (both languages use exactly these names)
+
+Everything that exists on both sides is textually parallel — same unit name
+(`GameRules`), same args-object names (`RatingPoolArgs`, `BotSeatableArgs`),
+same field names — so porting logic between the twins is transcription, not
+translation. The identifiers:
+
+| Term            | Meaning                                                                                     |
+| --------------- | ------------------------------------------------------------------------------------------- |
+| `state`         | The authoritative pure game payload (`game_states.state`). Server-side only.                |
+| observation     | One seat's projected view of the state — what the Dart client parses and renders.           |
+| `data`          | One action's payload, as submitted (and as logged in `actions`).                            |
+| `pending`       | 0-based seat indices that may act next. Empty ⇒ game over.                                  |
+| `playerIndex`   | The 0-based seat of the acting/viewing player.                                              |
+| `config`        | The per-instance creation config (`games.config`).                                          |
+| envelope        | A hook's return: `{ state, pending_players, outcome?, turn_seconds? }`.                     |
+| `outcome`       | Per-seat results written to `game_outcomes` when the game ends.                             |
+| `cause`         | The transition that produced a state: a move, an event, or null for the initial frame.      |
+
+Which hooks live where:
+
+| Hook / member                            | TS `GameRules` (authoritative)   | Dart `GameRules` (client)             |
+| ---------------------------------------- | -------------------------------- | ------------------------------------- |
+| `initialState`, `applyAction`, `handleEvent`, `computeObservation` | ✅ the rules | — (client consumes observations)      |
+| `ratingPool`, `botSeatable`              | ✅ enforced                      | ✅ display-only twin — keep in sync   |
+| `schemas` (Zod payload contracts)        | ✅                               | ✅ as the codec: `parseConfig` / `parseObservation` / `parseAction` / `serializeAction` (Freezed) |
+| `buildContent`, `localBots`              | —                                | ✅ client-only                        |
+| `isValidAction`                          | — (`applyAction` is the check)   | ✅ UX-only transcription of its legality half |
+| `previewAction`                          | — (`applyAction` is the truth)   | ✅ required; the game's own optimistic projection (return null = server-driven). Infra never calls it |
 
 ### Project setup
 
@@ -67,14 +107,20 @@ my_app/                           # a standard Flutter app (this is the repo roo
 │   ├── main.dart                 # runEngineApp(module: const MyGameModule(), …)
 │   ├── env/                      # envied env config
 │   └── game/                     # the game (no Firebase/secrets/platform here)
-│       ├── data/models/game_models.dart  # ObservationData, ActionData, GameConfigData (Freezed)
-│       ├── logic/my_game_engine.dart      # BaseEngine implementation
-│       ├── presentation/{my_game_board,my_game_content}.dart
-│       └── game_module.dart      # the GameModule
-└── supabase/                     # config.toml + migrations + functions/_lib/game.ts
-                                  #   (engine backend vendored; you own your migration
-                                  #    + the TS gameEngine seam)
+│       ├── game_module.dart      # the GameModule: versions map + creation UI
+│       └── v1/                   # one folder per schema_version
+│           ├── rules.dart        # the v1 GameRules: codec + isValidAction + wiring
+│           ├── data/models/game_models.dart  # ObservationData, ActionData, GameConfigData (Freezed)
+│           └── presentation/{my_game_board,my_game_content}.dart
+└── supabase/                     # config.toml + migrations + functions/_lib/
+                                  #   game.ts (the GameModule versions map) +
+                                  #   game/v1.ts (the v1 GameRules — TS unit)
 ```
+
+The `v1/` folders are a **convention, not enforced** — the contract is the
+`versions` map, and the compiler checks that. But mirroring the layout across
+the two languages is what makes a version bump mechanical: `v2` is a new folder
+in both trees plus one new map entry on each side.
 
 Engine contracts are imported from `package:eigen_engine/...` (or the
 `package:eigen_engine/eigen_engine.dart` barrel); game files import each other
@@ -149,62 +195,113 @@ abstract class GameConfigData with _$GameConfigData {
 > progress, these three payloads become a compatibility contract. Make new
 > fields nullable or `@Default(...)` and give enums
 > `@JsonKey(unknownEnumValue: …)`; a change that alters a field's meaning or the
-> board/action shape is breaking and needs a `schema` bump on the game type, not
-> an in-place edit. See [`engine_architecture.md`](engine_architecture.md) §24
-> (Backward Compatibility).
+> board/action shape is breaking and ships as a **new version unit** (a `v2/`
+> folder + map entry on both sides), never an in-place edit of `v1/`. See
+> **Shipping a new schema version** below and
+> [`engine_architecture.md`](engine_architecture.md) §24 (Backward
+> Compatibility).
 
 ---
 
-### 2. Game Engine (`logic/`)
+### 2. Game Rules (`v1/rules.dart`)
 
-`BaseEngine` is intentionally minimal. It is responsible only for:
+The Dart `GameRules` is the **client half of one schema version**, the twin of
+your `_lib/game/v1.ts`. It is a stateless unit (like the TS one) responsible
+for:
 
-- `config` — the per-instance game configuration.
+- the **payload codec** — `parseConfig` / `parseObservation` / `parseAction` /
+  `serializeAction`, one Freezed delegation each. This is the Dart mirror of
+  the TS unit's `schemas`.
 - `isValidAction` — local legality check for UX feedback only. Authoritative
-  validation happens server-side in `applyAction`.
-- Pure rendering helpers (e.g., "which cells form the winning line" for
-  highlight rendering).
+  validation happens server-side in the TS `applyAction`. Its named parameters
+  (`obs`, `pending`, `data`, `playerIndex`, `config`) deliberately match the
+  TS `ApplyActionArgs` fields: writing it is transcribing the legality half of
+  your TS `applyAction`.
+- `previewAction` — the actor's own optimistic projection of the TS
+  `applyAction` onto this seat's observation (see **Instant feedback**
+  below). Infra never calls it; it standardizes where prediction logic
+  lives. Return null (always correct) when a move's outcome depends on
+  hidden information — or for every move, if the game is purely
+  server-driven.
+- `buildContent` and `localBots` — rendering and client bots (steps 3–5).
+- the display-only twins `ratingPool` / `botSeatable`.
+- pure rendering helpers you add (e.g., "which cells form the winning line") —
+  they live on your subclass; widgets receive the typed unit.
+
+A unit belongs to exactly one `schema_version` and parses exactly one
+generation of shapes, so it never branches on version. There is no
+per-game-instance object: the parsed config is passed in where needed (as in
+TS, where every hook receives `config` in its args).
 
 Player counts are declared on `GameCreationSpec`, and player identities arrive
-via `PlayersContext` — the engine carries no player metadata.
+via `PlayersContext` — the rules unit carries no player metadata.
 
 Turn-gating, game-over detection, and winner derivation are **infra-level
 facts**, surfaced via `observations.pending_players`, `games.status`, and
-`game_outcomes`. The engine never re-derives them.
+`game_outcomes`. The rules unit never re-derives them.
 
 ```dart
-import 'package:eigen_engine/core/game/base_engine.dart';
-import 'package:my_game/data/models/game_models.dart';
+// v1/rules.dart
+import 'package:flutter/material.dart';
+import 'package:eigen_engine/core/game/game_module.dart';
+import 'package:my_app/game/v1/data/models/game_models.dart';
+import 'package:my_app/game/v1/presentation/my_game_content.dart';
 
-class MyGameEngine
-    extends BaseEngine<ObservationData, ActionData, GameConfigData> {
-  MyGameEngine(super.config);
+class MyGameRulesV1
+    extends GameRules<ObservationData, ActionData, GameConfigData> {
+  const MyGameRulesV1();
+
+  // ── Codec: the Freezed mirror of the TS unit's `schemas`. ──
+  @override
+  GameConfigData parseConfig(Map<String, dynamic> json) =>
+      GameConfigData.fromJson(json);
 
   @override
   ObservationData parseObservation(Map<String, dynamic> json) =>
       ObservationData.fromJson(json);
 
   @override
-  bool isValidAction(
-    ObservationData obs,
-    List<int> pendingPlayers,
-    ActionData action,
-    int playerIndex,
-  ) {
+  ActionData parseAction(Map<String, dynamic> json) =>
+      ActionData.fromJson(json);
+
+  @override
+  Map<String, dynamic> serializeAction(ActionData action) => action.toJson();
+
+  // ── Legality: transcription of the TS applyAction's legality half. ──
+  @override
+  bool isValidAction({
+    required ObservationData obs,
+    required List<int> pending,
+    required ActionData data,
+    required int playerIndex,
+    required GameConfigData config,
+  }) {
     // Boundary / empty-cell / rule-specific legality.
     // Do NOT re-check whose turn it is for the sequential case —
-    // the caller already gated on pendingPlayers.contains(myPlayerIndex).
+    // the caller already gated on pending.contains(myPlayerIndex).
     return true;
   }
+
+  @override
+  Widget buildContent(GameContentContext context) =>
+      MyGameContent(content: context);
+
+  // Display-only twins of the TS v1 hooks — keep them in sync with
+  // _lib/game/v1.ts (the server recomputes both, so drift only breaks UX).
+  @override
+  String? ratingPool(RatingPoolArgs args) => null;
+
+  @override
+  bool botSeatable(BotSeatableArgs args) => true;
 }
 ```
 
 #### `isValidAction` parameters across game styles
 
-All four parameters are passed on every call so the contract stays uniform. Your
-engine ignores whatever it doesn't need.
+All parameters are passed on every call so the contract stays uniform. Your
+rules unit ignores whatever it doesn't need.
 
-| Game                                            | `obs`                   | `pendingPlayers`                    | `action`        | `playerIndex`              |
+| Game                                            | `obs`                   | `pending`                           | `data`          | `playerIndex`              |
 | ----------------------------------------------- | ----------------------- | ----------------------------------- | --------------- | -------------------------- |
 | **TicTacToe** (sequential, no ownership)        | board                   | ignored                             | target cell     | ignored                    |
 | **Chess** (sequential, piece ownership)         | board                   | ignored                             | from/to squares | used — "is that my color?" |
@@ -214,11 +311,11 @@ engine ignores whatever it doesn't need.
 
 Concrete examples:
 
-- **Chess** — read `action.from`, look up the piece on `obs.board`, return false
+- **Chess** — read `data.from`, look up the piece on `obs.board`, return false
   unless the piece color matches `playerIndex`.
-- **Exploding Kittens** — if `action.card == Nope`, only check that
+- **Exploding Kittens** — if `data.card == Nope`, only check that
   `obs.hand[playerIndex]` contains a Nope (anyone may Nope, even if not in
-  `pendingPlayers`). Otherwise, require `pendingPlayers.contains(playerIndex)`
+  `pending`). Otherwise, require `pending.contains(playerIndex)`
   and that the played card is in hand.
 
 ---
@@ -251,23 +348,27 @@ class MyGameBoard extends StatelessWidget {
 
 ### 4. Game Module (`game_module.dart`)
 
-The module is the single file that wires everything together and registers the
-game with the engine. It implements `GameModule` from
-`core/game/game_module.dart`.
+The `GameModule` is the thin container registered with the engine — the
+same-named twin of the TS `GameModule` in `_lib/game.ts`: the `versions` map
+(one `GameRules` unit per `schema_version`, step 2) plus the
+version-independent creation/about UI (creation always targets the latest
+version).
 
 ```dart
+// game_module.dart
 import 'package:flutter/material.dart';
 import 'package:eigen_engine/core/game/game_creation_spec.dart';
 import 'package:eigen_engine/core/game/game_module.dart';
-import 'package:eigen_engine/core/game/game_outcome.dart';
-import 'package:eigen_engine/core/game/game_status.dart';
-import 'package:eigen_engine/core/game/timing_context.dart';
-import 'package:my_game/data/models/game_models.dart';
-import 'package:my_game/logic/my_game_engine.dart';
-import 'package:my_game/presentation/my_game_content.dart';
+import 'package:my_app/game/v1/rules.dart';
 
 class MyGameModule extends GameModule {
   const MyGameModule();
+
+  // One GameRules per schema_version this build ships — same keys as the TS
+  // GameModule.versions in _lib/game.ts. New games are created at the
+  // highest key; a drained old version is retired by deleting its entry.
+  @override
+  Map<int, GameRules> get versions => const {1: MyGameRulesV1()};
 
   @override
   GameCreationSpec get creationSpec => const GameCreationSpec(
@@ -300,14 +401,6 @@ class MyGameModule extends GameModule {
               // collects the latest value at submit without triggering rebuilds.
 
   @override
-  MyGameEngine createEngine(Map<String, dynamic> configJson) =>
-      MyGameEngine(GameConfigData.fromJson(configJson));
-
-  @override
-  Widget buildContent(GameContentContext context) =>
-      MyGameContent(content: context);
-
-  @override
   Widget buildRules(BuildContext context) => const MyGameRules();
 }
 ```
@@ -317,12 +410,16 @@ class MyGameModule extends GameModule {
 widget consumes it directly (`MyGameContent(content: context)`) rather than
 re-declaring and unpacking each field — so adding new infra data later never
 changes the signature or forces every game to update. The context exposes the
-two halves of the live game as separate members — `engine` (created once from
-config, long-lived) and `frame` (the per-event observation snapshot:
-`frame.observation`, `frame.pendingPlayers`, `frame.version`, `frame.timing`) —
-plus `gameStatus`, `outcomes`, `actionPending`, `onAction`, `onInvalidAction`,
-`playersContext`, and the convenience getters `myPlayerIndex` (delegates to
+two halves of the live game as separate members — `config` (parsed once via
+your `parseConfig`, long-lived; cast it to your concrete type) and `frame`
+(the per-event observation snapshot: `frame.observation`,
+`frame.pendingPlayers`, `frame.version`, `frame.timing`) — plus `gameStatus`,
+`outcomes`, `actionPending`, `onAction`, `onInvalidAction`, `playersContext`,
+and the convenience getters `myPlayerIndex` (delegates to
 `playersContext.myPlayerIndex`) and `timing` (delegates to `frame.timing`).
+Your rules-unit methods (`isValidAction`, `serializeAction`, helpers) are
+available as `this` — pass the unit (or just what a widget needs) down to
+private widgets explicitly.
 
 `buildRules` is required and returns your game's how-to-play content for the
 engine's About page. Return plain, non-scrolling content (e.g. a `Column` of
@@ -449,22 +546,36 @@ via `onChanged` into a plain field (no `setState`) and passes it to the
 
 ### 5. Content Widget (`presentation/my_game_content.dart`)
 
-Receives pre-parsed, typed data. No JSON parsing or engine construction here —
-both happen once per network event in the session provider.
+Receives pre-parsed, typed data. No JSON parsing here — it happens once per
+network event in the session provider, through your rules unit's codec.
+
+The rules unit passes itself (or just the members a widget needs) into the
+content widget it builds — infra deliberately hands widgets no rules access,
+so the dependency stays explicit:
+
+```dart
+// In MyGameRulesV1:
+@override
+Widget buildContent(GameContentContext context) =>
+    MyGameContent(rules: this, content: context);
+```
 
 ```dart
 import 'package:flutter/material.dart';
 import 'package:eigen_engine/core/game/game_module.dart';
 import 'package:eigen_engine/core/game/game_outcome.dart';
 import 'package:eigen_engine/core/game/game_status.dart';
-import 'package:my_game/data/models/game_models.dart';
-import 'package:my_game/logic/my_game_engine.dart';
-import 'package:my_game/presentation/my_game_board.dart';
+import 'package:my_app/game/v1/data/models/game_models.dart';
+import 'package:my_app/game/v1/rules.dart';
+import 'package:my_app/game/v1/presentation/my_game_board.dart';
 
 class MyGameContent extends StatelessWidget {
-  const MyGameContent({super.key, required this.content});
+  const MyGameContent({super.key, required this.rules, required this.content});
 
-  /// The infra-provided context: typed engine, current observation frame,
+  /// This version's rules unit (legality checks, action codec, helpers).
+  final MyGameRulesV1 rules;
+
+  /// The infra-provided context: parsed config, current observation frame,
   /// player identities, outcomes and action callbacks. Pull what you need off
   /// it in `build` — adding new infra data never changes this widget's
   /// constructor.
@@ -473,10 +584,10 @@ class MyGameContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Pull the typed locals your content needs off the context. Cast the
-    // engine and observation to your concrete types — the cast is sound by
-    // construction: the same module's createEngine()/parseObservation()
-    // produced them.
-    final engine = content.engine as MyGameEngine;
+    // config and observation to your concrete types — the cast is sound by
+    // construction: this unit's parseConfig()/parseObservation() produced
+    // them.
+    final config = content.config as GameConfigData;
     final observation = content.frame.observation as ObservationData;
     final pendingPlayers = content.frame.pendingPlayers;
     final gameStatus = content.gameStatus;
@@ -499,10 +610,17 @@ class MyGameContent extends StatelessWidget {
       enabled: canPlay,
       onCellTap: (position) {
         final action = ActionData(position: position);
-        if (engine.isValidAction(observation, pendingPlayers, action, myPlayerIndex)) {
+        final legal = rules.isValidAction(
+          obs: observation,
+          pending: pendingPlayers,
+          data: action,
+          playerIndex: myPlayerIndex,
+          config: config,
+        );
+        if (legal) {
           // Infra wires onInvalidAction to HapticFeedback.selectionClick() —
           // do not import flutter/services or choose the haptic yourself.
-          content.onAction(action.toJson());
+          content.onAction(rules.serializeAction(action));
         } else {
           content.onInvalidAction();
         }
@@ -511,6 +629,73 @@ class MyGameContent extends StatelessWidget {
   }
 }
 ```
+
+---
+
+## Animating Transitions
+
+Animation is presentation of **frame transitions**. The engine gives you three
+guarantees to build on; everything visual stays in your widgets.
+
+**1. You see every frame, in order.** Observations are append-only server-side
+(one row per seat per state version) and the client stream is gap-recovered:
+if Realtime drops an event, the missing frames are fetched and delivered in
+version order. Opponent moves, bot moves, interrupt resolutions — each arrives
+as its own `GameFrame`, so "animate the change between the previous frame and
+this one" is a sound strategy for **all** moves, not just your own. The one
+exception is a cold (re)load: the stream starts at the *latest* frame with no
+predecessor, so render it statically (see rule 3).
+
+**2. The observation tells you what happened — don't diff frames.** Frame
+diffing can't recover causality (a hidden-info move with no visible footprint,
+two causes with the same footprint, a composite move-battle-capture whose
+choreography the diff has collapsed). Instead, your TS `computeObservation`
+receives the transition's `cause` (the move or event that produced the state)
+and embeds **each seat's view of it** into that seat's slice — a `lastMove` /
+`events` field in your observation payload, shaped however your animation
+needs (ordered beats included). Visibility is automatically per-seat because
+the embedding happens inside the projection. Replay frames carry the same
+cues, so one animation pipeline serves live play and replay.
+
+**3. Animate a cue only when you rendered its predecessor.** A cue describes a
+transition. On a cold load (or a stale rejoin) you receive a frame whose
+predecessor you never rendered — render the cue as static "last move" info (a
+highlight, chess.com-style), not as an animation. In practice: keep the
+previously rendered frame's `version` in your widget state; play the entrance
+animation only when the incoming frame is its direct successor.
+
+### Instant feedback (optional)
+
+A turn-based round trip (submit → commit → Realtime) is typically well under a
+second. Latency-hiding is **game-owned**: infra never predicts game state, it
+just tells you how your submit resolved. Two layers, cheapest first:
+
+- **Outcome-independent feedback needs no bookkeeping**: lift the piece on
+  tap, slide it toward the target, play the sound — local widget state,
+  resolved when the server frame lands. `GameContentContext.actionPending`
+  already marks the in-flight window.
+- **Optimistic rendering** pairs your unit's `previewAction` with the
+  `ActionSubmitResult` future `GameContentContext.onAction` returns. Compute
+  the predicted observation with `previewAction` (its body is the
+  state-change half of your TS `applyAction`, transcribed) and render it
+  from local widget state while the future is pending. The result tells you
+  exactly what the frame stream will do next:
+  - `committed` — the confirming frame is guaranteed to be the *next* frame
+    you receive (the optimistic lock means no other frame can commit in
+    between); clear the local prediction when it arrives and let the normal
+    transition pipeline take over.
+  - `rejected` — the move definitively did not commit and no frame is
+    coming (infra has already shown the error); revert — the board visibly
+    snaps back.
+  - `unconfirmed` — the submission failed in transit and the server may
+    still have committed it; revert, and if the move did commit its frame
+    arrives over Realtime and re-applies it.
+
+  `previewAction` returning null means "don't predict this move" — required
+  for moves whose outcome depends on hidden information (a combat
+  resolution, a reveal, a deck draw); those are simply server-driven.
+  Predictions are for the actor's own moves only; opponents' moves always
+  arrive as server frames (rule 1).
 
 ---
 
@@ -696,7 +881,7 @@ Local bots run on the present human's client, so a local-bot game is always
 **untimed** (no deadline backstop needed; for a _timed_ AI game use a server
 bot). The contract is the only bot surface you implement.
 
-1. **Implement `LocalBot`** in your game package (alongside your `GameModule`,
+1. **Implement `LocalBot`** in your game package (in the version folder, alongside its `GameRules`,
    never in the engine). A bot is a **pure reducer**
    `(observation, state) → (action,
    nextState)`; the fourth type param is
@@ -714,19 +899,21 @@ bot). The contract is the only bot surface you implement.
 
      @override
      Null createState({
-       required BaseEngine<MyObservation, MyAction, MyConfig> engine,
+       required GameRules<MyObservation, MyAction, MyConfig> rules,
+       required MyConfig gameConfig,
        required int seatIndex,
-       required Map<String, dynamic> config, // bots.config, may be empty
+       required Map<String, dynamic> botConfig, // bots.config, may be empty
      }) => null; // stateless bot — a stateful one returns its initial brain
 
      @override
      ({MyAction action, Null state}) chooseAction({
-       required BaseEngine<MyObservation, MyAction, MyConfig> engine,
+       required GameRules<MyObservation, MyAction, MyConfig> rules,
+       required MyConfig gameConfig,
        required MyObservation observation,   // already typed — no cast
        required int seatIndex,
        required Null state,
      }) {
-       // ...pick a legal move (use `engine` for validation/legal moves)...
+       // ...pick a legal move (use `rules.isValidAction` for legality)...
        return (action: MyAction(cell: bestCell), state: null);
      }
    }
@@ -737,17 +924,18 @@ bot). The contract is the only bot surface you implement.
    returns the **next** state — re-rooted to the played move, beliefs folded in
    — which the driver commits **only when the action is accepted**.
 
-   `LocalBot` is generic over the same `<observation, action, config>` triple as
-   your engine (plus `TState`), so you write it like the engine and get a fully
-   typed `observation` in and a typed action out — **no casts, no hand-rolled
-   JSON**. The driver serialises your action via `engine.serializeAction`, the
-   same seam the human path uses, so the two can never drift.
+   `LocalBot` is generic over the same `<observation, action, config>` triple
+   as your `GameRules` (plus `TState`), so you write it like the rules unit
+   and get a fully typed `observation` in and a typed action out — **no
+   casts, no hand-rolled JSON**. The driver serialises your action via
+   `rules.serializeAction`, the same seam the human path uses, so the two can
+   never drift.
 
    **The engine runs `chooseAction` off-thread** (`Isolate.run`), so heavy
    search never blocks a UI frame — no `compute()` of your own. In return it
    must be **pure** (never mutate `state` or touch the outside world; seed any
    randomness from `state` and return the advanced seed), and everything it
-   touches — bot, engine, observation, action, `state` — must be
+   touches — bot, rules unit, configs, observation, action, `state` — must be
    **isolate-sendable** (plain data, no clients/ports). A bot needing **large
    static data** (a pretrained net) belongs **server-side**: it would be
    re-copied into the isolate every move.
@@ -756,10 +944,13 @@ bot). The contract is the only bot surface you implement.
    is the same shape a human move produces (see _Designing action data_ below);
    you design it, and the server validates it in `applyAction`.
 
-2. **Register instances** in your module — this presence _is_ the local-bot
-   support flag (empty default ⇒ no bot UI):
+2. **Register instances** on the version's `GameRules` — this presence _is_
+   the local-bot support flag (empty default ⇒ no bot UI). Bots are
+   per-version because a `LocalBot` is generic over that version's payload
+   types; a `v2` unit re-lists (or re-adapts) the bots it supports:
 
    ```dart
+   // in v1/rules.dart
    @override
    List<LocalBot> get localBots => const [
      MinimaxBot(username: 'easy_ai', depth: 2),
@@ -768,10 +959,10 @@ bot). The contract is the only bot surface you implement.
    ```
 
    One class can back several personas via constructor args **or** the DB
-   `bots.config` handed to `createState` (N:1). The engine's driver matches a
-   pending bot seat to the `localBots` entry whose `username` equals the seat's
-   `bots.username`, runs `chooseAction`, and submits — you write no wake/submit
-   plumbing. (The driver spots the bot's turn from the **host's** observation
+   `bots.config` handed to `createState` (N:1). The engine's driver resolves
+   the game's version unit and matches a pending bot seat to the `localBots`
+   entry whose `username` equals the seat's `bots.username`, runs
+   `chooseAction`, and submits — you write no wake/submit plumbing. (The driver spots the bot's turn from the **host's** observation
    row, so a `computeObservation` that narrows `pending_players` must keep
    pending bot seats visible to the host — see Hook 3.)
 
@@ -937,11 +1128,11 @@ produces your own type, the engine never sees it). You own the shape, in three
 places that must agree:
 
 1. **Producer (human)** — your content widget builds the typed `ActionData` on a
-   tap and submits it through the engine seam:
-   `content.onAction(engine.serializeAction(action))`.
+   tap and submits it through the rules-unit seam:
+   `content.onAction(rules.serializeAction(action))`.
 2. **Producer (local bot)** — `LocalBot.chooseAction` returns that **same typed
    `ActionData`**; the infra driver serialises it through the very same
-   `engine.serializeAction`. A human tap and a bot decision are interchangeable.
+   `rules.serializeAction`. A human tap and a bot decision are interchangeable.
 3. **Consumer (server)** — your `applyAction` hook receives the resulting JSON
    as `p_data` (jsonb) and is the **only authority**: it validates legality and
    applies it. Never trust the client to have sent a legal move — a local bot's
@@ -956,11 +1147,12 @@ the placeholder TicTacToe game that is literally `{"position": 0–8}`
 (`(p_data->>'position')::INT`).
 
 The engine gives you a **fully typed action seam**, the output mirror of
-`parseObservation`: `BaseEngine` is generic over `TActionData`, your game
-defines a Freezed `ActionData` (`fromJson`/`toJson`) alongside
-`ObservationData`, and the engine's `serializeAction` is the **single** place a
-typed action becomes JSON. Both Dart producers stay typed end to end and route
-through it, so they cannot drift:
+`parseObservation`: `GameRules` is generic over `TAction`, your game defines a
+Freezed `ActionData` (`fromJson`/`toJson`) alongside `ObservationData`, and
+the unit's `serializeAction` is the **single** place a typed action becomes
+JSON (`parseAction` is its inverse, used by infra to re-type an in-flight or
+logged action). Both Dart producers stay typed end to end and route through
+it, so they cannot drift:
 
 ```dart
 // the one action model
@@ -971,12 +1163,12 @@ abstract class ActionData with _$ActionData {
       _$ActionDataFromJson(json);
 }
 
-// engine — the only typed action → JSON step
+// rules unit — the only typed action → JSON step
 @override
 Map<String, dynamic> serializeAction(ActionData action) => action.toJson();
 
-// human (content widget):  content.onAction(engine.serializeAction(action));
-// local bot (chooseAction): return ActionData(position: best);  // engine serialises
+// human (content widget):  content.onAction(rules.serializeAction(action));
+// local bot (chooseAction): return ActionData(position: best);  // driver serialises
 // server bot (any language): emits the same JSON shape, e.g. {"position": best}
 ```
 
@@ -984,12 +1176,12 @@ The seam stays typed inside Dart, but the **wire boundary** (what crosses to
 `p_data`) is `Map<String, dynamic>` — that is exactly what reaches the hook. A
 **server bot runs in another language, so it cannot share the Dart type**; its
 uniformity is guaranteed at the JSON-shape level only. That makes `applyAction`
-(the single consumer) plus the `action` Zod schema in your `schemas` map the
+(the single consumer) plus the version unit's `action` Zod schema the
 **one source of truth** that the Dart `ActionData` model and the server bot both
 mirror — the edge function rejects (400) any action `data` that fails the game's
-version `action` schema before your hook runs. Version the shape by adding a
-`schemas` entry when it changes. See Hook 2 (`applyAction`) for the consumer
-contract.
+version `action` schema before your hook runs. Version the shape by shipping a
+new `GameRules` unit when it changes (see **Shipping a new schema version**).
+See Hook 2 (`applyAction`) for the consumer contract.
 
 ---
 
@@ -1112,13 +1304,15 @@ watching the infra header's timing mode condition.
 
 ## Backend Changes Required
 
-A game's server-side rules surface is **six TypeScript methods on a
-`GameEngine`** — `initialState`, `applyAction`, `computeObservation`, plus
+A game's server-side rules surface is a **`GameModule`: one TypeScript
+`GameRules` unit per `schema_version`**, each bundling the Zod payload schemas
+plus six hooks — `initialState`, `applyAction`, `computeObservation`, plus
 optional `ratingPool`, `handleEvent`, and `botSeatable`. They all live in the
-**`game` edge function** as one typed object you export from
-`functions/_lib/game.ts` — see **The game edge function** below. There is **no
-SQL to write for the rules**; the gated `engine_*` RPCs the edge function
-commits through are infra and stay untouched.
+**`game` edge function**: the units in `functions/_lib/game/v1.ts` (`v2.ts`,
+…) and the registry you export from `functions/_lib/game.ts` — see **The game
+edge function** below. There is **no SQL to write for the rules**; the gated
+`engine_*` RPCs the edge function commits through are infra and stay
+untouched.
 
 The engine's **backend** is **vendored** into your app — run
 `dart run eigen_engine:sync_supabase` from the app directory. It copies the
@@ -1140,24 +1334,25 @@ The rules run as TypeScript inside the engine-owned edge functions (the whole
 `_engine/` framework — Hono routing, auth, gated reads/commits — is bundled in
 on import). There are **four** functions — `game` (client JWT), `social` (client
 JWT), `internal` (cron/webhook secret), `bot` (per-bot HMAC) — but you implement
-only the `GameEngine`; the framework wires it into all of them. Ownership
+only the `GameModule`; the framework wires it into all of them. Ownership
 mirrors the backend's vendoring rule:
 
 | Path                                                           | Owner   | On `sync_supabase`                      |
 | -------------------------------------------------------------- | ------- | --------------------------------------- |
 | `functions/_engine/**`, `functions/_types/**`                  | engine  | re-vendored (overwritten + pruned)      |
 | `functions/{game,social,internal,bot}/*` (`index.ts`, config…) | engine  | re-vendored (overwritten + pruned)      |
-| `functions/_lib/game.ts`                                       | **you** | scaffolded **once**, then never touched |
+| `functions/_lib/**` (`game.ts`, `game/v1.ts`, …)               | **you** | scaffolded **once**, then never touched |
 
 (`deno.lock` is git-ignored and regenerated per project, so it is never copied
 or pruned — your local lockfile is left alone.)
 
-So your entire server-side rules surface is one file — `game.ts` — which exports
-a `GameEngine` instance: **Zod schemas per payload** (the `schemas` map) plus
-the six methods. The schemas are the single source of truth — derive the payload
-types from them with `z.infer` and the whole engine is typed end-to-end:
+So your entire server-side rules surface is one `GameRules` class per version
+(each with its **Zod schemas per payload** as the single source of truth —
+derive the payload types with `z.infer` and the whole unit is typed
+end-to-end) plus the two-line registry in `game.ts`:
 
 ```ts
+// _lib/game/v1.ts
 import { z } from "zod";
 import {
   IllegalMoveError,
@@ -1168,7 +1363,7 @@ import type {
   BotSeatableArgs,
   Envelope,
   EventArgs,
-  GameEngine,
+  GameRules,
   InitialStateArgs,
   RatingPoolArgs,
 } from "types/engine.types.ts";
@@ -1181,9 +1376,11 @@ type State = z.infer<typeof stateSchema>; // `type`, not `interface`
 type Action = z.infer<typeof actionSchema>;
 type Config = z.infer<typeof configSchema>;
 
-class MyGame implements GameEngine<State, Action, Config> {
+class MyGameV1 implements GameRules<State, Action, Config> {
   readonly schemas = {
-    1: { state: stateSchema, action: actionSchema, config: configSchema },
+    state: stateSchema,
+    action: actionSchema,
+    config: configSchema,
   };
   initialState(args: InitialStateArgs<Config>): Envelope<State> {/* … */}
   applyAction(
@@ -1195,7 +1392,7 @@ class MyGame implements GameEngine<State, Action, Config> {
   handleEvent(args: EventArgs<State, Config>): Envelope<State> {
     /* forfeit/timeout consequence */
   }
-  computeObservation = passthroughObservation<State, Config>; // perfect-info
+  computeObservation = passthroughObservation<State, Action, Config>; // perfect-info
   ratingPool(args: RatingPoolArgs<Config>): string | null {
     return null; // unrated; return a pool name (e.g. "rapid") to rate
   }
@@ -1204,29 +1401,39 @@ class MyGame implements GameEngine<State, Action, Config> {
   }
 }
 
-export const gameEngine: GameEngine = new MyGame();
+export const rulesV1: GameRules = new MyGameV1();
 ```
 
-The `GameEngine` contract (the `Args` types, `Envelope`) is defined in
-`functions/_types/engine.types.ts` — read it for the authoritative signatures;
-`IllegalMoveError`, `passthroughObservation` (the perfect-info default) and the
-schema-boundary helpers live in `functions/_engine/game-engine.ts`.
+```ts
+// _lib/game.ts
+import type { GameModule } from "types/engine.types.ts";
+import { rulesV1 } from "./game/v1.ts";
 
-**The harness enforces the schema boundary for you.** Each route first validates
-the request body's _envelope_ (ids, versions, timing fields) against an
-engine-owned Zod schema — a malformed request 400s before any handler code runs.
-Then, before any hook runs, the framework picks the game row's `schema_version`
-entry from `schemas` and parses every payload through it, so hook bodies never
-see unvalidated JSON:
+export const gameModule: GameModule = { versions: { 1: rulesV1 } };
+```
 
-| Payload                                     | On schema failure                   |
-| ------------------------------------------- | ----------------------------------- |
-| client `config` at create                   | 400 (Zod issues in the message)     |
-| client/bot action `data`                    | 400                                 |
-| `schema_version` not in `schemas` at create | 400                                 |
-| stored `state`/`config` on read             | 500 (corruption / missed version)   |
-| loaded game's version not in `schemas`      | 500 (EF deployed behind its data)   |
-| hook-returned `state`                       | 500 (validated before every commit) |
+The `GameRules`/`GameModule` contracts (the `Args` types, `Envelope`) are
+defined in `functions/_types/engine.types.ts` — read it for the authoritative
+signatures; `IllegalMoveError`, `passthroughObservation` (the perfect-info
+default) and the version-boundary helpers live in
+`functions/_engine/game-engine.ts`.
+
+**The harness enforces the version boundary for you.** Each route first
+validates the request body's _envelope_ (ids, versions, timing fields) against
+an engine-owned Zod schema — a malformed request 400s before any handler code
+runs. Then the framework resolves the game row's `schema_version` entry from
+`versions` and parses every payload through **that unit's** schemas before
+invoking its hooks, so hook bodies never see unvalidated JSON — and never
+another version's shape:
+
+| Payload                                      | On failure                          |
+| -------------------------------------------- | ----------------------------------- |
+| client `config` at create                    | 400 (Zod issues in the message)     |
+| client/bot action `data`                     | 400                                 |
+| `schema_version` not in `versions` at create | 400                                 |
+| stored `state`/`config` on read              | 500 (corruption / missed version)   |
+| loaded game's version not in `versions`      | 500 (EF deployed behind its data)   |
+| hook-returned `state`                        | 500 (validated before every commit) |
 
 Client payloads flow onward **sanitized** — unknown keys stripped, defaults
 applied — into your hooks, the `actions` log, and `games.config`. Two rules keep
@@ -1235,18 +1442,37 @@ hook output is re-validated against the same `state` schema), and derive payload
 types as `type` aliases (an `interface` fails the engine's `JsonObject`
 constraint).
 
-**Schema versioning:** ship one `schemas` entry per `schema_version` you
-support. On a breaking shape change, add a new entry — games created earlier
-keep parsing under theirs — and make the payload type the tagged union of the
-versions' shapes so hooks can narrow (`schemaVersion` also arrives in every
-hook's args). This is the TS twin of the Dart side's
-`BaseEngine.parseObservation` branching on its `schemaVersion` field.
+### Shipping a new schema version
+
+A breaking rules or payload-shape change never edits an existing version unit —
+it ships as a new one. Games created earlier keep running against their own
+unit until they drain; nothing anywhere branches on version.
+
+1. **TS:** copy `_lib/game/v1.ts` → `_lib/game/v2.ts` (import whatever didn't
+   change from `./v1.ts` instead of duplicating it), make the change, and
+   register it in `_lib/game.ts`:
+   `versions: { 1: rulesV1, 2: rulesV2 }`.
+2. **Dart:** create `lib/game/v2/` the same way (a `v2/rules.dart` may reuse
+   v1 widgets/models by import) and register it in the module:
+   `versions: {1: MyGameRulesV1(), 2: MyGameRulesV2()}`.
+3. **Deploy order:** edge function first, then the app release. The server
+   accepting `2` while older clients still create at `1` is fine — creation is
+   validated against the *requested* version, and each game is served by its
+   own unit.
+4. **Retiring a version:** once no games at an old version remain active (and
+   you no longer need their replays), delete its map entry and folder on both
+   sides. Version keys are **sparse** — `supportsSchema` / creation check map
+   membership, not `<= latest`.
+
+Local bots re-list per version (`GameRules.localBots`), and the `bots` table's
+`schema_version` column declares the highest version each server bot supports —
+bump it when the bot learns the new shapes.
 
 `applyAction` rejects a rule-breaking move by throwing `IllegalMoveError` (→
 HTTP 400 with the message); any other throw is treated as a game bug (→ 500).
 The infra has already confirmed it is the acting seat's turn at the expected
 version before calling, so do not re-check turn order. `ratingPool` and
-`botSeatable` need **Dart twins** in your `GameModule` (the client gates the
+`botSeatable` need **Dart twins** on the same version's Dart `GameRules` (the client gates the
 create-dialog Rated/Casual toggle and the bot pickers locally); the server stays
 authoritative. Randomness comes from `args.rng` — a deterministic
 per-transition generator (`rand-seed`) the harness derives for you; draw as
@@ -1257,7 +1483,7 @@ Iterate locally with `supabase functions serve` (or
 `deno check
 --config supabase/functions/engine/deno.json supabase/functions/engine/index.ts`
 for a quick type-check). Because `game-engine.ts` has no Supabase/Deno runtime
-dependency, your gameEngine is unit-testable in isolation. Deploy with
+dependency, your gameModule is unit-testable in isolation. Deploy with
 `supabase functions deploy engine`.
 
 Once your app is in production, migrations become append-only and schema changes
@@ -1301,7 +1527,7 @@ settings in sync by hand when you bump the engine version:
 2. **Vendor the backend:** `dart run eigen_engine:sync_supabase` (migrations +
    functions + seed), then commit. The first run scaffolds
    `functions/_lib/game.ts` and prints a reminder to add the
-   `[functions.engine]` config block; implement your `gameEngine` in that file
+   `[functions.engine]` config block; implement your `gameModule` in that file
    (see **The game edge function** above).
 3. **`functions/.env.local`** — set the Firebase service-account vars
    (`FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`, `FIREBASE_PROJECT_ID`) and
@@ -1341,7 +1567,7 @@ ratingPool(args: RatingPoolArgs<Config>): string | null {
 }
 ```
 
-Keep a **Dart twin** in your `GameModule` with the identical rule so the New
+Keep a **Dart twin** on the same version's Dart `GameRules` with the identical rule so the New
 Game dialog can show the live Rated/Casual badge and gate the toggle (hidden
 when the pool is `null` or the user is a guest). The twin and this method must
 agree — the server rejects the create if they don't.
@@ -1372,7 +1598,7 @@ botSeatable(args: BotSeatableArgs<Config>): boolean {
 }
 ```
 
-Keep a **Dart twin** in your `GameModule` so the bot pickers filter the cached
+Keep a **Dart twin** on the same version's Dart `GameRules` so the bot pickers filter the cached
 `app_bots` catalog by the same verdict — no client-side divergence, and the
 client never offers an opponent that seating would reject.
 
@@ -1381,9 +1607,10 @@ client never offers an opponent that seating would reject.
 ### Hook 1: `initialState(args: InitialStateArgs<Config>): Envelope<State>`
 
 `args`: `rng`, `playerCount`, plus the `HookContext` (`config` — parsed and
-typed, `schemaVersion`). Returns the starting envelope — must include `state`
-and `pending_players`; may include `turn_seconds`. The returned `state` is
-validated against the game's version `state` schema before it is committed.
+typed). There is no version field in any hook's args — your unit *is* the
+version. Returns the starting envelope — must include `state` and
+`pending_players`; may include `turn_seconds`. The returned `state` is
+validated against the unit's `state` schema before it is committed.
 
 ```ts
 initialState(args: InitialStateArgs<Config>): Envelope<State> {
@@ -1411,8 +1638,8 @@ initialState(args: InitialStateArgs<Config>): Envelope<State> {
 ### Hook 2: `applyAction(args: ApplyActionArgs<State, Action, Config>): Envelope<State>`
 
 `args`: `state`, `pending`, `data` (the move), `playerIndex`, `rng`, plus the
-`HookContext`. `state`, `data`, and `config` arrive parsed against the game's
-version schemas — a move whose `data` fails the `action` schema is rejected with
+`HookContext`. `state`, `data`, and `config` arrive parsed against this unit's
+schemas — a move whose `data` fails the `action` schema is rejected with
 400 before this hook runs, so validate **game-rule** legality only, not shape.
 The infra has **already** confirmed it is this seat's turn at the expected
 version under the lock, so do not re-check turn order either. Reject a
@@ -1537,15 +1764,22 @@ return {
 
 ---
 
-### Hook 3: `computeObservation(args: ComputeObservationArgs<State, Config>): ObservationSlice`
+### Hook 3: `computeObservation(args: ComputeObservationArgs<State, Action, Config>): ObservationSlice`
 
-`args`: `state`, `pending`, `playerIndex`, `participantCount`, `isReplay`, plus
-the `HookContext`. The edge function fans this out once per participant after
-every transition (and per historical version for replay). Returns
-`{ data, pending_players }` — the slice `data` is deliberately schema-less
-(`JsonObject`): it is an output-only projection the Dart client parses.
-**Perfect-info games do not override this** — assign the
+`args`: `state`, `pending`, `playerIndex`, `participantCount`, `cause`,
+`isReplay`, plus the `HookContext`. The edge function fans this out once per
+participant after every transition (and per historical version for replay).
+Returns `{ data, pending_players }` — the slice `data` is deliberately
+schema-less (`JsonObject`): it is an output-only projection the Dart client
+parses. **Perfect-info games do not override this** — assign the
 `passthroughObservation` default (the identity projection).
+
+`args.cause` is **what produced this state**: `{ kind: "action", data,
+playerIndex }` for a move, `{ kind: "event", data }` for a forfeit/timeout,
+`null` for the initial frame. Embed whatever each seat may see of it into the
+slice (e.g. a `lastMove` field) so the client can animate the transition —
+see **Animating transitions** in the client half of this guide. Per-seat
+visibility is automatic: the embedding happens here, in the projection.
 
 Override for hidden-info games to strip opponent cards/hands and optionally
 narrow `pending_players` — each seat's row carries its own **view** of the true
@@ -1569,18 +1803,24 @@ keep the clients honest:
 
 ```ts
 // Perfect-info: assign the helper, instantiated with your payload types.
-computeObservation = passthroughObservation<State, Config>;
+computeObservation = passthroughObservation<State, Action, Config>;
 
 // Hidden-info: override.
-computeObservation(args: ComputeObservationArgs<State, Config>): ObservationSlice {
+computeObservation(
+  args: ComputeObservationArgs<State, Action, Config>,
+): ObservationSlice {
   if (args.isReplay) {
     // Finished game: reveal everything for review.
     return { data: args.state, pending_players: args.pending };
   }
-  // Live: strip every seat's private info except args.playerIndex, and
+  // Live: strip every seat's private info except args.playerIndex, embed
+  // this seat's view of what just happened (the animation cue), and
   // optionally narrow the pending set this seat is allowed to see.
   return {
-    data: stripOpponentHands(args.state, args.playerIndex),
+    data: {
+      ...stripOpponentHands(args.state, args.playerIndex),
+      lastMove: cueFor(args.cause, args.playerIndex),
+    },
     pending_players: args.pending,
   };
 }
@@ -1658,10 +1898,16 @@ RLS): `app_join_game` / `app_join_game_by_code`, `app_cancel_game`,
 
 ```dart
 test('valid action is accepted', () {
-  final engine = MyGameEngine(const GameConfigData());
+  const rules = MyGameRulesV1();
   final obs = ObservationData(board: List.filled(9, 0), actionCount: 0);
   expect(
-    engine.isValidAction(obs, [0], ActionData(position: 4), 0),
+    rules.isValidAction(
+      obs: obs,
+      pending: [0],
+      data: ActionData(position: 4),
+      playerIndex: 0,
+      config: const GameConfigData(),
+    ),
     isTrue,
   );
 });
@@ -2056,15 +2302,22 @@ rejection branch of your tap handler — infra decides the haptic:
 ```dart
 onCellTap: (position) {
   final action = ActionData(position: position);
-  if (engine.isValidAction(observation, pendingPlayers, action, myPlayerIndex)) {
-    onAction(action.toJson());
+  final legal = rules.isValidAction(
+    obs: observation,
+    pending: pendingPlayers,
+    data: action,
+    playerIndex: myPlayerIndex,
+    config: config,
+  );
+  if (legal) {
+    onAction(rules.serializeAction(action));
   } else {
     onInvalidAction(); // do not call HapticFeedback directly
   }
 },
 ```
 
-Pass it through from `GameModule.buildContent()` to your content widget as a
+Pass it through from `GameRules.buildContent()` to your content widget as a
 required field, exactly as shown in the content widget template above.
 
 See `engine_architecture.md §16` for the full deduplication logic and file

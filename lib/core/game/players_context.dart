@@ -1,6 +1,6 @@
 import 'package:eigen_engine/core/game/game_player.dart';
 
-/// Player identity data passed to [GameModule.buildContent].
+/// Player identity data passed to [GameRules.buildContent].
 ///
 /// Maps player indices (0-based) to their resolved [GamePlayer] data.
 /// The game implementor can use this to render opponent names, avatars,

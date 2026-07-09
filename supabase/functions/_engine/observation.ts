@@ -1,7 +1,7 @@
 /**
- * Framework glue that drives {@link GameEngine} between transport and persistence:
- * eager per-seat observation fan-out, the envelope→transition builder, and the
- * deterministic per-transition RNG.
+ * Framework glue that drives a game's {@link GameRules} between transport and
+ * persistence: eager per-seat observation fan-out, the envelope→transition
+ * builder, and the deterministic per-transition RNG.
  */
 
 import { encodeHex } from "@std/encoding/hex";
@@ -10,32 +10,48 @@ import type {
   CommitTransitionWire,
   ComputeObservationArgs,
   Envelope,
-  GameEngine,
+  GameRules,
   JsonObject,
   RatingWrite,
   SeatObservationWire,
 } from "types/engine.types.ts";
+import { HttpError } from "./runtime.ts";
 
 /** Project the new state into one slice per seat — the eager fan-out the commit
  * RPC then writes (Realtime can only push stored rows, so this stays eager).
+ * `rules` is the game's own version unit, already resolved by the caller.
  * `args` is the hook's own contract minus the per-seat `playerIndex`, which the
  * loop supplies; the body still forwards each field explicitly so a new hook
  * arg forces a per-seat-or-shared decision here. */
 export function fanOutObservations(
-  gameEngine: GameEngine,
+  rules: GameRules,
   args: Omit<ComputeObservationArgs, "playerIndex">,
 ): SeatObservationWire[] {
   const slices: SeatObservationWire[] = [];
   for (let seat = 0; seat < args.participantCount; seat++) {
-    const slice = gameEngine.computeObservation({
+    const slice = rules.computeObservation({
       state: args.state,
       pending: args.pending,
       playerIndex: seat,
       participantCount: args.participantCount,
       config: args.config,
-      schemaVersion: args.schemaVersion,
+      cause: args.cause,
       isReplay: args.isReplay,
     });
+    // A projection may mask OTHER seats' pending status (hidden info), but it
+    // must be truthful about the seat itself: the row is what gates that
+    // seat's input and turn display, while the commit enforces the
+    // authoritative set — a lie here soft-locks the client or produces taps
+    // that always reject. Caught at the source, like assertHookState.
+    if (
+      slice.pending_players.includes(seat) !== args.pending.includes(seat)
+    ) {
+      throw new HttpError(
+        500,
+        `computeObservation for seat ${seat} misreports the seat's own ` +
+          `pending status`,
+      );
+    }
     slices.push({
       player_index: seat,
       data: slice.data,
@@ -45,7 +61,7 @@ export function fanOutObservations(
   return slices;
 }
 
-/** Build a single commit transition from a gameEngine envelope. `ratingUpdates` is
+/** Build a single commit transition from a gameModule envelope. `ratingUpdates` is
  * attached only to a finishing transition for a rated game (see `app.ts`). */
 export function toTransition(
   envelope: Envelope,

@@ -1,4 +1,4 @@
-/// Timing data passed to [GameModule.buildContent] for every active game.
+/// Timing data passed to [GameRules.buildContent] for every active game.
 ///
 /// Fields are null when not applicable to the game's timing mode — check
 /// before using. Use [TurnTimerBuilder] or [PlayerTimerBuilder] from

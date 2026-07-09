@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:eigen_engine/core/errors/engine_exception.dart';
 import 'package:eigen_engine/core/game/game_outcome.dart';
 import 'package:eigen_engine/features/game/data/models/bot_info.dart';
 import 'package:eigen_engine/features/game/data/models/game.dart';
@@ -16,8 +17,8 @@ const historyPageSize = 30;
 
 /// Repository for game operations.
 ///
-/// GameEngine operations (start, action, forfeit, expiry, local-bot moves) go
-/// through the `game` Edge Function, which runs the TypeScript gameEngine and
+/// Game-rule operations (start, action, forfeit, expiry, local-bot moves) go
+/// through the `game` Edge Function, which runs the TypeScript gameModule and
 /// commits via gated RPCs. Lobby/discovery/bot-catalog operations and reads stay
 /// on PostgREST RPCs. Clients read observations via Realtime subscriptions.
 class GameRepository {
@@ -25,13 +26,15 @@ class GameRepository {
 
   final SupabaseClient _client;
 
-  /// Invokes an `engine` Edge Function game route, normalising errors so
-  /// [humanize] still recognises the server's message (e.g. "Stale state").
+  /// Invokes an `engine` Edge Function game route.
   ///
-  /// The function returns `{ "error": "<message>" }` with a non-2xx status on
-  /// failure; supabase throws [FunctionException] carrying that body in
-  /// [FunctionException.details]. We rethrow an [Exception] whose message is the
-  /// server text so the existing humanizer matches unchanged.
+  /// On failure the function returns `{ "error": "<message>", "code"?: "EIGxx" }`
+  /// with a non-2xx status; supabase throws [FunctionException] carrying that
+  /// body in [FunctionException.details]. It is rethrown as a structured
+  /// [EngineException] so callers (and [humanize]) can dispatch on the stable
+  /// code. A transport failure (no server response) propagates as the
+  /// underlying network exception, distinguishing "the server said no" from
+  /// "the outcome is unknown".
   Future<dynamic> _invokeEngine(String route, Map<String, dynamic> body) async {
     try {
       final res = await _client.functions.invoke(
@@ -44,7 +47,10 @@ class GameRepository {
       final message = details is Map && details['error'] is String
           ? details['error'] as String
           : 'Edge function error (status ${e.status})';
-      throw Exception(message);
+      final code = details is Map && details['code'] is String
+          ? details['code'] as String
+          : null;
+      throw EngineException(message, code: code);
     }
   }
 
@@ -56,7 +62,7 @@ class GameRepository {
   /// Passing both throws on the server.
   ///
   /// [rated] is a concrete assertion, not a preference: the caller computes it
-  /// from the rating rules (the Dart twin of `GameEngine.ratingPool`, plus the
+  /// from the rating rules (the Dart twin of `GameRules.ratingPool` (TS), plus the
   /// guest check) and the server validates it, rejecting a mismatch rather than
   /// silently coercing. Pass `false` whenever the config is ineligible or the
   /// caller is a guest.
@@ -88,7 +94,7 @@ class GameRepository {
   /// Joins a game via RPC.
   ///
   /// [clientSchemaVersion] is the running build's highest supported game schema
-  /// ([GameModule.schemaVersion]); the server refuses to seat the caller in a
+  /// ([GameModule.latestSchemaVersion]); the server refuses to seat the caller in a
   /// game whose `schema_version` exceeds it, so the client never becomes a
   /// participant in a game it cannot render.
   ///
@@ -330,7 +336,7 @@ class GameRepository {
 
   /// Creates a solo game: the caller plus [botIds] (local and/or server, in seat
   /// order), unrated. The EF gates each bot's config seatability
-  /// ([GameModule.botSeatable]) in TS, then `engine_create_solo_game` creates +
+  /// ([GameRules.botSeatable]) in TS, then `engine_create_solo_game` creates +
   /// seats and leaves the game `ready`; the engine `start` route then computes the
   /// initial state and begins play. Returns the game ID.
   Future<String> createSoloGame({
@@ -355,7 +361,7 @@ class GameRepository {
   }
 
   /// Adds a server bot to a multiplayer waiting/ready game (creator only). The EF
-  /// gates config seatability ([GameModule.botSeatable]) before seating.
+  /// gates config seatability ([GameRules.botSeatable]) before seating.
   Future<void> addBotToGame({
     required String gameId,
     required String botId,
@@ -381,14 +387,12 @@ class GameRepository {
     });
   }
 
-  /// Fetches a bot seat's [Observation] for local play, server-gated to the sole
-  /// human of a solo game. The RPC returns `SETOF observations` — the same shape
-  /// as a human's own observation — so this reads it with [maybeSingle] exactly
-  /// like [getObservation]: null when no row exists yet. The `(game_id,
-  /// player_index)` PK bounds the set to one row, so [maybeSingle] raising on
-  /// multiple rows can only mean that invariant was violated — a loud failure is
-  /// the right outcome there rather than silently picking an arbitrary seat's
-  /// hidden view.
+  /// Fetches a bot seat's latest [Observation] for local play, server-gated to
+  /// the sole human of a solo game. The RPC returns `SETOF observations` — the
+  /// same shape as a human's own observation — already bounded to the seat's
+  /// latest frame (a bot acts on the current frame; it has no use for
+  /// history), so this reads it with [maybeSingle] exactly like
+  /// [getObservation]: null when no row exists yet.
   Future<Observation?> getLocalBotObservation({
     required String gameId,
     required int playerIndex,
@@ -417,50 +421,159 @@ class GameRepository {
     return response.map(Participant.fromJson).toList();
   }
 
-  /// Gets the current user's observation for a game.
+  /// Gets the current user's latest observation frame for a game.
   ///
-  /// RLS restricts results to the authenticated user's row, so no explicit
-  /// user_id filter is needed.
+  /// Observations are append-only (one row per seat per state version), so
+  /// "the observation" means the highest-version row. RLS restricts results
+  /// to the authenticated user's rows, so no explicit user_id filter is
+  /// needed.
   Future<Observation?> getObservation(String gameId) async {
     final response = await _client
         .from('observations')
         .select()
         .eq('game_id', gameId)
+        .order('version', ascending: false)
+        .limit(1)
         .maybeSingle();
 
     if (response == null) return null;
     return Observation.fromJson(response);
   }
 
-  /// Subscribes to observation updates for a game via the Realtime channel API.
+  /// The caller's missed observation frames in `(after, before)` exclusive,
+  /// version-ascending — the gap-recovery fetch for [observationStream].
+  Future<List<Observation>> _fetchMissedObservations(
+    String gameId, {
+    required int after,
+    required int before,
+  }) async {
+    final rows = await _client
+        .from('observations')
+        .select()
+        .eq('game_id', gameId)
+        .gt('version', after)
+        .lt('version', before)
+        .order('version', ascending: true);
+    return rows.map(Observation.fromJson).toList();
+  }
+
+  /// Subscribes to the caller's observation frames for a game, delivered in
+  /// **version order with gaps recovered**.
   ///
-  /// Emits the current observation immediately on subscribe (REST fetch), then
-  /// emits on every subsequent change. Re-fetches current state on every
-  /// re-subscribe so no updates are missed during a reconnect. RLS restricts
-  /// results to the authenticated user's own row.
+  /// Observations are append-only server-side (one row per seat per state
+  /// version), which is what makes this stream reliable: Realtime can drop or
+  /// reorder INSERT events, but a version jump is detected and the missing
+  /// rows are fetched and emitted in order, so a live client sees every
+  /// transition and can animate through each one. Duplicates and stale events
+  /// are dropped.
+  ///
+  /// The first emission (on subscribe, and the re-fetch on every reconnect)
+  /// is the seat's *latest* frame — a cold load snaps to now rather than
+  /// replaying history; if the reconnect fetch reveals a gap, the missed
+  /// frames are emitted in order first. RLS restricts results to the
+  /// authenticated user's own rows.
   Stream<Observation> observationStream({required String gameId}) {
     final userId = _client.auth.currentUser?.id;
     // Signed out (e.g. session expired mid-game) — emit nothing rather than
     // crash; the auth redirect tears the screen down momentarily.
     if (userId == null) return const Stream.empty();
-    return _channelStream(
-      channelName: 'observations:$gameId:$userId',
-      table: 'observations',
-      filter: PostgresChangeFilter(
-        type: PostgresChangeFilterType.eq,
-        column: 'game_id',
-        value: gameId,
-      ),
-      fetchCurrent: () async {
-        final data = await _client
-            .from('observations')
-            .select()
-            .eq('game_id', gameId)
-            .maybeSingle();
-        return data == null ? null : Observation.fromJson(data);
-      },
-      fromRecord: Observation.fromJson,
+
+    late RealtimeChannel channel;
+    late StreamController<Observation> controller;
+    int? lastVersion;
+    // Serialises frame handling (a gap fetch is async) so emissions stay in
+    // version order no matter how bursts of events interleave with fetches.
+    var pipeline = Future<void>.value();
+
+    Future<void> handle(Observation obs) async {
+      if (controller.isClosed) return;
+      final last = lastVersion;
+      if (last == null) {
+        // Cold baseline: the first frame seen is emitted as-is (no history
+        // replay); everything after it is ordered and gap-filled.
+        lastVersion = obs.version;
+        controller.add(obs);
+        return;
+      }
+      if (obs.version <= last) return;
+      if (obs.version > last + 1) {
+        final missed = await _fetchMissedObservations(
+          gameId,
+          after: last,
+          before: obs.version,
+        );
+        for (final frame in missed) {
+          if (controller.isClosed) return;
+          if (frame.version > lastVersion!) {
+            lastVersion = frame.version;
+            controller.add(frame);
+          }
+        }
+      }
+      if (controller.isClosed) return;
+      if (obs.version > lastVersion!) {
+        lastVersion = obs.version;
+        controller.add(obs);
+      }
+    }
+
+    void enqueue(Observation obs) {
+      pipeline = pipeline.then((_) => handle(obs)).catchError((Object e) {
+        if (!controller.isClosed) controller.addError(e);
+      });
+    }
+
+    void fetchLatest() {
+      getObservation(gameId).then(
+        (obs) {
+          if (obs != null) enqueue(obs);
+        },
+        onError: (Object e) {
+          if (!controller.isClosed) controller.addError(e);
+        },
+      );
+    }
+
+    controller = StreamController<Observation>(
+      onCancel: () => channel.unsubscribe(),
     );
+
+    channel = _client.channel('observations:$gameId:$userId')
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.insert,
+        schema: 'public',
+        table: 'observations',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'game_id',
+          value: gameId,
+        ),
+        callback: (payload) {
+          if (payload.newRecord.isNotEmpty && !controller.isClosed) {
+            enqueue(Observation.fromJson(payload.newRecord));
+          }
+        },
+      )
+      ..subscribe((status, error) {
+        switch (status) {
+          case RealtimeSubscribeStatus.subscribed:
+            // Initial connect and every reconnect: fetch the latest frame so
+            // nothing stays missed while disconnected (a gap it reveals is
+            // back-filled by the pipeline).
+            fetchLatest();
+          case RealtimeSubscribeStatus.channelError:
+          case RealtimeSubscribeStatus.timedOut:
+            if (!controller.isClosed) {
+              controller.addError(
+                error ?? Exception('Realtime subscription failed'),
+              );
+            }
+          case RealtimeSubscribeStatus.closed:
+            break;
+        }
+      });
+
+    return controller.stream;
   }
 
   /// Subscribes to game metadata updates via the Realtime channel API.
@@ -566,8 +679,9 @@ class GameRepository {
   /// - `participants!inner(player_index)` — inner-joined and filtered to
   ///   the current user's row, so `player_index` is this user's slot in
   ///   that game.
-  /// - `observations(pending_players)` — empty embed for waiting/ready
-  ///   games (no observation row exists yet).
+  /// - `observations(pending_players, turn_deadline)` — narrowed to the
+  ///   latest frame (observations are append-only); empty embed for
+  ///   waiting/ready games (no observation row exists yet).
   ///
   /// Callers compute "is my turn" as
   /// `entry.pendingPlayers?.contains(entry.myPlayerIndex)`.
@@ -593,6 +707,8 @@ class GameRepository {
         )
         .eq('participants.user_id', userId)
         .inFilter('status', ['waiting', 'ready', 'active'])
+        .order('version', referencedTable: 'observations', ascending: false)
+        .limit(1, referencedTable: 'observations')
         .order('updated_at', ascending: false);
 
     return response.map((j) {

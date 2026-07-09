@@ -29,7 +29,7 @@ class GamePlayer {
 
   /// Resolved public identity (username, avatar, rating, etc.). For a bot seat
   /// `info.username` is the bot's handle (`bots.username`) — the local-bot driver
-  /// matches it against [GameModule.localBots]; bot capability/config comes from
+  /// matches it against [GameRules.localBots]; bot capability/config comes from
   /// the cached bot catalog, not from here.
   final PlayerInfo info;
 

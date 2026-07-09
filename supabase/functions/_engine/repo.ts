@@ -20,7 +20,7 @@ import type {
   JsonObject,
   SendFriendResult,
 } from "types/engine.types.ts";
-import { HttpError, rpcErrorStatus } from "./runtime.ts";
+import { EngineCode, HttpError, rpcErrorStatus } from "./runtime.ts";
 
 /** The typed service-role client every engine module passes into this seam. */
 export type Db = SupabaseClient<Database>;
@@ -45,7 +45,9 @@ export async function readGameState(db: Db, gameId: string) {
     .limit(1, { referencedTable: "game_states" })
     .maybeSingle();
   if (error) throw new HttpError(500, error.message);
-  if (!data) throw new HttpError(404, "Game not found");
+  if (!data) {
+    throw new HttpError(404, "Game not found", EngineCode.gameNotFound);
+  }
   const latest = data.game_states[0];
   if (!latest) throw new HttpError(409, "Game has no committed state");
   return {
@@ -92,7 +94,9 @@ export async function readForStart(db: Db, gameId: string) {
     .eq("id", gameId)
     .maybeSingle();
   if (error) throw new HttpError(500, error.message);
-  if (!data) throw new HttpError(404, "Game not found");
+  if (!data) {
+    throw new HttpError(404, "Game not found", EngineCode.gameNotFound);
+  }
   return {
     config: (data.config ?? {}) as JsonObject,
     schema_version: data.schema_version,
@@ -131,7 +135,9 @@ export async function readReplay(db: Db, gameId: string) {
     .order("version", { referencedTable: "game_states" })
     .maybeSingle();
   if (error) throw new HttpError(500, error.message);
-  if (!data) throw new HttpError(404, "Game not found");
+  if (!data) {
+    throw new HttpError(404, "Game not found", EngineCode.gameNotFound);
+  }
   return data;
 }
 
@@ -202,7 +208,9 @@ export async function readGameConfig(db: Db, gameId: string) {
     .eq("id", gameId)
     .maybeSingle();
   if (error) throw new HttpError(500, error.message);
-  if (!data) throw new HttpError(404, "Game not found");
+  if (!data) {
+    throw new HttpError(404, "Game not found", EngineCode.gameNotFound);
+  }
   return {
     config: (data.config ?? {}) as JsonObject,
     schema_version: data.schema_version,
@@ -308,8 +316,9 @@ export async function readDisplayNames(
   return names;
 }
 
-/** One seat's freshly-committed observation row, for the server-bot wake.
- * Null when absent (e.g. the fan-out raced) — the caller skips the wake. */
+/** One seat's freshly-committed (latest) observation row, for the server-bot
+ * wake — observations are append-only, one row per seat per version. Null
+ * when absent (e.g. the fan-out raced) — the caller skips the wake. */
 export async function readSeatObservation(
   db: Db,
   gameId: string,
@@ -320,6 +329,8 @@ export async function readSeatObservation(
     .select("data, version, pending_players, turn_deadline")
     .eq("game_id", gameId)
     .eq("player_index", playerIndex)
+    .order("version", { ascending: false })
+    .limit(1)
     .maybeSingle();
   if (error) throw new HttpError(500, error.message);
   return data;

@@ -10,7 +10,7 @@
  */
 
 import type { Context } from "@hono/hono";
-import type { GameEngine } from "types/engine.types.ts";
+import type { GameModule } from "types/engine.types.ts";
 import { z } from "zod";
 import { verifyBotSignature } from "./bot_auth.ts";
 import { parseClientPayload } from "./game-engine.ts";
@@ -34,7 +34,7 @@ const botClaim = z.object({
 });
 
 export async function handleBotAction(
-  gameEngine: GameEngine,
+  gameModule: GameModule,
   c: Context<AppEnv>,
   body: z.infer<typeof botActionBody>,
 ) {
@@ -58,7 +58,7 @@ export async function handleBotAction(
     throw new HttpError(401, "Unauthorized");
   }
 
-  await applyMove(gameEngine, db, {
+  await applyMove(gameModule, db, {
     gameId: claim.game_id,
     data: claim.data,
     expectedVersion: claim.version,

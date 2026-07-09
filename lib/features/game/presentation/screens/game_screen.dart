@@ -12,6 +12,7 @@ import 'package:eigen_engine/core/review/review_notifier.dart';
 import 'package:eigen_engine/core/utils/deep_links.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:eigen_engine/core/errors/engine_exception.dart';
 import 'package:eigen_engine/core/errors/error_messages.dart';
 import 'package:eigen_engine/core/game/game_module.dart';
 import 'package:eigen_engine/core/game/game_outcome.dart';
@@ -359,11 +360,20 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     await ref.read(gamePlayersProvider(gameId: widget.gameId).future);
   }
 
-  Future<void> _submitAction(
+  /// Submits an action and reports the outcome to the game's content widget
+  /// (via [GameContentContext.onAction]). Error display stays here — the game
+  /// only uses the [ActionSubmitResult] to manage optimistic rendering.
+  ///
+  /// An [EngineException] is a definitive server verdict → [rejected]; any
+  /// other failure is transport-shaped, so the server may still have
+  /// committed → [unconfirmed].
+  Future<ActionSubmitResult> _submitAction(
     Map<String, dynamic> actionJson,
     int gameVersion,
   ) async {
-    if (_pendingAction == _PendingAction.submittingAction) return;
+    if (_pendingAction == _PendingAction.submittingAction) {
+      return ActionSubmitResult.rejected;
+    }
     unawaited(HapticFeedback.lightImpact());
     setState(() => _pendingAction = _PendingAction.submittingAction);
 
@@ -377,13 +387,22 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           );
       // Keep _pendingAction = submittingAction on success.
       // The observation listener resets it when the confirming update arrives.
+      return ActionSubmitResult.committed;
+    } on EngineException catch (e) {
+      _onSubmitFailed(e);
+      return ActionSubmitResult.rejected;
     } catch (e) {
-      if (!mounted) return;
-      setState(() => _pendingAction = null);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(humanize(e))));
+      _onSubmitFailed(e);
+      return ActionSubmitResult.unconfirmed;
     }
+  }
+
+  void _onSubmitFailed(Object e) {
+    if (!mounted) return;
+    setState(() => _pendingAction = null);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(humanize(e))));
   }
 
   Future<void> _cancelGame() async {
@@ -475,7 +494,7 @@ class _GameBody extends StatelessWidget {
   final VoidCallback onStartGame;
   final VoidCallback onCancelGame;
   final VoidCallback onLeaveGame;
-  final Future<void> Function(Map<String, dynamic>, int) onAction;
+  final Future<ActionSubmitResult> Function(Map<String, dynamic>, int) onAction;
   final Future<void> Function() onForfeit;
 
   @override

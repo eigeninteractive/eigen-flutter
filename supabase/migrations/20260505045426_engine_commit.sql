@@ -2,7 +2,7 @@
 -- Engine commit & read RPCs (service-role, EF-only)
 -- ============================================
 -- The edge function's commit chokepoint and the ground-truth reads it runs the
--- TypeScript GameEngine against. All REVOKEd from authenticated.
+-- TypeScript gameModule against. All REVOKEd from authenticated.
 --
 -- Naming: engine_* = service-role, EF-only gated RPCs (REVOKEd from
 -- authenticated). cron_* = pg_cron-scheduled private jobs. app_* =
@@ -39,7 +39,7 @@ BEGIN
   FROM public.games WHERE id = p_game_id
   FOR UPDATE;
 
-  IF NOT FOUND THEN RAISE EXCEPTION 'Game not found'; END IF;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Game not found' USING ERRCODE = 'EIG06'; END IF;
   IF v_created_by IS NULL OR v_created_by != p_caller_id THEN
     RAISE EXCEPTION 'Only the game creator can start the game';
   END IF;
@@ -93,6 +93,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Service-role only (mirrors apply_rating_updates): clients never call these.
 REVOKE EXECUTE ON FUNCTION public.engine_commit_start(UUID, UUID, JSONB, JSONB, TEXT, INT, JSONB) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.engine_commit_start(UUID, UUID, JSONB, JSONB, TEXT, INT, JSONB) TO service_role;
 
 -- Commits one EF-computed action transition under the games lock.
 -- Identity model: the action row records WHO performed it. user/bot/resign carry
@@ -202,11 +203,11 @@ BEGIN
   -- ── User / bot move ─────────────────────────────────────────────────────────
   IF p_mode IN ('user', 'bot') THEN
     IF private.deadline_expired(v_cur_deadline, v_now) THEN
-      RAISE EXCEPTION 'Turn has expired';
+      RAISE EXCEPTION 'Turn has expired' USING ERRCODE = 'EIG03';
     END IF;
     v_t_player_index := (v_t->>'player_index')::INT;
     IF NOT (v_t_player_index = ANY(v_cur_pending)) THEN
-      RAISE EXCEPTION 'Not your turn';
+      RAISE EXCEPTION 'Not your turn' USING ERRCODE = 'EIG04';
     END IF;
 
     v_new_player_times := v_cur_player_times;
@@ -245,4 +246,5 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 REVOKE EXECUTE ON FUNCTION public.engine_commit_action(TEXT, UUID, UUID, UUID, INT, JSONB) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.engine_commit_action(TEXT, UUID, UUID, UUID, INT, JSONB) TO service_role;
 

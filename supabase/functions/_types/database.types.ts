@@ -312,7 +312,6 @@ export type Database = {
           player_times: number[] | null;
           turn_deadline: string | null;
           turn_started_at: string | null;
-          updated_at: string;
           user_id: string | null;
           version: number;
         };
@@ -326,9 +325,8 @@ export type Database = {
           player_times?: number[] | null;
           turn_deadline?: string | null;
           turn_started_at?: string | null;
-          updated_at?: string;
           user_id?: string | null;
-          version?: number;
+          version: number;
         };
         Update: {
           bot_id?: string | null;
@@ -340,7 +338,6 @@ export type Database = {
           player_times?: number[] | null;
           turn_deadline?: string | null;
           turn_started_at?: string | null;
-          updated_at?: string;
           user_id?: string | null;
           version?: number;
         };
@@ -729,7 +726,6 @@ export type Database = {
           player_times: number[] | null;
           turn_deadline: string | null;
           turn_started_at: string | null;
-          updated_at: string;
           user_id: string | null;
           version: number;
         }[];

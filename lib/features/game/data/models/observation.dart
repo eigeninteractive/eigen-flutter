@@ -5,8 +5,11 @@ part 'observation.g.dart';
 
 /// A player's observation of a game state.
 ///
-/// Infra-level row, one per participant (human or bot), keyed by
-/// `(gameId, playerIndex)`. [data] is the opaque game-specific payload.
+/// Infra-level row, append-only: one per participant (human or bot) per state
+/// version, keyed by `(gameId, playerIndex, version)`. The stream of a seat's
+/// rows ordered by [version] is that seat's complete frame history — the
+/// repository delivers it in order, fetching any versions Realtime skipped.
+/// [data] is the opaque game-specific payload.
 /// [pendingPlayers] is this seat's view of the canonical pending set (a
 /// hidden-info game may narrow it, never dropping the seat itself); callers
 /// derive "is my turn" as `pendingPlayers.contains(playerIndex)`.
@@ -44,7 +47,6 @@ abstract class Observation with _$Observation {
     /// countdown without polling.
     DateTime? turnStartedAt,
     required DateTime createdAt,
-    required DateTime updatedAt,
   }) = _Observation;
 
   factory Observation.fromJson(Map<String, dynamic> json) =>

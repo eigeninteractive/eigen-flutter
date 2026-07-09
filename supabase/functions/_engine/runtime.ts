@@ -35,20 +35,43 @@ export function env(name: string): string {
   return value;
 }
 
-// ── Commit conflict signalling ─────────────────────────────────────────────────
+// ── Engine error codes ────────────────────────────────────────────────────────
 
-/** SQLSTATEs `engine_commit_action` raises that the EF classifies for an
- * optimistic retry. Matched on `PostgrestError.code` (supabase-js surfaces a
- * raised function's SQLSTATE there) — never on the message string. Mirror of the
- * codes raised in SQL (`apply_rating_updates` and `commit_should_abstain`); keep
- * the two in sync. */
-export const SqlState = {
+/** The engine's stable error-code registry — one namespace across all tiers.
+ *
+ * SQL raises these as SQLSTATEs (`USING ERRCODE = 'EIGxx'`), so they surface
+ * on `PostgrestError.code` both for the EF's gated RPCs (threaded onto
+ * {@link HttpError.code}) and for the client-direct `app_*` RPCs
+ * (`PostgrestException.code` in Dart). TS-raised {@link HttpError}s carry the
+ * same codes, and `app.ts` returns them to clients as `{ error, code }`.
+ * Everything downstream — the EF's retry classification, HTTP status mapping,
+ * and the client's user-facing copy — dispatches on the code, never on the
+ * message string, so copy edits cannot change behavior.
+ *
+ * Keep in sync with the SQL raises and the Dart `EngineErrorCodes` twin
+ * (`lib/core/errors/engine_exception.dart`). */
+export const EngineCode = {
   /** `player_ratings.revision` moved between the EF read and the commit — the
    * rating baseline this finish computed from is stale. Always retryable. */
   ratingConflict: "EIG01",
   /** Optimistic `game_states.version` mismatch — the board advanced. Retryable
    * for a forfeit (recompute against the new state); a user/bot move rejects it. */
   staleVersion: "EIG02",
+  turnExpired: "EIG03",
+  notYourTurn: "EIG04",
+  gameNotActive: "EIG05",
+  gameNotFound: "EIG06",
+  notParticipant: "EIG07",
+  gameFull: "EIG08",
+  alreadyJoined: "EIG09",
+  notAcceptingPlayers: "EIG10",
+  friendsOnly: "EIG11",
+  unsupportedSchema: "EIG12",
+  usernameInvalid: "EIG13",
+  usernameTaken: "EIG14",
+  notAuthenticated: "EIG15",
+  /** A game's `applyAction` rejected the move ({@link IllegalMoveError}). */
+  illegalMove: "EIG16",
 } as const;
 
 // ── Errors ────────────────────────────────────────────────────────────────────
@@ -68,22 +91,29 @@ export class HttpError extends HTTPException {
   }
 }
 
-/** Map an engine_* RPC error to an HTTP status. The two optimistic-conflict
- * SQLSTATEs map by `code` (robust); the remaining engine errors still map by
- * their message. The client humanizes 409 as "board updated — try again". */
+/** HTTP status per engine code, for RPC errors that carry one. */
+const statusByCode: Readonly<Record<string, ContentfulStatusCode>> = {
+  [EngineCode.ratingConflict]: 409,
+  [EngineCode.staleVersion]: 409,
+  [EngineCode.turnExpired]: 409,
+  [EngineCode.notYourTurn]: 409,
+  [EngineCode.gameNotActive]: 409,
+  [EngineCode.gameNotFound]: 404,
+  [EngineCode.notParticipant]: 403,
+  [EngineCode.notAuthenticated]: 401,
+};
+
+/** Map an engine_* RPC error to an HTTP status. Coded errors map by `code`
+ * (robust); uncoded ones (creator checks and similar EF-internal guards) fall
+ * back to message matching. The client humanizes 409 as "board updated — try
+ * again". */
 export function rpcErrorStatus(
   message: string,
   code?: string,
 ): ContentfulStatusCode {
-  if (code === SqlState.ratingConflict || code === SqlState.staleVersion) {
-    return 409;
-  }
-  if (message.includes("Turn has expired")) return 409;
-  if (message.includes("Not your turn")) return 409;
-  if (message.includes("not active")) return 409;
+  if (code && statusByCode[code]) return statusByCode[code];
   if (message.includes("not ready")) return 409;
   if (message.includes("not found")) return 404;
-  if (message.includes("Not a participant")) return 403;
   if (message.includes("creator")) return 403;
   return 500;
 }
@@ -143,6 +173,8 @@ export async function commitWithRetry<T>(
 /** The verified caller's user id, or 401. `userClaims` is only populated by
  * `auth: 'user'`, so this doubles as a belt-and-braces guard on user routes. */
 export function requireUserId(userId: string | null | undefined): string {
-  if (!userId) throw new HttpError(401, "Unauthenticated");
+  if (!userId) {
+    throw new HttpError(401, "Unauthenticated", EngineCode.notAuthenticated);
+  }
   return userId;
 }

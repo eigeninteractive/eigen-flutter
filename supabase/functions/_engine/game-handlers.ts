@@ -16,13 +16,18 @@
  */
 
 import type { Context } from "@hono/hono";
-import type { GameEngine, ReplayFrame } from "types/engine.types.ts";
+import type {
+  GameModule,
+  GameRules,
+  ReplayFrame,
+  TransitionCause,
+} from "types/engine.types.ts";
 import { z } from "zod";
 import {
   assertHookState,
   parseClientPayload,
   parseStoredPayload,
-  schemasFor,
+  rulesFor,
 } from "./game-engine.ts";
 import {
   applyMove,
@@ -45,7 +50,7 @@ import {
   readGameState,
   readReplay,
 } from "./repo.ts";
-import { type AppEnv, HttpError, requireUserId } from "./runtime.ts";
+import { type AppEnv, EngineCode, HttpError, requireUserId } from "./runtime.ts";
 
 // ── Request bodies ────────────────────────────────────────────────────────────
 // One Zod schema per route; `jsonBody` parses and 400s in the engine error
@@ -123,13 +128,13 @@ export const localBotActionBody = actionBody.extend({
 // ── Route handlers ────────────────────────────────────────────────────────────
 
 export async function handleAction(
-  gameEngine: GameEngine,
+  gameModule: GameModule,
   c: Context<AppEnv>,
   body: z.infer<typeof actionBody>,
 ) {
   const { supabaseAdmin: db, userClaims } = c.var.supabaseContext;
   const userId = requireUserId(userClaims?.id);
-  await applyMove(gameEngine, db, {
+  await applyMove(gameModule, db, {
     gameId: body.game_id,
     data: body.data,
     expectedVersion: body.expected_version,
@@ -144,35 +149,34 @@ export async function handleAction(
 }
 
 export async function handleStart(
-  gameEngine: GameEngine,
+  gameModule: GameModule,
   c: Context<AppEnv>,
   body: z.infer<typeof gameIdBody>,
 ) {
   const { supabaseAdmin: db, userClaims } = c.var.supabaseContext;
   const userId = requireUserId(userClaims?.id);
   const start = await readForStart(db, body.game_id);
-  const schemas = schemasFor(gameEngine, start.schema_version);
+  const rules = rulesFor(gameModule, start.schema_version);
   const config = parseStoredPayload(
-    schemas.config,
+    rules.schemas.config,
     start.config,
     "config",
     start.schema_version,
   );
 
   const seed = randomSeed();
-  const envelope = gameEngine.initialState({
+  const envelope = rules.initialState({
     rng: deriveRng(seed, 0),
     config,
     playerCount: start.player_count,
-    schemaVersion: start.schema_version,
   });
-  assertHookState(schemas, envelope, start.schema_version);
-  const observations = fanOutObservations(gameEngine, {
+  assertHookState(rules.schemas, envelope, start.schema_version);
+  const observations = fanOutObservations(rules, {
     state: envelope.state,
     pending: envelope.pending_players,
     participantCount: start.player_count,
     config,
-    schemaVersion: start.schema_version,
+    cause: null,
     isReplay: false,
   });
 
@@ -196,7 +200,7 @@ export async function handleStart(
  * assertion — the gated RPC is a thin writer backed by the `games` CHECK
  * constraints. A friends invite is pushed post-commit. */
 export async function handleCreate(
-  gameEngine: GameEngine,
+  gameModule: GameModule,
   c: Context<AppEnv>,
   body: z.infer<typeof createBody>,
 ) {
@@ -214,13 +218,17 @@ export async function handleCreate(
     );
   }
 
-  // The client's schema_version must be one this deployment ships schemas for
+  // The client's schema_version must be one this deployment ships rules for
   // (an older app creating an older-version game is fine); the config is
   // parsed with that version's schema before anything is persisted.
-  const schemas = schemasFor(gameEngine, body.schema_version, 400);
-  const config = parseClientPayload(schemas.config, body.config, "config");
+  const rules = rulesFor(gameModule, body.schema_version, 400);
+  const config = parseClientPayload(
+    rules.schemas.config,
+    body.config,
+    "config",
+  );
 
-  const pool = gameEngine.ratingPool({
+  const pool = rules.ratingPool({
     access: body.access,
     turnSeconds: body.turn_seconds,
     budgetSeconds: body.budget_seconds,
@@ -269,7 +277,7 @@ export async function handleCreate(
  * (seatability, schema, guest/server, timing rules); the gated RPC just seats
  * the bots atomically. The client calls `/game/start` next. */
 export async function handleCreateSolo(
-  gameEngine: GameEngine,
+  gameModule: GameModule,
   c: Context<AppEnv>,
   body: z.infer<typeof createSoloBody>,
 ) {
@@ -277,8 +285,12 @@ export async function handleCreateSolo(
   const userId = requireUserId(userClaims?.id);
   const isAnon = c.var.supabaseContext.jwtClaims?.is_anonymous === true;
 
-  const schemas = schemasFor(gameEngine, body.schema_version, 400);
-  const config = parseClientPayload(schemas.config, body.config, "config");
+  const rules = rulesFor(gameModule, body.schema_version, 400);
+  const config = parseClientPayload(
+    rules.schemas.config,
+    body.config,
+    "config",
+  );
   const timed = body.turn_seconds !== null || body.budget_seconds !== null;
 
   const bots = await readBots(db, body.bot_ids);
@@ -293,9 +305,7 @@ export async function handleCreateSolo(
         `Bot ${botId} does not support schema ${body.schema_version}`,
       );
     }
-    if (
-      !gameEngine.botSeatable({ gameConfig: config, botConfig: bot.config })
-    ) {
+    if (!rules.botSeatable({ gameConfig: config, botConfig: bot.config })) {
       throw new HttpError(400, "Bot does not support this game configuration");
     }
     if (bot.isLocal) {
@@ -336,7 +346,7 @@ export async function handleCreateSolo(
  * cost per-move compute); the gated RPC enforces the creator + seat-count
  * invariants under its lock. */
 export async function handleAddBot(
-  gameEngine: GameEngine,
+  gameModule: GameModule,
   c: Context<AppEnv>,
   body: z.infer<typeof addBotBody>,
 ) {
@@ -353,13 +363,14 @@ export async function handleAddBot(
   ]);
   const bot = bots.get(body.bot_id);
   if (bot === undefined) throw new HttpError(404, "Bot not found");
+  const rules = rulesFor(gameModule, game.schema_version);
   const gameConfig = parseStoredPayload(
-    schemasFor(gameEngine, game.schema_version).config,
+    rules.schemas.config,
     game.config,
     "config",
     game.schema_version,
   );
-  if (!gameEngine.botSeatable({ gameConfig, botConfig: bot.config })) {
+  if (!rules.botSeatable({ gameConfig, botConfig: bot.config })) {
     throw new HttpError(400, "Bot does not support this game configuration");
   }
   await addBotToGame(db, userId, body.game_id, body.bot_id);
@@ -367,20 +378,20 @@ export async function handleAddBot(
 }
 
 export async function handleForfeit(
-  gameEngine: GameEngine,
+  gameModule: GameModule,
   c: Context<AppEnv>,
   body: z.infer<typeof gameIdBody>,
 ) {
   const { supabaseAdmin: db, userClaims } = c.var.supabaseContext;
   const userId = requireUserId(userClaims?.id);
-  await forfeitGame(gameEngine, db, body.game_id, userId, "resign");
+  await forfeitGame(gameModule, db, body.game_id, userId, "resign");
   return c.json({ ok: true });
 }
 
 /** An authenticated participant nudges their own expired game (the cron sweep
  * in `internal-handlers.ts` is the batch driver). */
 export async function handleExpireUser(
-  gameEngine: GameEngine,
+  gameModule: GameModule,
   c: Context<AppEnv>,
   body: z.infer<typeof gameIdBody>,
 ) {
@@ -388,14 +399,60 @@ export async function handleExpireUser(
   const userId = requireUserId(userClaims?.id);
   const read = await readGameState(db, body.game_id);
   if (!read.roster.some((r) => r.user_id === userId)) {
-    throw new HttpError(403, "Not a participant in this game");
+    throw new HttpError(
+      403,
+      "Not a participant in this game",
+      EngineCode.notParticipant,
+    );
   }
-  await expireGame(gameEngine, db, body.game_id);
+  await expireGame(gameModule, db, body.game_id);
   return c.json({ ok: true });
 }
 
+/** The reserved non-move event payload shapes (see the `EventData` doc) —
+ * used to reconstruct a replay frame's cause. A resign is logged as a `user`
+ * action whose data is event data, so the *shape* (not the action row's
+ * type) is what distinguishes a move from an event. */
+const eventDataSchema = z.union([
+  z.strictObject({ type: z.literal("timeout") }),
+  z.strictObject({
+    type: z.enum(["forfeit", "auto_forfeit"]),
+    player_index: z.number().int(),
+  }),
+]);
+
+/** Rebuild the {@link TransitionCause} of one replay frame from its logged
+ * action row — null for the initial frame, which no action produced. The
+ * live pipeline never reconstructs (it knows the cause first-hand); only
+ * replay recovers it from the log. */
+function replayCause(
+  rules: GameRules,
+  schemaVersion: number,
+  action: { type: string; data: unknown; player_index: number | null } | null,
+): TransitionCause {
+  if (!action) return null;
+  const event = eventDataSchema.safeParse(action.data);
+  if (event.success) return { kind: "event", data: event.data };
+  if (action.type === "system") {
+    throw new HttpError(500, "Logged system action has malformed event data");
+  }
+  if (action.player_index === null) {
+    throw new HttpError(500, "Logged move is missing its player_index");
+  }
+  return {
+    kind: "action",
+    data: parseStoredPayload(
+      rules.schemas.action,
+      action.data,
+      "action data",
+      schemaVersion,
+    ),
+    playerIndex: action.player_index,
+  };
+}
+
 export async function handleReplay(
-  gameEngine: GameEngine,
+  gameModule: GameModule,
   c: Context<AppEnv>,
   body: z.infer<typeof gameIdBody>,
 ) {
@@ -409,11 +466,17 @@ export async function handleReplay(
     throw new HttpError(400, "Replay is only available for finished games");
   }
   const caller = replay.participants.find((p) => p.user_id === userId);
-  if (!caller) throw new HttpError(403, "Not a participant in this game");
+  if (!caller) {
+    throw new HttpError(
+      403,
+      "Not a participant in this game",
+      EngineCode.notParticipant,
+    );
+  }
 
-  const schemas = schemasFor(gameEngine, replay.schema_version);
+  const rules = rulesFor(gameModule, replay.schema_version);
   const config = parseStoredPayload(
-    schemas.config,
+    rules.schemas.config,
     replay.config ?? {},
     "config",
     replay.schema_version,
@@ -421,9 +484,9 @@ export async function handleReplay(
   // Mapping to the declared `ReplayFrame` (game payloads as `unknown`) is what
   // keeps this route's inferred response type finite — see the type's doc.
   const frames = replay.game_states.map((frame): ReplayFrame => {
-    const slice = gameEngine.computeObservation({
+    const slice = rules.computeObservation({
       state: parseStoredPayload(
-        schemas.state,
+        rules.schemas.state,
         frame.state ?? {},
         "state",
         replay.schema_version,
@@ -432,7 +495,7 @@ export async function handleReplay(
       playerIndex: caller.player_index,
       participantCount: replay.participants.length,
       config,
-      schemaVersion: replay.schema_version,
+      cause: replayCause(rules, replay.schema_version, frame.actions),
       isReplay: true,
     });
     return {
@@ -449,13 +512,13 @@ export async function handleReplay(
 }
 
 export async function handleLocalBotAction(
-  gameEngine: GameEngine,
+  gameModule: GameModule,
   c: Context<AppEnv>,
   body: z.infer<typeof localBotActionBody>,
 ) {
   const { supabaseAdmin: db, userClaims } = c.var.supabaseContext;
   const userId = requireUserId(userClaims?.id);
-  await applyMove(gameEngine, db, {
+  await applyMove(gameModule, db, {
     gameId: body.game_id,
     data: body.data,
     expectedVersion: body.expected_version,
@@ -470,11 +533,11 @@ export async function handleLocalBotAction(
 }
 
 export async function handleDeleteAccount(
-  gameEngine: GameEngine,
+  gameModule: GameModule,
   c: Context<AppEnv>,
 ) {
   const { supabaseAdmin: db, userClaims } = c.var.supabaseContext;
   const userId = requireUserId(userClaims?.id);
-  await purgeUserGames(gameEngine, db, userId);
+  await purgeUserGames(gameModule, db, userId);
   return c.json({ ok: true });
 }

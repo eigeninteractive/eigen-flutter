@@ -10,7 +10,7 @@
  */
 
 import type { Context } from "@hono/hono";
-import type { GameEngine } from "types/engine.types.ts";
+import type { GameModule } from "types/engine.types.ts";
 import { z } from "zod";
 import { expireGame, purgeUserGames } from "./game-pipeline.ts";
 import type { AppEnv } from "./runtime.ts";
@@ -22,7 +22,7 @@ export const purgeUsersBody = z.object({ user_ids: z.array(z.string()) });
 /** The pg_cron expire sweep drives the timeout for a batch of games in one
  * hop (the participant nudge in `game-handlers.ts` is the per-game driver). */
 export async function handleExpireBatch(
-  gameEngine: GameEngine,
+  gameModule: GameModule,
   c: Context<AppEnv>,
   body: z.infer<typeof expireBatchBody>,
 ) {
@@ -31,7 +31,7 @@ export async function handleExpireBatch(
   let failed = 0;
   for (const gameId of body.game_ids) {
     try {
-      await expireGame(gameEngine, db, gameId);
+      await expireGame(gameModule, db, gameId);
       processed++;
     } catch (e) {
       console.error(`expire failed for ${gameId}:`, e);
@@ -50,7 +50,7 @@ export async function handleExpireBatch(
  * forfeit's consequence is game-defined and may leave a multiplayer game
  * active), so this cannot be a per-game signal. */
 export async function handlePurgeUsers(
-  gameEngine: GameEngine,
+  gameModule: GameModule,
   c: Context<AppEnv>,
   body: z.infer<typeof purgeUsersBody>,
 ) {
@@ -58,7 +58,7 @@ export async function handlePurgeUsers(
   let purged = 0;
   for (const userId of body.user_ids) {
     try {
-      await purgeUserGames(gameEngine, db, userId);
+      await purgeUserGames(gameModule, db, userId);
       purged++;
     } catch (e) {
       console.error(`Failed to purge user ${userId}:`, e);

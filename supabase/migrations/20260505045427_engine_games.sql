@@ -18,7 +18,7 @@
 -- ============================================
 -- RPC: engine_create_game — the EF /game/create route's gated write, a thin
 -- atomic writer. The EF is authoritative for policy: it validates timing/players,
--- gates guests, derives the rating pool (GameEngine.ratingPool → p_pool), and
+-- gates guests, derives the rating pool (GameRules.ratingPool → p_pool), and
 -- validates the client's rated assertion (→ p_rated). Integrity is guaranteed by
 -- the `games` CHECK constraints (timing_mode_exclusive, increment_requires_budget,
 -- player_count_valid, rated_pool_consistent, bounds) and the short_code UNIQUE,
@@ -39,7 +39,7 @@ CREATE OR REPLACE FUNCTION public.engine_create_game(
   -- pool AND a registered caller) and validates it against the client's
   -- assertion; the client cannot forge it.
   p_rated             BOOLEAN,
-  -- Pool name from GameEngine.ratingPool (NULL ⇒ unrated), computed in the EF.
+  -- Pool name from GameRules.ratingPool (NULL ⇒ unrated), computed in the EF.
   p_pool              TEXT
 )
 RETURNS UUID AS $$
@@ -81,6 +81,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 REVOKE EXECUTE ON FUNCTION public.engine_create_game(UUID, INT, INT, INT, public.game_access, INT, INT, INT, JSONB, BOOLEAN, TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.engine_create_game(UUID, INT, INT, INT, public.game_access, INT, INT, INT, JSONB, BOOLEAN, TEXT) TO service_role;
 
 -- ============================================
 -- Bot seating
@@ -90,7 +91,7 @@ REVOKE EXECUTE ON FUNCTION public.engine_create_game(UUID, INT, INT, INT, public
 -- matchmaking auto-fill (service-role). Caller must hold the games row lock.
 -- Enforces the server-bots-only + schema + rated invariants. Config seatability
 -- (the game's botSeatable rule) is gated by the EF in TypeScript
--- (GameEngine.botSeatable) before this runs. Local bots are NEVER seated here;
+-- (GameRules.botSeatable) before this runs. Local bots are NEVER seated here;
 -- they go only through engine_create_solo_game (sole-human games).
 CREATE OR REPLACE FUNCTION private.seat_server_bot(p_game_id UUID, p_bot_id UUID)
 RETURNS VOID AS $$
@@ -109,9 +110,9 @@ BEGIN
        v_game_config
   FROM public.games WHERE id = p_game_id;
 
-  IF NOT FOUND THEN RAISE EXCEPTION 'Game not found'; END IF;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Game not found' USING ERRCODE = 'EIG06'; END IF;
   IF v_status NOT IN ('waiting', 'ready') THEN
-    RAISE EXCEPTION 'Game is not accepting players';
+    RAISE EXCEPTION 'Game is not accepting players' USING ERRCODE = 'EIG10';
   END IF;
 
   SELECT schema_version, is_local, rated_eligible, config
@@ -143,7 +144,7 @@ BEGIN
   SELECT COUNT(*) INTO v_count
   FROM public.participants WHERE game_id = p_game_id;
   IF v_count >= v_max_players THEN
-    RAISE EXCEPTION 'Game is full';
+    RAISE EXCEPTION 'Game is full' USING ERRCODE = 'EIG08';
   END IF;
 
   INSERT INTO public.participants (game_id, bot_id, player_index)
@@ -158,7 +159,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 -- RPC: engine_add_bot_to_game — the EF /game/add-bot route's gated write. The
 -- host's waiting-room "Add bot": server bots only; the EF rejects guests (server
 -- bots cost per-move compute) and gates config seatability
--- (GameEngine.botSeatable) in TypeScript. This function holds the games lock for
+-- (GameRules.botSeatable) in TypeScript. This function holds the games lock for
 -- the creator check + seat-count cap; the bot-class invariants + seat logic live
 -- in seat_server_bot (all riding that required lock). Gated to the service role;
 -- the verified caller arrives as p_caller_id.
@@ -175,7 +176,7 @@ BEGIN
   FROM public.games WHERE id = p_game_id
   FOR UPDATE;
 
-  IF NOT FOUND THEN RAISE EXCEPTION 'Game not found'; END IF;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Game not found' USING ERRCODE = 'EIG06'; END IF;
   IF v_created_by IS NULL OR v_created_by != p_caller_id THEN
     RAISE EXCEPTION 'Only the game creator can add a bot';
   END IF;
@@ -185,13 +186,14 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 REVOKE EXECUTE ON FUNCTION public.engine_add_bot_to_game(UUID, UUID, UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.engine_add_bot_to_game(UUID, UUID, UUID) TO service_role;
 
 -- RPC: engine_create_solo_game — the EF /game/create-solo route's gated write, a
 -- thin atomic writer. Creates an unrated, private game with the caller as the
 -- SOLE human and seats the given bots (in array order) full at creation, so it is
 -- never joinable (a local bot only ever exists in a sole-human game — invariant
 -- 1). The EF owns all bot-class policy in TypeScript before this runs: config
--- seatability (GameEngine.botSeatable), schema compatibility, guests-may-seat-
+-- seatability (GameRules.botSeatable), schema compatibility, guests-may-seat-
 -- local-bots-only, and the "server bot ⇒ timed / local bot ⇒ untimed" rules
 -- (these have no SQL backstop and live purely in TS). Bot existence is guaranteed
 -- by the participant→bots FK. The client calls /game/start next. Gated to the
@@ -258,3 +260,4 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 REVOKE EXECUTE ON FUNCTION public.engine_create_solo_game(UUID, UUID[], INT, INT, INT, INT, JSONB) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.engine_create_solo_game(UUID, UUID[], INT, INT, INT, INT, JSONB) TO service_role;

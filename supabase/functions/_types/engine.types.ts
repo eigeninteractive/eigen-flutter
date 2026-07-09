@@ -36,7 +36,7 @@ type OverrideArgs<
  * of these RPCs, so the TS types here and the SQL contract move together.
  * Game-owned jsonb (`games.config`, `game_states.state`, `observations.data`)
  * deliberately stays `Json`: the per-game schema boundary
- * (`GameEngine.schemas`) types those, never the engine.
+ * ({@link GameRules.schemas}) types those, never the engine.
  */
 export type Database = Omit<DatabaseGenerated, "public"> & {
   public: Omit<DatabaseGenerated["public"], "Functions"> & {
@@ -182,14 +182,14 @@ export interface ObservationSlice {
   pending_players: number[];
 }
 
-// ── GameEngine hook args + contract ───────────────────────────────────────────
+// ── GameModule hook args + contract ───────────────────────────────────────────
 
-/** Args common to every hook: the game config (parsed by the harness against
- * the game's version schema) and the schema version of the game row, so a
- * gameEngine build can branch on either. */
+/** Args common to every hook: the game config, parsed by the harness against
+ * the version schema of the {@link GameRules} entry being invoked. No
+ * `schemaVersion` field — a rules unit is version-specific by construction,
+ * so hooks never branch on version. */
 interface HookContext<TConfig extends JsonObject = JsonObject> {
   config: TConfig;
-  schemaVersion: number;
 }
 
 export interface InitialStateArgs<TConfig extends JsonObject = JsonObject>
@@ -220,7 +220,13 @@ export interface ApplyActionArgs<
 /** The infra-constructed payload of a non-move event, recorded verbatim in the
  * `actions` log. `forfeit` carries the forfeiting seat (a voluntary resign);
  * `auto_forfeit` is the engine-driven variant (account purge); `timeout`
- * carries no seat — the affected seats are {@link EventArgs.pending}. */
+ * carries no seat — the affected seats are {@link EventArgs.pending}.
+ *
+ * These two exact shapes are **reserved**: replay reconstructs each frame's
+ * {@link TransitionCause} by matching the logged payload against them (a
+ * resign is logged as a `user` action carrying event data), so a game's
+ * `action` schema must not accept a payload of exactly `{ type: "timeout" }`
+ * or `{ type: "forfeit" | "auto_forfeit", player_index }`. */
 export type EventData =
   | { type: "timeout" }
   | { type: "forfeit" | "auto_forfeit"; player_index: number };
@@ -242,20 +248,44 @@ export interface EventArgs<
   rng: Rand;
 }
 
+/**
+ * The transition that produced the state being projected: a player's move
+ * (`applyAction`), a non-move event (`handleEvent`), or `null` for the
+ * initial frame (`initialState`), which no transition produced.
+ *
+ * This is how a game tells each seat *what happened* — pure frame diffing
+ * can't recover causality (identical footprints, hidden-info moves, composite
+ * resolutions). Embed whatever animation/narration cues a seat is permitted
+ * to see into that seat's slice `data` (e.g. a `lastMove` field); visibility
+ * stays game-controlled because the embedding happens inside
+ * `computeObservation`. Cues describe a *transition*: a client should render
+ * them as animation only when it has the frame's predecessor, and as static
+ * "last move" info otherwise.
+ */
+export type TransitionCause<TAction extends JsonObject = JsonObject> =
+  | { kind: "action"; data: TAction; playerIndex: number }
+  | { kind: "event"; data: EventData }
+  | null;
+
 export interface ComputeObservationArgs<
   TState extends JsonObject = JsonObject,
+  TAction extends JsonObject = JsonObject,
   TConfig extends JsonObject = JsonObject,
 > extends HookContext<TConfig> {
   state: TState;
   pending: number[];
   playerIndex: number;
   participantCount: number;
+  /** What produced `state` — see {@link TransitionCause}. Shared across the
+   * per-seat fan-out; per-seat filtering of what it reveals is this hook's
+   * job. */
+  cause: TransitionCause<TAction>;
   /** TRUE only when projecting a finished game for replay — hidden-info games
    * may reveal opponent state. */
   isReplay: boolean;
 }
 
-/** The chosen game settings, passed to {@link GameEngine.ratingPool} at creation
+/** The chosen game settings, passed to {@link GameRules.ratingPool} at creation
  * so the game can decide its rating pool (or that the game is unrated). Mirrors
  * the columns `create_game` writes; `config` is already parsed against the
  * requested version's config schema. */
@@ -269,7 +299,7 @@ export interface RatingPoolArgs<TConfig extends JsonObject = JsonObject> {
   config: TConfig;
 }
 
-/** A candidate bot seating, passed to {@link GameEngine.botSeatable}.
+/** A candidate bot seating, passed to {@link GameRules.botSeatable}.
  * `gameConfig` is parsed against the game's version schema; `botConfig` is the
  * bot's declared capabilities (`bots.config`) — game-owned but unversioned by
  * the game schemas, so it stays opaque. */
@@ -296,29 +326,27 @@ export interface GameSchemas<
 }
 
 /**
- * The complete game-specific surface. Implement this once per app in
- * `functions/_lib/game.ts` (replace the scaffolded example) and export the
- * instance as `gameEngine`; the engine-owned harnesses pass it to
- * `createEngineApp`. The authoring
- * helpers (`IllegalMoveError`, `passthroughObservation`) live in
- * `_engine/game-engine.ts`.
+ * Everything one `schema_version` of a game needs: the payload contracts plus
+ * all six hooks, narrowly typed to that version's shapes. The Dart client has
+ * a same-named `GameRules` twin (its unit holds the client-side surface —
+ * payload codec, `isValidAction`/`previewAction`, rendering, and the
+ * `ratingPool`/`botSeatable` twins); keep the two in sync per version.
  *
- * The type parameters are the game's payload types, inferred from the Zod
+ * The type parameters are the version's payload types, inferred from the Zod
  * schemas in {@link schemas} (`z.infer<typeof stateSchema>` etc. — use `type`
- * aliases, not `interface`s). The harness parses every payload with the game
- * row's `schema_version` schemas before invoking a hook, so hook bodies never
- * see unvalidated JSON; for a game whose shapes changed across versions, make
- * each payload type the tagged union of its per-version shapes.
+ * aliases, not `interface`s). The harness parses every payload with this
+ * unit's schemas before invoking its hooks, so hook bodies never see
+ * unvalidated JSON — and never another version's shape. When rules or shapes
+ * change incompatibly, ship a new `GameRules` under the next version key
+ * (reusing unchanged pieces by import) instead of branching inside hooks.
  */
-export interface GameEngine<
+export interface GameRules<
   TState extends JsonObject = JsonObject,
   TAction extends JsonObject = JsonObject,
   TConfig extends JsonObject = JsonObject,
 > {
-  /** Payload contracts keyed by `schema_version`. The keys are the versions
-   * this build supports: game creation rejects a version not present here, and
-   * every read/commit parses with the game's own version entry. */
-  schemas: Record<number, GameSchemas<TState, TAction, TConfig>>;
+  /** The payload contracts for this version. */
+  schemas: GameSchemas<TState, TAction, TConfig>;
 
   /** Starting envelope. Draw any setup randomness (deck shuffle, first
    * player…) from `args.rng`. */
@@ -339,24 +367,49 @@ export interface GameEngine<
    * cannot be "illegal" — it always resolves. */
   handleEvent(args: EventArgs<TState, TConfig>): Envelope<TState>;
 
-  /** Project the state into one seat's view. Perfect-info games can use the
-   * `passthroughObservation` helper. */
+  /** Project the state into one seat's view — including what that seat may
+   * see of the transition that produced it (`args.cause`), so the client can
+   * animate. Perfect-info games can use the `passthroughObservation` helper
+   * (which ignores the cause). */
   computeObservation(
-    args: ComputeObservationArgs<TState, TConfig>,
+    args: ComputeObservationArgs<TState, TAction, TConfig>,
   ): ObservationSlice;
 
   /** Decide whether — and in which pool — a game with these settings is rated.
    * Return the pool name (e.g. `'rapid'`) or `null` for unrated. The EF computes
    * `canBeRated = pool != null && !guest` and validates the client's concrete
    * `rated` assertion against it (rejecting a mismatch), then writes it via
-   * `engine_create_game`. The Dart `GameModule` keeps a twin of this so the
+   * `engine_create_game`. The Dart `GameRules` keeps a twin of this so the
    * create dialog can gate the Rated/Casual toggle and send the same value. */
   ratingPool(args: RatingPoolArgs<TConfig>): string | null;
 
   /** Decide whether a bot's declared capabilities (`botConfig`) support a game
    * with `gameConfig`. The EF gates seating on this before committing; the Dart
-   * `GameModule` twin filters the bot pickers locally. Return `true` to allow. */
+   * `GameRules` twin filters the bot pickers locally. Return `true` to allow. */
   botSeatable(args: BotSeatableArgs<TConfig>): boolean;
+}
+
+/**
+ * The complete game-specific surface — the same-named twin of the Dart
+ * `GameModule` (whose extras are client-only creation/about UI). Implement
+ * this once per app in `functions/_lib/game.ts` (replace the scaffolded
+ * example) and export the instance as `gameModule`; the engine-owned
+ * harnesses pass it to `createEngineApp`. The authoring helpers
+ * (`IllegalMoveError`, `passthroughObservation`) live in
+ * `_engine/game-engine.ts`.
+ *
+ * The harness owns all version dispatch: every request resolves the game
+ * row's `schema_version` entry from {@link versions} and invokes that unit's
+ * hooks — game code never branches on version.
+ */
+export interface GameModule {
+  /** The {@link GameRules} units keyed by `schema_version` — exactly the
+   * versions this build ships. Sparse on purpose: game creation rejects a
+   * version not present here, loading a stored game requires its version's
+   * entry, and a drained old version is retired by deleting its entry. The
+   * entries erase to bare `GameRules` — safe, because the harness parses each
+   * payload with the same entry's schemas before invoking its hooks. */
+  versions: Record<number, GameRules>;
 }
 
 // ── Ratings ───────────────────────────────────────────────────────────────────

@@ -84,15 +84,19 @@ bool soloPlayAvailable(Ref ref) {
   final hasUntimed = timing.any((c) => c is UntimedConfig);
   final hasTimed = timing.any((c) => c is! UntimedConfig);
 
+  // Solo creation always targets the latest version, so bot usability is
+  // evaluated against the latest rules unit.
   final hasUsableLocal = bots.any(
     (b) =>
         b.isLocal &&
-        b.schemaVersion <= module.schemaVersion &&
-        module.localBots.any((l) => l.username == b.username),
+        b.schemaVersion <= module.latestSchemaVersion &&
+        module.latestRules.localBots.any((l) => l.username == b.username),
   );
   final hasUsableServer =
       !isGuest &&
-      bots.any((b) => !b.isLocal && b.schemaVersion <= module.schemaVersion);
+      bots.any(
+        (b) => !b.isLocal && b.schemaVersion <= module.latestSchemaVersion,
+      );
 
   return (hasUntimed && hasUsableLocal) || (hasTimed && hasUsableServer);
 }
@@ -248,7 +252,9 @@ Future<String> joinByCode(Ref ref, {required String code}) => ref
     .read(gameRepositoryProvider)
     .joinGameByCode(
       code,
-      clientSchemaVersion: ref.read(currentGameModuleProvider).schemaVersion,
+      clientSchemaVersion: ref
+          .read(currentGameModuleProvider)
+          .latestSchemaVersion,
     );
 
 /// One-time fetch of game outcomes for a finished game.

@@ -16,7 +16,7 @@ import type {
   CommitTransitionWire,
   Envelope,
   EventData,
-  GameEngine,
+  GameModule,
   PlayerInput,
   RatingWrite,
 } from "types/engine.types.ts";
@@ -25,7 +25,7 @@ import {
   IllegalMoveError,
   parseClientPayload,
   parseStoredPayload,
-  schemasFor,
+  rulesFor,
 } from "./game-engine.ts";
 import { notifyTransition } from "./notify.ts";
 import { deriveRng, fanOutObservations, toTransition } from "./observation.ts";
@@ -38,7 +38,7 @@ import {
   readGameState,
   readRatingsForSeats,
 } from "./repo.ts";
-import { commitWithRetry, HttpError, SqlState } from "./runtime.ts";
+import { commitWithRetry, EngineCode, HttpError } from "./runtime.ts";
 
 declare global {
   /** Injected by the Supabase Edge runtime. Its shipped `edge-runtime.d.ts`
@@ -54,19 +54,25 @@ declare global {
 /** A user/bot move only retries when its rating baseline moved — never on a
  * board advance (a moved board must reject the move, not silently re-apply it). */
 const isRatingConflict = (code: string | undefined): boolean =>
-  code === SqlState.ratingConflict;
+  code === EngineCode.ratingConflict;
 
 /** A forfeit additionally retries a board advance: it recomputes the forfeit
  * against the new state (the existing optimistic-forfeit behaviour). */
 const isForfeitRetryable = (code: string | undefined): boolean =>
-  code === SqlState.ratingConflict || code === SqlState.staleVersion;
+  code === EngineCode.ratingConflict || code === EngineCode.staleVersion;
 
 // ── Roster guards ─────────────────────────────────────────────────────────────
 
 /** The caller's seat in the roster, or 403 for a non-participant. */
 export function seatOf(read: ReadGameState, userId: string): number {
   const seat = read.roster.find((r) => r.user_id === userId);
-  if (!seat) throw new HttpError(403, "Not a participant in this game");
+  if (!seat) {
+    throw new HttpError(
+      403,
+      "Not a participant in this game",
+      EngineCode.notParticipant,
+    );
+  }
   return seat.player_index;
 }
 
@@ -81,7 +87,11 @@ export function assertLocalBotSeat(
   playerIndex: number,
 ): string {
   if (!read.roster.some((r) => r.user_id === userId)) {
-    throw new HttpError(403, "Not a participant in this game");
+    throw new HttpError(
+      403,
+      "Not a participant in this game",
+      EngineCode.notParticipant,
+    );
   }
   const seat = read.roster.find((r) => r.player_index === playerIndex);
   if (!seat?.bot_id) {
@@ -164,7 +174,7 @@ async function resolveRatingUpdates(
   });
 }
 
-/** Apply a human or bot move: read → resolve seat → guard → gameEngine → fan-out
+/** Apply a human or bot move: read → resolve seat → guard → gameModule → fan-out
  * → commit, retrying transparently when a rated finish hits a stale rating
  * baseline (the only retryable conflict for a move — a board advance must reject).
  *
@@ -174,7 +184,7 @@ async function resolveRatingUpdates(
  * version; a *real* board advance instead trips the version guard below and
  * propagates (non-retryable). */
 export function applyMove(
-  gameEngine: GameEngine,
+  gameModule: GameModule,
   db: Db,
   opts: {
     gameId: string;
@@ -198,22 +208,30 @@ export function applyMove(
     // when the board has obviously advanced. It cannot diverge harmfully — if it
     // passes but the state moved before the locked commit, the SQL still rejects.
     if (read.meta.status !== "active") {
-      throw new HttpError(409, "Game is not active");
+      throw new HttpError(409, "Game is not active", EngineCode.gameNotActive);
     }
     if (read.latest.version !== opts.expectedVersion) {
-      throw new HttpError(409, "Stale state: the board has advanced");
+      throw new HttpError(
+        409,
+        "Stale state: the board has advanced",
+        EngineCode.staleVersion,
+      );
     }
 
     const version = read.meta.schema_version;
-    const schemas = schemasFor(gameEngine, version);
+    const rules = rulesFor(gameModule, version);
     // The sanitized action data also becomes the `actions` log entry below —
     // never the raw client payload.
-    const data = parseClientPayload(schemas.action, opts.data, "action data");
+    const data = parseClientPayload(
+      rules.schemas.action,
+      opts.data,
+      "action data",
+    );
     let envelope: Envelope;
     try {
-      envelope = gameEngine.applyAction({
+      envelope = rules.applyAction({
         state: parseStoredPayload(
-          schemas.state,
+          rules.schemas.state,
           read.latest.state,
           "state",
           version,
@@ -223,27 +241,28 @@ export function applyMove(
         playerIndex,
         rng: deriveRng(read.latest.rng_seed, read.latest.version + 1),
         config: parseStoredPayload(
-          schemas.config,
+          rules.schemas.config,
           read.meta.config,
           "config",
           version,
         ),
-        schemaVersion: version,
       });
     } catch (e) {
       // The hook's expected failure — a rule-breaking move — is the caller's
       // fault; anything else is a game bug and propagates as a 500.
-      if (e instanceof IllegalMoveError) throw new HttpError(400, e.message);
+      if (e instanceof IllegalMoveError) {
+        throw new HttpError(400, e.message, EngineCode.illegalMove);
+      }
       throw e;
     }
-    assertHookState(schemas, envelope, version);
+    assertHookState(rules.schemas, envelope, version);
 
-    const observations = fanOutObservations(gameEngine, {
+    const observations = fanOutObservations(rules, {
       state: envelope.state,
       pending: envelope.pending_players,
       participantCount: read.roster.length,
       config: read.meta.config,
-      schemaVersion: read.meta.schema_version,
+      cause: { kind: "action", data, playerIndex },
       isReplay: false,
     });
     const ratings = await resolveRatingUpdates(db, read, envelope);
@@ -279,7 +298,7 @@ export function applyMove(
  * an engine-driven forfeit leaves it null and becomes `auto_forfeit` — both in
  * the log and in the `type` the hook receives. */
 async function applyEvent(
-  gameEngine: GameEngine,
+  gameModule: GameModule,
   db: Db,
   read: ReadGameState,
   step:
@@ -294,10 +313,10 @@ async function applyEvent(
     player_index: step.targetSeat,
   };
   const version = read.meta.schema_version;
-  const schemas = schemasFor(gameEngine, version);
-  const envelope = gameEngine.handleEvent({
+  const rules = rulesFor(gameModule, version);
+  const envelope = rules.handleEvent({
     state: parseStoredPayload(
-      schemas.state,
+      rules.schemas.state,
       read.latest.state,
       "state",
       version,
@@ -307,20 +326,19 @@ async function applyEvent(
     data,
     rng: deriveRng(read.latest.rng_seed, read.latest.version + 1),
     config: parseStoredPayload(
-      schemas.config,
+      rules.schemas.config,
       read.meta.config,
       "config",
       version,
     ),
-    schemaVersion: version,
   });
-  assertHookState(schemas, envelope, version);
-  const observations = fanOutObservations(gameEngine, {
+  assertHookState(rules.schemas, envelope, version);
+  const observations = fanOutObservations(rules, {
     state: envelope.state,
     pending: envelope.pending_players,
     participantCount: read.roster.length,
     config: read.meta.config,
-    schemaVersion: read.meta.schema_version,
+    cause: { kind: "event", data },
     isReplay: false,
   });
   const ratings = await resolveRatingUpdates(db, read, envelope);
@@ -343,7 +361,7 @@ async function applyEvent(
  * resigning user's id + seat) from an engine-driven **forfeit** (account
  * deletion — an identity-less system action). */
 export async function forfeitGame(
-  gameEngine: GameEngine,
+  gameModule: GameModule,
   db: Db,
   gameId: string,
   userId: string,
@@ -353,7 +371,7 @@ export async function forfeitGame(
     const read = await readGameState(db, gameId);
     if (read.meta.status !== "active") return; // already resolved — nothing to do
     const seat = seatOf(read, userId);
-    const { transition } = await applyEvent(gameEngine, db, read, {
+    const { transition } = await applyEvent(gameModule, db, read, {
       type: "forfeit",
       targetSeat: seat,
       actorSeat: mode === "resign" ? seat : null,
@@ -371,13 +389,13 @@ export async function forfeitGame(
 
 /** Forfeit every active game for a user, then run the pure-SQL purge. */
 export async function purgeUserGames(
-  gameEngine: GameEngine,
+  gameModule: GameModule,
   db: Db,
   userId: string,
 ): Promise<void> {
   const gameIds = await readActiveGameIds(db, userId);
   for (const gameId of gameIds) {
-    await forfeitGame(gameEngine, db, gameId, userId, "forfeit");
+    await forfeitGame(gameModule, db, gameId, userId, "forfeit");
   }
   await purgeUser(db, userId);
 }
@@ -387,7 +405,7 @@ export async function purgeUserGames(
  * re-checks expiry under the lock and abstains if a real action won the race.
  * Shared by the user nudge (`game`) and the cron sweep (`internal`). */
 export function expireGame(
-  gameEngine: GameEngine,
+  gameModule: GameModule,
   db: Db,
   gameId: string,
 ): Promise<void> {
@@ -395,7 +413,7 @@ export function expireGame(
     const read = await readGameState(db, gameId);
     if (read.meta.status !== "active") return;
 
-    const { transition } = await applyEvent(gameEngine, db, read, {
+    const { transition } = await applyEvent(gameModule, db, read, {
       type: "timeout",
     });
 
