@@ -51,9 +51,10 @@ GRANT EXECUTE ON FUNCTION public.engine_purge_user(UUID) TO service_role;
 -- forget via pg_net). The timeout *consequence* runs in the TS rules. The tick
 -- (a cheap indexed query) lives in the DB; the EF is woken only when there is
 -- work — an idle deployment makes zero http_post calls. A LIMIT caps each batch
--- so one EF invocation stays bounded under a spike; the next tick catches the
--- rest (the sweep is self-healing — it re-selects any game still expired). URL
--- from app_config, secret from Vault — the same convention as the FCM webhooks.
+-- so one EF invocation stays bounded under a spike; ordering by turn_deadline
+-- drains most-overdue-first, so the next tick catches the rest without starving
+-- any one game (the sweep is self-healing — it re-selects any game still
+-- expired). URL from app_config, secret from Vault — same as the FCM webhooks.
 CREATE OR REPLACE FUNCTION private.cron_expire_turns()
 RETURNS VOID AS $$
 DECLARE
@@ -84,6 +85,7 @@ BEGIN
       ORDER  BY gs.game_id, gs.version DESC
     ) latest
     WHERE private.deadline_expired(latest.turn_deadline, NOW())
+    ORDER BY latest.turn_deadline  -- most-overdue first, so a backlog drains oldest-first
     LIMIT 200
   ) latest;
 

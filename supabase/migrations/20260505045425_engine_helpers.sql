@@ -217,7 +217,7 @@ $$ LANGUAGE plpgsql IMMUTABLE SET search_path = '';
 -- ============================================
 -- ENGINE EDGE-FUNCTION BRIDGE
 -- ============================================
--- The four heavy game hooks (initial_state, apply_action, handle_system_action,
+-- The four heavy game hooks (initial_state, apply_action, apply_lifecycle,
 -- compute_observation) run as a TypeScript gameModule inside the
 -- `game` Edge Function. Postgres does not compute rules; it keeps the
 -- lock, the optimistic version check, timing/bank math, persistence and the
@@ -312,6 +312,7 @@ CREATE OR REPLACE FUNCTION private.persist_transition(
   p_now            TIMESTAMPTZ,
   p_game_id        UUID,
   p_action_type    public.action_type,
+  p_action_kind    public.action_kind,
   p_acting_user_id UUID,
   p_acting_bot_id  UUID,
   p_transition     JSONB,
@@ -351,12 +352,13 @@ BEGIN
     (p_game_id, p_new_version, v_state, v_pending, p_rng_seed,
      v_dl.deadline, p_player_times, v_dl.turn_started_at);
 
-  -- Identity = who performed the action. For system actions (timeout/forfeit)
-  -- the caller passes NULL user_id/bot_id and the transition omits player_index,
-  -- so all three land NULL (enforced by actions_identity_check).
-  INSERT INTO public.actions (game_id, user_id, bot_id, type, data, player_index, version_after)
+  -- Identity = who performed the action; kind = which species it is. For
+  -- system actions (timeout/engine forfeit) the caller passes NULL
+  -- user_id/bot_id and the transition omits player_index, so all three land
+  -- NULL (enforced by actions_identity_check).
+  INSERT INTO public.actions (game_id, user_id, bot_id, type, kind, data, player_index, version_after)
   VALUES (p_game_id, p_acting_user_id, p_acting_bot_id, p_action_type,
-          v_action_data, v_player_index, p_new_version);
+          p_action_kind, v_action_data, v_player_index, p_new_version);
 
   -- finish_game before observations so the games realtime event precedes the
   -- observations event.

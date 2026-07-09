@@ -30,7 +30,7 @@ import {
   rulesFor,
 } from "./game-engine.ts";
 import {
-  applyMove,
+  applyGameAction,
   assertLocalBotSeat,
   expireGame,
   forfeitGame,
@@ -134,7 +134,7 @@ export async function handleAction(
 ) {
   const { supabaseAdmin: db, userClaims } = c.var.supabaseContext;
   const userId = requireUserId(userClaims?.id);
-  await applyMove(gameModule, db, {
+  await applyGameAction(gameModule, db, {
     gameId: body.game_id,
     data: body.data,
     expectedVersion: body.expected_version,
@@ -409,11 +409,9 @@ export async function handleExpireUser(
   return c.json({ ok: true });
 }
 
-/** The reserved non-move event payload shapes (see the `EventData` doc) —
- * used to reconstruct a replay frame's cause. A resign is logged as a `user`
- * action whose data is event data, so the *shape* (not the action row's
- * type) is what distinguishes a move from an event. */
-const eventDataSchema = z.union([
+/** The engine-owned {@link LifecycleAction} payload shapes, for validating a
+ * logged lifecycle action during replay. */
+const lifecycleActionSchema = z.union([
   z.strictObject({ type: z.literal("timeout") }),
   z.strictObject({
     type: z.enum(["forfeit", "auto_forfeit"]),
@@ -424,23 +422,34 @@ const eventDataSchema = z.union([
 /** Rebuild the {@link TransitionCause} of one replay frame from its logged
  * action row — null for the initial frame, which no action produced. The
  * live pipeline never reconstructs (it knows the cause first-hand); only
- * replay recovers it from the log. */
+ * replay recovers it from the log, dispatching on the row's `kind` column
+ * (stamped at commit) and validating the payload against the matching
+ * schema. */
 function replayCause(
   rules: GameRules,
   schemaVersion: number,
-  action: { type: string; data: unknown; player_index: number | null } | null,
+  action: {
+    kind: "game" | "lifecycle";
+    data: unknown;
+    player_index: number | null;
+  } | null,
 ): TransitionCause {
   if (!action) return null;
-  const event = eventDataSchema.safeParse(action.data);
-  if (event.success) return { kind: "event", data: event.data };
-  if (action.type === "system") {
-    throw new HttpError(500, "Logged system action has malformed event data");
+  if (action.kind === "lifecycle") {
+    const lifecycle = lifecycleActionSchema.safeParse(action.data);
+    if (!lifecycle.success) {
+      throw new HttpError(
+        500,
+        "Logged lifecycle action has a malformed payload",
+      );
+    }
+    return { kind: "lifecycle", data: lifecycle.data };
   }
   if (action.player_index === null) {
-    throw new HttpError(500, "Logged move is missing its player_index");
+    throw new HttpError(500, "Logged game action is missing its player_index");
   }
   return {
-    kind: "action",
+    kind: "game",
     data: parseStoredPayload(
       rules.schemas.action,
       action.data,
@@ -460,8 +469,9 @@ export async function handleReplay(
   const userId = requireUserId(userClaims?.id);
   const replay = await readReplay(db, body.game_id);
   // Gate in TS (the raw read is service-role): finished games only, caller must
-  // hold a seat. Affected seats of a timeout come from the pending diff, not the
-  // identity-less action row, so action_player_index is null for system actions.
+  // hold a seat. Affected seats of a timeout come from the pending diff, not
+  // the identity-less action row, so action_player_index is null for
+  // system-performed lifecycle actions.
   if (replay.status !== "finished") {
     throw new HttpError(400, "Replay is only available for finished games");
   }
@@ -504,6 +514,7 @@ export async function handleReplay(
       pending_players: slice.pending_players,
       created_at: frame.created_at,
       action_type: frame.actions?.type ?? null,
+      action_kind: frame.actions?.kind ?? null,
       action_data: frame.actions?.data ?? null,
       action_player_index: frame.actions?.player_index ?? null,
     };
@@ -518,7 +529,7 @@ export async function handleLocalBotAction(
 ) {
   const { supabaseAdmin: db, userClaims } = c.var.supabaseContext;
   const userId = requireUserId(userClaims?.id);
-  await applyMove(gameModule, db, {
+  await applyGameAction(gameModule, db, {
     gameId: body.game_id,
     data: body.data,
     expectedVersion: body.expected_version,

@@ -15,8 +15,8 @@ import { rating } from "openskill";
 import type {
   CommitTransitionWire,
   Envelope,
-  EventData,
   GameModule,
+  LifecycleAction,
   PlayerInput,
   RatingWrite,
 } from "types/engine.types.ts";
@@ -174,16 +174,17 @@ async function resolveRatingUpdates(
   });
 }
 
-/** Apply a human or bot move: read → resolve seat → guard → gameModule → fan-out
- * → commit, retrying transparently when a rated finish hits a stale rating
- * baseline (the only retryable conflict for a move — a board advance must reject).
+/** Apply a human or bot game action: read → resolve seat → guard → gameModule
+ * → fan-out → commit, retrying transparently when a rated finish hits a stale
+ * rating baseline (the only retryable conflict for a game action — a board
+ * advance must reject).
  *
  * `resolve` runs against the freshly-read state each attempt: it validates the
  * caller's seat/identity and returns who is acting. Re-reading on retry is safe
  * because a rating conflict rolls the finish back, leaving the board at the same
  * version; a *real* board advance instead trips the version guard below and
  * propagates (non-retryable). */
-export function applyMove(
+export function applyGameAction(
   gameModule: GameModule,
   db: Db,
   opts: {
@@ -262,7 +263,7 @@ export function applyMove(
       pending: envelope.pending_players,
       participantCount: read.roster.length,
       config: read.meta.config,
-      cause: { kind: "action", data, playerIndex },
+      cause: { kind: "game", data, playerIndex },
       isReplay: false,
     });
     const ratings = await resolveRatingUpdates(db, read, envelope);
@@ -288,8 +289,8 @@ export function applyMove(
   });
 }
 
-/** Run one system action against the current state and build its commit
- * transition: invoke `handleEvent`, fan out observations, resolve ratings.
+/** Run one lifecycle action against the current state and build its commit
+ * transition: invoke `applyLifecycle`, fan out observations, resolve ratings.
  *
  * A `timeout` resolves the **whole pending set** holistically (the hook decides
  * who is out / a draw) into one identity-less transition. A `forfeit` targets one
@@ -297,7 +298,7 @@ export function applyMove(
  * resign sets `actorSeat` (the performer's seat → recorded on the action), while
  * an engine-driven forfeit leaves it null and becomes `auto_forfeit` — both in
  * the log and in the `type` the hook receives. */
-async function applyEvent(
+async function resolveLifecycle(
   gameModule: GameModule,
   db: Db,
   read: ReadGameState,
@@ -307,14 +308,16 @@ async function applyEvent(
 ): Promise<{ transition: CommitTransitionWire; envelope: Envelope }> {
   // action_data is the log/replay payload. timeout: just the type — affected
   // seats are derived from the pending diff, not stored here. forfeit: the
-  // event_type label + the target seat (the hook reads player_index).
-  const data: EventData = step.type === "timeout" ? { type: "timeout" } : {
-    type: step.actorSeat === null ? "auto_forfeit" : "forfeit",
-    player_index: step.targetSeat,
-  };
+  // lifecycle_type label + the target seat (the hook reads player_index).
+  const data: LifecycleAction = step.type === "timeout"
+    ? { type: "timeout" }
+    : {
+      type: step.actorSeat === null ? "auto_forfeit" : "forfeit",
+      player_index: step.targetSeat,
+    };
   const version = read.meta.schema_version;
   const rules = rulesFor(gameModule, version);
-  const envelope = rules.handleEvent({
+  const envelope = rules.applyLifecycle({
     state: parseStoredPayload(
       rules.schemas.state,
       read.latest.state,
@@ -338,7 +341,7 @@ async function applyEvent(
     pending: envelope.pending_players,
     participantCount: read.roster.length,
     config: read.meta.config,
-    cause: { kind: "event", data },
+    cause: { kind: "lifecycle", data },
     isReplay: false,
   });
   const ratings = await resolveRatingUpdates(db, read, envelope);
@@ -371,7 +374,7 @@ export async function forfeitGame(
     const read = await readGameState(db, gameId);
     if (read.meta.status !== "active") return; // already resolved — nothing to do
     const seat = seatOf(read, userId);
-    const { transition } = await applyEvent(gameModule, db, read, {
+    const { transition } = await resolveLifecycle(gameModule, db, read, {
       type: "forfeit",
       targetSeat: seat,
       actorSeat: mode === "resign" ? seat : null,
@@ -413,7 +416,7 @@ export function expireGame(
     const read = await readGameState(db, gameId);
     if (read.meta.status !== "active") return;
 
-    const { transition } = await applyEvent(gameModule, db, read, {
+    const { transition } = await resolveLifecycle(gameModule, db, read, {
       type: "timeout",
     });
 

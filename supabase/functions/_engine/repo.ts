@@ -129,7 +129,7 @@ export async function readReplay(db: Db, gameId: string) {
   const { data, error } = await db
     .from("games")
     .select(
-      "config, schema_version, status, participants(player_index, user_id), game_states(version, state, pending_players, created_at, actions(type, data, player_index))",
+      "config, schema_version, status, participants(player_index, user_id), game_states(version, state, pending_players, created_at, actions(type, kind, data, player_index))",
     )
     .eq("id", gameId)
     .order("version", { referencedTable: "game_states" })

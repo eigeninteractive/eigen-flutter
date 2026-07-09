@@ -38,7 +38,7 @@ underlying `core` codebase is identical.
   and action validation for this specific app. It supplies the rules as a
   **TypeScript `GameModule`** — a registry of **`GameRules` units keyed by
   `schema_version`**, each bundling six hooks (`initialState`, `applyAction`,
-  `computeObservation`, plus optional `ratingPool`, `handleEvent`,
+  `computeObservation`, plus optional `ratingPool`, `applyLifecycle`,
   `botSeatable`) and the **Zod schemas** the edge function parses every payload
   through before a hook runs — and a **Dart `GameModule`** for the client (a
   same-keyed registry of client `GameRules` units: rendering, action
@@ -63,7 +63,7 @@ games, each stressing a different generality dimension:
 
 These are design inputs, not a roadmap: the opaque-JSONB state, the
 `computeObservation` per-seat hidden-information slice, and the
-`applyAction`/`handleEvent` split exist so games this varied can plug in without
+`applyAction`/`applyLifecycle` split exist so games this varied can plug in without
 changing the framework.
 
 ---
@@ -283,13 +283,20 @@ via the `game/replay` route — no action log re-execution needed.
 - `bot_id` (uuid, nullable fk to bots) — set for bot actions; null for
   human/system actions
 - `type` (enum: `user`, `bot`, `system`)
+- `kind` (enum: `game`, `lifecycle`) — the action's **species**, stamped at
+  commit. Everything that transitions state is an *action*; a `game` action is
+  rules-scoped (game-defined payload, validated by `applyAction`, rejectable),
+  a `lifecycle` action is engine-scoped (timeout / forfeit / auto_forfeit,
+  resolved unconditionally by `applyLifecycle`). Orthogonal to `type`, which
+  records the performer — replay classifies the log by this column, never by
+  payload shape.
 - **Identity model.** The identity columns (`user_id`, `bot_id`, `player_index`)
   record **who performed the action and from which seat**. A `system` action has
   no performer, so all three are NULL; what it _did_ lives in `data` (the
-  `event_type`) and its _consequences_ in the resulting state / `game_outcomes`.
-  A **voluntary resign is a `user` action** (the user performed it); only an
-  **engine-driven forfeit** (account deletion) is a `system` action, logged with
-  `data.type = 'auto_forfeit'`.
+  `lifecycle_type`) and its _consequences_ in the resulting state / `game_outcomes`.
+  A **voluntary resign is a `user` action of kind `lifecycle`** (the user
+  performed it); only an **engine-driven forfeit** (account deletion) is a
+  `system` action, logged with `data.type = 'auto_forfeit'`.
 - **Constraint** `actions_identity_check`: `user` → `bot_id IS NULL` (user_id
   may be null after deletion); `bot` → `bot_id NOT NULL, user_id NULL`; `system`
   → `user_id`, `bot_id`, **and `player_index` all NULL** (no performer).
@@ -619,7 +626,7 @@ The pg_cron sweep `cron_expire_turns` selects any game where
 `turn_deadline + grace < NOW()` and `pg_net`-wakes the `internal/expire` route
 with the batch. For each game the EF:
 
-1. Reads the state and runs `handleEvent({"type":"timeout"})` **once**. Every
+1. Reads the state and runs `applyLifecycle({"type":"timeout"})` **once**. Every
    pending seat shares the single deadline, so all of them timed out; the hook
    resolves the whole set holistically (eliminate, skip, fold, or even a draw)
    and returns one envelope.
@@ -782,7 +789,7 @@ gated SQL RPCs.
 All hooks receive a `HookContext` (`config`: the game blob, parsed against the
 unit's own config schema). No hook receives a version — a `GameRules` unit is
 version-specific by construction, so hooks never branch on it.
-`initialState`, `applyAction`, and `handleEvent` return an **`Envelope`**;
+`initialState`, `applyAction`, and `applyLifecycle` return an **`Envelope`**;
 `applyAction` additionally rejects a rule-breaking move by throwing
 `IllegalMoveError` (rendered as a 400 — the hook's one expected failure).
 
@@ -868,14 +875,15 @@ individual games). Optional `score`. Infra writes these to `game_outcomes`, sets
 `games.status = 'finished'`, and — if rated — applies rating updates in the same
 transaction. See §8 for team examples.
 
-### `handleEvent(args: EventArgs): Envelope`
+### `applyLifecycle(args: ApplyLifecycleArgs): Envelope`
 
 `args`: `state`, `pending`, `type` (`'forfeit'` | `'timeout'`), `data`, `rng`,
-plus the `HookContext`. Decides the consequence of a system event; unlike
-`applyAction` it **cannot be illegal** — it always resolves to an envelope (the
-game decides whether a forfeit/timeout ends the game or just advances past the
-seat). Called by the forfeit/expire routes and the account-deletion /
-stale-guest purge paths.
+plus the `HookContext`. Decides the consequence of a **lifecycle action** — the
+engine-owned species of action (see `actions.kind`), operating on the game
+from outside its rules; unlike `applyAction` it **cannot be illegal** — it
+always resolves to an envelope (the game decides whether a forfeit/timeout
+ends the game or just advances past the seat). Called by the forfeit/expire
+routes and the account-deletion / stale-guest purge paths.
 
 ### `computeObservation(args: ComputeObservationArgs): ObservationSlice`
 
@@ -949,8 +957,8 @@ is split by tier across dependency-ordered migrations (`…_engine_helpers`,
 | `game/add-bot`                                              | `engine_add_bot_to_game`                                                               | Creator-only waiting-room fill with a **server** bot. EF rejects guests + checks `botSeatable`; SQL holds the `FOR UPDATE` lock for the creator check, seat-count cap, and the server-only/schema/`rated_eligible` invariants (`seat_server_bot`).                                 |
 | `game/start`                                                | `engine_commit_start`                                                                  | `initialState` → writes `game_states` v0 + per-seat `observations`, inits banks (budget mode), sets `turn_started_at`, marks `active`. Creator-only, under lock.                                                                                                                   |
 | `game/action`                                               | `engine_commit_action`                                                                 | The move chokepoint. EF runs `applyAction`; SQL row-locks `games`, validates version + deadline under lock, gates on `pending_players`, deducts bank, fans out observations, and on finish writes `game_outcomes` + rating updates **in the same transaction**.                    |
-| `game/forfeit`                                              | `engine_commit_action` (`resign`)                                                      | A user resign → `handleEvent('forfeit')`, logged as a `user` action (carries the resigning user + seat). No deadline/pending guard (resign any time, even off-turn); version-checked under the lock and retried on stale.                                                          |
-| `game/expire`                                               | `engine_commit_action` (`timeout`)                                                     | Client nudge when it detects the deadline passed → `handleEvent('timeout')` over the whole pending set, one identity-less `system` action. The server re-validates expiry under lock (abstains if a real action won the race). Same core as the cron backstop (`internal/expire`). |
+| `game/forfeit`                                              | `engine_commit_action` (`resign`)                                                      | A user resign → `applyLifecycle('forfeit')`, logged as a `user` action (carries the resigning user + seat). No deadline/pending guard (resign any time, even off-turn); version-checked under the lock and retried on stale.                                                          |
+| `game/expire`                                               | `engine_commit_action` (`timeout`)                                                     | Client nudge when it detects the deadline passed → `applyLifecycle('timeout')` over the whole pending set, one identity-less `system` action. The server re-validates expiry under lock (abstains if a real action won the race). Same core as the cron backstop (`internal/expire`). |
 | `game/replay`                                               | _(typed SDK read)_                                                                     | The caller's observation slice at every version, projected through `computeObservation` — never raw state. The EF reads `game_states` with each producing `action` embedded (via the `actions→game_states` FK) and applies the finished-only + participant gate **in TS**.         |
 | `game/local-bot-action`                                     | `engine_commit_action` (`bot`)                                                         | Drives a **local** bot seat. EF gates in TS against the roster it read (`assertLocalBotSeat`: caller is a participant, seat is a local bot, sole-human game).                                                                                                                      |
 | `game/delete-account`                                       | `engine_purge_user` (+ per-game forfeits)                                              | Self-service account teardown — see §22.                                                                                                                                                                                                                                           |
@@ -1298,7 +1306,7 @@ Ratings are computed and persisted **inline in the finishing transition** —
 there is no rating trigger, no separate function, and no async hop:
 
 ```
-applyAction / handleEvent returns an outcome  (rated game)
+applyAction / applyLifecycle returns an outcome  (rated game)
         ↓  edge function (game/action, forfeit, expire, …)
 readRatingsForSeats   → each seat's current (mu, sigma) for the pool
    (typed player_ratings fetch; identities from the in-hand roster,
@@ -3198,7 +3206,7 @@ single `_lib/game.ts` gameModule, and serves four route groups split by
   (`pg_cron` → `pg_net`) posting the project's secret API key as the `apikey`
   header (from Vault `secret_api_key` — §8). Two **batched** routes: `expire`
   (`{ game_ids }`, the timeout sweep) and `purge-users` (`{ user_ids }`, the
-  stale-guest forfeit-then-purge). Both reuse the same `applyEvent` core as the
+  stale-guest forfeit-then-purge). Both reuse the same `resolveLifecycle` core as the
   client `forfeit` / `delete-account` / `expire` routes. (The group prefixes
   also disambiguate `game/expire` vs `internal/expire`.)
 - **`/engine/bot/*`** — server bots (possibly external), `auth: 'none'`. A
@@ -3312,7 +3320,7 @@ game/delete-account            (edge function, caller JWT)
   └── purgeUserGames (EF)
       ├── readActiveGameIds(user)          ← the user's active games (typed SDK read)
       ├── FOR each active game:  forfeit via the EF
-      │     handleEvent('forfeit') → engine_commit_action
+      │     applyLifecycle('forfeit') → engine_commit_action
       │       ├── INSERT game_states (new version) + actions (type='system')
       │       ├── on finish: INSERT game_outcomes, games.status='finished',
       │       │     and rating updates written in the SAME transaction (rated games)
@@ -3822,7 +3830,7 @@ Map<int, GameRules> get versions =>
 
 **Retiring an old version — two paths, two lifetimes.** Old code splits in two:
 
-- **Write path** (`applyAction`, `handleEvent` — anything that _advances_ state)
+- **Write path** (`applyAction`, `applyLifecycle` — anything that _advances_ state)
   can be retired once **both**: (1) the **drain query** returns zero —
   `SELECT count(*) FROM games WHERE status='active' AND schema_version < N;` —
   and (2) the **force-update floor** has passed the last app version that could

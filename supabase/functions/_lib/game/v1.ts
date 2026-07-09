@@ -31,9 +31,9 @@
 import { passthroughObservation } from "engine/game-engine.ts";
 import type {
   ApplyActionArgs,
+  ApplyLifecycleArgs,
   BotSeatableArgs,
   Envelope,
-  EventArgs,
   GameRules,
   InitialStateArgs,
   RatingPoolArgs,
@@ -77,7 +77,9 @@ class ExampleRulesV1 implements GameRules<State, Action, Config> {
     };
   }
 
-  handleEvent({ state }: EventArgs<State, Config>): Envelope<State> {
+  // Resolve a lifecycle action (timeout / forfeit / auto_forfeit) — always
+  // unconditional; the game only decides the consequences.
+  applyLifecycle({ state }: ApplyLifecycleArgs<State, Config>): Envelope<State> {
     return {
       state,
       pending_players: [],
@@ -89,9 +91,9 @@ class ExampleRulesV1 implements GameRules<State, Action, Config> {
 
   // Perfect-information default: every seat sees the full state. Implement
   // this for hidden-info games (reveal only each seat's slice), and use
-  // `args.cause` (the move/event that produced this state, null for the
-  // initial frame) to embed per-seat animation cues — e.g. a `lastMove`
-  // field — into the slice.
+  // `args.cause` (the game/lifecycle action that produced this state, null
+  // for the initial frame) to embed per-seat animation cues — e.g. a
+  // `lastMove` field — into the slice.
   computeObservation = passthroughObservation<State, Action, Config>;
 
   // Predicate hooks — replace with your game's rules, and keep them in sync

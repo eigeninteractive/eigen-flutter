@@ -194,7 +194,7 @@ BEGIN
     END IF;
 
     PERFORM private.persist_transition(
-      v_now, p_game_id, 'system', NULL, NULL, v_t,
+      v_now, p_game_id, 'system', 'lifecycle', NULL, NULL, v_t,
       v_cur_version + 1, v_cur_seed, v_budget, v_turn_seconds, v_new_player_times
     );
     RETURN;
@@ -225,8 +225,9 @@ BEGIN
     END IF;
 
     PERFORM private.persist_transition(
-      v_now, p_game_id, v_action_type, p_caller_id, p_acting_bot_id, v_t,
-      v_cur_version + 1, v_cur_seed, v_budget, v_turn_seconds, v_new_player_times
+      v_now, p_game_id, v_action_type, 'game', p_caller_id, p_acting_bot_id,
+      v_t, v_cur_version + 1, v_cur_seed, v_budget, v_turn_seconds,
+      v_new_player_times
     );
     RETURN;
   END IF;
@@ -237,7 +238,7 @@ BEGIN
   -- identity-less system action. They share this path and differ only by
   -- v_action_type (set above) and the acting identity below.
   PERFORM private.persist_transition(
-    v_now, p_game_id, v_action_type,
+    v_now, p_game_id, v_action_type, 'lifecycle',
     CASE WHEN p_mode = 'resign' THEN p_caller_id ELSE NULL END,
     NULL, v_t, v_cur_version + 1, v_cur_seed, v_budget, v_turn_seconds,
     v_cur_player_times

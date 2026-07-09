@@ -117,15 +117,15 @@ export type JsonObject = { [key: string]: Json | undefined };
 
 // ── DB-derived enums ──────────────────────────────────────────────────────────
 
-/** A non-move event resolved by the game's `handleEvent` hook — the DB
- * `event_type` enum (which has no table column; it is logged inside the
- * action's `data`). `forfeit` is a voluntary resign; `auto_forfeit` the
- * engine-driven variant (account-deletion purge); `timeout` is the clock.
- * The two forfeits share a shape (both target `data.player_index`) and most
- * games resolve them identically — but the hook receives the real trigger,
- * so a game may choose different consequences (e.g. a draw rather than a
- * loss when the seat was purged). */
-export type EventType = Database["public"]["Enums"]["event_type"];
+/** The trigger of a lifecycle action, resolved by the game's `applyLifecycle`
+ * hook — the DB `lifecycle_type` enum (which has no table column; it is
+ * logged inside the action's `data`). `forfeit` is a voluntary resign;
+ * `auto_forfeit` the engine-driven variant (account-deletion purge);
+ * `timeout` is the clock. The two forfeits share a shape (both target
+ * `data.player_index`) and most games resolve them identically — but the
+ * hook receives the real trigger, so a game may choose different
+ * consequences (e.g. a draw rather than a loss when the seat was purged). */
+export type LifecycleType = Database["public"]["Enums"]["lifecycle_type"];
 
 /** Per-player result — the DB `game_result` enum. */
 export type GameResult = Database["public"]["Enums"]["game_result"];
@@ -135,6 +135,15 @@ export type GameAccess = Database["public"]["Enums"]["game_access"];
 
 /** Who performed a logged action — the DB `action_type` enum. */
 export type ActionType = Database["public"]["Enums"]["action_type"];
+
+/** Which species a logged action is — the DB `action_kind` enum. Everything
+ * that transitions state is an *action*; the two species differ by contract:
+ * a `game` action is rules-scoped (game-defined payload, validated by
+ * `applyAction`, rejectable as illegal), a `lifecycle` action is
+ * engine-scoped (a {@link LifecycleAction} payload, resolved unconditionally
+ * by `applyLifecycle`). Stamped on every `actions` row at commit time, so
+ * replay classifies the log by column, never by payload shape. */
+export type ActionKind = Database["public"]["Enums"]["action_kind"];
 
 // ── Game outcome / envelope / observation ─────────────────────────────────────
 
@@ -155,7 +164,7 @@ export interface OutcomeEntry {
 
 /**
  * The result of advancing the game by one transition — the return of
- * `initialState`, `applyAction`, and `handleEvent`. Mirrors the SQL hook
+ * `initialState`, `applyAction`, and `applyLifecycle`. Mirrors the SQL hook
  * envelope.
  */
 export interface Envelope<TState extends JsonObject = JsonObject> {
@@ -217,21 +226,18 @@ export interface ApplyActionArgs<
   rng: Rand;
 }
 
-/** The infra-constructed payload of a non-move event, recorded verbatim in the
- * `actions` log. `forfeit` carries the forfeiting seat (a voluntary resign);
- * `auto_forfeit` is the engine-driven variant (account purge); `timeout`
- * carries no seat — the affected seats are {@link EventArgs.pending}.
- *
- * These two exact shapes are **reserved**: replay reconstructs each frame's
- * {@link TransitionCause} by matching the logged payload against them (a
- * resign is logged as a `user` action carrying event data), so a game's
- * `action` schema must not accept a payload of exactly `{ type: "timeout" }`
- * or `{ type: "forfeit" | "auto_forfeit", player_index }`. */
-export type EventData =
+/** The infra-constructed payload of a lifecycle action, recorded verbatim in
+ * the `actions` log (with `kind = 'lifecycle'`). Engine-owned and
+ * version-independent: every game gets these transitions for free, without
+ * declaring them in its schemas. `forfeit` carries the forfeiting seat (a
+ * voluntary resign); `auto_forfeit` is the engine-driven variant (account
+ * purge); `timeout` carries no seat — the affected seats are
+ * {@link ApplyLifecycleArgs.pending}. */
+export type LifecycleAction =
   | { type: "timeout" }
   | { type: "forfeit" | "auto_forfeit"; player_index: number };
 
-export interface EventArgs<
+export interface ApplyLifecycleArgs<
   TState extends JsonObject = JsonObject,
   TConfig extends JsonObject = JsonObject,
 > extends HookContext<TConfig> {
@@ -242,16 +248,17 @@ export interface EventArgs<
    * `data.player_index`. */
   pending: number[];
   /** The trigger — always equal to `data.type`. */
-  type: EventType;
-  data: EventData;
+  type: LifecycleType;
+  data: LifecycleAction;
   /** Deterministic per-transition RNG — see {@link InitialStateArgs.rng}. */
   rng: Rand;
 }
 
 /**
- * The transition that produced the state being projected: a player's move
- * (`applyAction`), a non-move event (`handleEvent`), or `null` for the
- * initial frame (`initialState`), which no transition produced.
+ * The action that produced the state being projected — a `game` action
+ * (`applyAction`), a `lifecycle` action (`applyLifecycle`), or `null` for
+ * the initial frame (`initialState`), which no action produced. The `kind`
+ * discriminator matches the `actions.kind` column.
  *
  * This is how a game tells each seat *what happened* — pure frame diffing
  * can't recover causality (identical footprints, hidden-info moves, composite
@@ -263,8 +270,8 @@ export interface EventArgs<
  * "last move" info otherwise.
  */
 export type TransitionCause<TAction extends JsonObject = JsonObject> =
-  | { kind: "action"; data: TAction; playerIndex: number }
-  | { kind: "event"; data: EventData }
+  | { kind: "game"; data: TAction; playerIndex: number }
+  | { kind: "lifecycle"; data: LifecycleAction }
   | null;
 
 export interface ComputeObservationArgs<
@@ -361,11 +368,12 @@ export interface GameRules<
     args: ApplyActionArgs<TState, TAction, TConfig>,
   ): Envelope<TState>;
 
-  /** Resolve a non-move event (`forfeit`/`timeout`) into an envelope. The event
-   * may be user-triggered (a resign) or system-triggered (timeout, purge);
-   * either way the consequence is the game's to decide. Unlike `applyAction` it
-   * cannot be "illegal" — it always resolves. */
-  handleEvent(args: EventArgs<TState, TConfig>): Envelope<TState>;
+  /** Resolve a lifecycle action (`forfeit`/`timeout`) into an envelope.
+   * Lifecycle actions operate on the game from outside its rules — they may
+   * be player-triggered (a resign) or engine-triggered (timeout, purge);
+   * either way the consequence is the game's to decide. Unlike `applyAction`
+   * it cannot be "illegal" — it always resolves. */
+  applyLifecycle(args: ApplyLifecycleArgs<TState, TConfig>): Envelope<TState>;
 
   /** Project the state into one seat's view — including what that seat may
    * see of the transition that produced it (`args.cause`), so the client can
@@ -527,7 +535,11 @@ export interface ReplayFrame {
   /** Who performed the action producing this frame; null for the initial
    * frame, which no action produced. */
   action_type: ActionType | null;
-  /** The move / event payload as logged (game- or event-defined). */
+  /** Which species produced this frame (`game` or `lifecycle`); null for the
+   * initial frame. */
+  action_kind: ActionKind | null;
+  /** The action payload as logged (game-defined for `kind = 'game'`, a
+   * {@link LifecycleAction} for `kind = 'lifecycle'`). */
   action_data: unknown;
   /** Performer's seat; null for identity-less system actions — a timeout's
    * affected seats come from the pending diff, not this column. */

@@ -13,7 +13,7 @@ own rules and UI through two same-shaped containers, one per language:
 - a **TypeScript `GameModule`** — a registry of **`GameRules` units keyed by
   `schema_version`**. Each unit bundles the Zod payload schemas plus six hooks
   (three core: `initialState`, `applyAction`, `computeObservation`; three
-  optional: `ratingPool`, `handleEvent`, `botSeatable`) that the engine's edge
+  optional: `ratingPool`, `applyLifecycle`, `botSeatable`) that the engine's edge
   function runs server-side (see **Backend Changes Required**), and
 - a **Dart `GameModule`** — a registry of **client-side `GameRules` units keyed
   by the same versions** (payload codec + `isValidAction` legality, board
@@ -54,7 +54,7 @@ Which hooks live where:
 
 | Hook / member                            | TS `GameRules` (authoritative)   | Dart `GameRules` (client)             |
 | ---------------------------------------- | -------------------------------- | ------------------------------------- |
-| `initialState`, `applyAction`, `handleEvent`, `computeObservation` | ✅ the rules | — (client consumes observations)      |
+| `initialState`, `applyAction`, `applyLifecycle`, `computeObservation` | ✅ the rules | — (client consumes observations)      |
 | `ratingPool`, `botSeatable`              | ✅ enforced                      | ✅ display-only twin — keep in sync   |
 | `schemas` (Zod payload contracts)        | ✅                               | ✅ as the codec: `parseConfig` / `parseObservation` / `parseAction` / `serializeAction` (Freezed) |
 | `buildContent`, `localBots`              | —                                | ✅ client-only                        |
@@ -1307,7 +1307,7 @@ watching the infra header's timing mode condition.
 A game's server-side rules surface is a **`GameModule`: one TypeScript
 `GameRules` unit per `schema_version`**, each bundling the Zod payload schemas
 plus six hooks — `initialState`, `applyAction`, `computeObservation`, plus
-optional `ratingPool`, `handleEvent`, and `botSeatable`. They all live in the
+optional `ratingPool`, `applyLifecycle`, and `botSeatable`. They all live in the
 **`game` edge function**: the units in `functions/_lib/game/v1.ts` (`v2.ts`,
 …) and the registry you export from `functions/_lib/game.ts` — see **The game
 edge function** below. There is **no SQL to write for the rules**; the gated
@@ -1362,7 +1362,7 @@ import type {
   ApplyActionArgs,
   BotSeatableArgs,
   Envelope,
-  EventArgs,
+  ApplyLifecycleArgs,
   GameRules,
   InitialStateArgs,
   RatingPoolArgs,
@@ -1389,7 +1389,7 @@ class MyGameV1 implements GameRules<State, Action, Config> {
     /* args.state / args.data are already parsed + typed — no casts.
        throw new IllegalMoveError("…") to reject; return the new envelope */
   }
-  handleEvent(args: EventArgs<State, Config>): Envelope<State> {
+  applyLifecycle(args: ApplyLifecycleArgs<State, Config>): Envelope<State> {
     /* forfeit/timeout consequence */
   }
   computeObservation = passthroughObservation<State, Action, Config>; // perfect-info
@@ -1706,12 +1706,15 @@ eliminated players in the `outcome` array until the game is truly over. Instead:
 
 ---
 
-### Hook 2b: `handleEvent(args: EventArgs<State, Config>): Envelope<State>`
+### Hook 2b: `applyLifecycle(args: ApplyLifecycleArgs<State, Config>): Envelope<State>`
 
-`args`: `state`, `pending`, `type`, `data` (a typed `EventData` union — no casts
+`args`: `state`, `pending`, `type`, `data` (a typed `LifecycleAction` union — no casts
 needed), `rng`, plus the `HookContext`. Decides the consequence of a
-system-initiated event. Unlike `applyAction` it **cannot be illegal** — it
-always resolves to an envelope. `type` always equals `data.type`:
+**lifecycle action** — the engine-owned species of action (see `actions.kind`),
+operating on the game from outside its rules. It may be player-triggered (a
+resign) or engine-triggered (timeout, purge). Unlike `applyAction` it **cannot
+be illegal** — it always resolves to an envelope. `type` always equals
+`data.type`:
 
 | `type`           | Trigger                                             | Which seat(s)                                                           |
 | ---------------- | --------------------------------------------------- | ----------------------------------------------------------------------- |
@@ -1728,7 +1731,7 @@ loss). All three return the same envelope as `applyAction` (`state`,
 `pending_players`, optional `outcome`, optional `turn_seconds`).
 
 ```ts
-handleEvent(args: EventArgs<State, Config>): Envelope<State> {
+applyLifecycle(args: ApplyLifecycleArgs<State, Config>): Envelope<State> {
   if (args.data.type === "timeout") {
     // Every seat in args.pending timed out. Decide holistically: here, the
     // lone non-pending seat wins; if all seats are pending, it's a draw.
@@ -1774,8 +1777,8 @@ schema-less (`JsonObject`): it is an output-only projection the Dart client
 parses. **Perfect-info games do not override this** — assign the
 `passthroughObservation` default (the identity projection).
 
-`args.cause` is **what produced this state**: `{ kind: "action", data,
-playerIndex }` for a move, `{ kind: "event", data }` for a forfeit/timeout,
+`args.cause` is **what produced this state**: `{ kind: "game", data,
+playerIndex }` for a move, `{ kind: "lifecycle", data }` for a forfeit/timeout,
 `null` for the initial frame. Embed whatever each seat may see of it into the
 slice (e.g. a `lastMove` field) so the client can animate the transition —
 see **Animating transitions** in the client half of this guide. Per-seat
@@ -1853,7 +1856,7 @@ phase-specific windows regardless of the game's overall timing mode.
 implement it. The hook only needs to handle the consequence of a timeout action,
 not the clock itself.
 
-**When time expires**, infra calls `handleEvent` with `type = 'timeout'`. The
+**When time expires**, infra calls `applyLifecycle` with `type = 'timeout'`. The
 client-side `game/expire` route nudges the server immediately when a client
 detects the deadline — the cron sweep is just a backstop. Any active participant
 can call it safely; the server validates under lock.
@@ -1879,7 +1882,7 @@ commits through a gated `engine_*` RPC):
 | `game/create` · `game/create-solo`                          | Create a game / a sole-human "vs AI" game. The EF validates timing + players, gates guests, derives the pool (`ratingPool`), and **validates the client's `rated` assertion**. |
 | `game/start`                                                | `initialState` → writes `game_states` v0 + observations, inits banks, marks `active`.                                                                                          |
 | `game/action`                                               | The move: runs `applyAction`, commits under the row lock (version + deadline + pending checks), fans out observations, writes outcome/ratings on finish.                       |
-| `game/forfeit` · `game/expire`                              | `handleEvent('forfeit')` / `('timeout')`. `expire` is the client deadline nudge (cron is the backstop).                                                                        |
+| `game/forfeit` · `game/expire`                              | `applyLifecycle('forfeit')` / `('timeout')`. `expire` is the client deadline nudge (cron is the backstop).                                                                        |
 | `game/add-bot` · `game/local-bot-action`                    | Seat a server bot (host) / drive a local bot seat.                                                                                                                             |
 | `game/replay`                                               | The caller's observation slice at every version (finished, participant-only), projected through `computeObservation` (`isReplay = true`).                                      |
 | `game/delete-account`                                       | Account teardown (forfeits active games, then purges).                                                                                                                         |
@@ -1923,7 +1926,7 @@ test('valid action is accepted', () {
 5. Trigger a timeout: let the deadline pass without acting, confirm the cron
    sweep (`cron_expire_turns` → `internal/expire`) commits the timeout, and
    confirm the hook's timeout consequence is applied.
-6. Test forfeit: click forfeit in the game screen, confirm `handleEvent` runs
+6. Test forfeit: click forfeit in the game screen, confirm `applyLifecycle` runs
    with a `{ type: 'forfeit' }` action, and confirm `game_outcomes` reflect the
    expected result.
 7. Test leave: join as a non-host, call `app_leave_game`, confirm participant is

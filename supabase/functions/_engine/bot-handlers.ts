@@ -14,7 +14,7 @@ import type { GameModule } from "types/engine.types.ts";
 import { z } from "zod";
 import { verifyBotSignature } from "./bot_auth.ts";
 import { parseClientPayload } from "./game-engine.ts";
-import { applyMove } from "./game-pipeline.ts";
+import { applyGameAction } from "./game-pipeline.ts";
 import { type AppEnv, HttpError } from "./runtime.ts";
 
 export const botActionBody = z.object({
@@ -58,7 +58,7 @@ export async function handleBotAction(
     throw new HttpError(401, "Unauthorized");
   }
 
-  await applyMove(gameModule, db, {
+  await applyGameAction(gameModule, db, {
     gameId: claim.game_id,
     data: claim.data,
     expectedVersion: claim.version,

@@ -151,7 +151,7 @@ class BotSeatableArgs {
 /// version keep loading through their own unit until they drain.
 ///
 /// The TS unit owns the authoritative hooks (`initialState`, `applyAction`,
-/// `handleEvent`, `computeObservation`) plus the Zod `schemas`; this side
+/// `applyLifecycle`, `computeObservation`) plus the Zod `schemas`; this side
 /// owns the client half, member for member:
 ///
 /// - the payload codec ([parseConfig] / [parseObservation] / [parseAction] /

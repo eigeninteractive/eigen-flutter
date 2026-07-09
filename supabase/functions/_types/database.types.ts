@@ -16,6 +16,7 @@ export type Database = {
           data: Json;
           game_id: string;
           id: string;
+          kind: Database["public"]["Enums"]["action_kind"];
           player_index: number | null;
           type: Database["public"]["Enums"]["action_type"];
           user_id: string | null;
@@ -27,6 +28,7 @@ export type Database = {
           data: Json;
           game_id: string;
           id?: string;
+          kind: Database["public"]["Enums"]["action_kind"];
           player_index?: number | null;
           type?: Database["public"]["Enums"]["action_type"];
           user_id?: string | null;
@@ -38,6 +40,7 @@ export type Database = {
           data?: Json;
           game_id?: string;
           id?: string;
+          kind?: Database["public"]["Enums"]["action_kind"];
           player_index?: number | null;
           type?: Database["public"]["Enums"]["action_type"];
           user_id?: string | null;
@@ -838,11 +841,12 @@ export type Database = {
       };
     };
     Enums: {
+      action_kind: "game" | "lifecycle";
       action_type: "user" | "bot" | "system";
-      event_type: "timeout" | "forfeit" | "auto_forfeit";
       game_access: "public" | "private" | "friends";
       game_result: "win" | "loss" | "draw" | "eliminated";
       game_status: "waiting" | "ready" | "active" | "finished" | "aborted";
+      lifecycle_type: "timeout" | "forfeit" | "auto_forfeit";
       participant_type: "human" | "bot";
       relationship_status: "pending" | "accepted" | "blocked";
     };
@@ -989,11 +993,12 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      action_kind: ["game", "lifecycle"],
       action_type: ["user", "bot", "system"],
-      event_type: ["timeout", "forfeit", "auto_forfeit"],
       game_access: ["public", "private", "friends"],
       game_result: ["win", "loss", "draw", "eliminated"],
       game_status: ["waiting", "ready", "active", "finished", "aborted"],
+      lifecycle_type: ["timeout", "forfeit", "auto_forfeit"],
       participant_type: ["human", "bot"],
       relationship_status: ["pending", "accepted", "blocked"],
     },
