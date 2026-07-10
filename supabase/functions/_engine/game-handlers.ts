@@ -24,6 +24,7 @@ import type {
 } from "types/engine.types.ts";
 import { z } from "zod";
 import {
+  assertBudgetPending,
   assertHookState,
   parseClientPayload,
   parseStoredPayload,
@@ -171,6 +172,7 @@ export async function handleStart(
     playerCount: start.player_count,
   });
   assertHookState(rules.schemas, envelope, start.schema_version);
+  assertBudgetPending(start.budget_seconds, envelope, start.schema_version);
   const observations = fanOutObservations(rules, {
     state: envelope.state,
     pending: envelope.pending_players,

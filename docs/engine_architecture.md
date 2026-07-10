@@ -659,8 +659,11 @@ it fires, some players may be out of time while others still have bank, and the
 elapsed charge differs per player. (The holistic timeout _resolution_ is fine —
 the hook sees the whole pending set and decides fairly — but the _bank
 accounting_ still has no clean meaning, which is why budget mode is restricted
-to one pending seat at a time. `compute_next_deadline` keeps a best-effort
-MIN-over-pending safeguard for the misconfigured case.)
+to one pending seat at a time. The harness enforces this at the source:
+`assertBudgetPending` runs next to `assertHookState` after every hook and 500s
+an envelope with more than one pending seat in a budget-timed game.
+`compute_next_deadline` keeps a best-effort MIN-over-pending safeguard as the
+SQL backstop.)
 
 **The pairing doesn't occur in real games.** Accumulated clocks exist in
 deliberative sequential games (chess, correspondence Go) where thinking time is
@@ -674,7 +677,8 @@ contains more than one index, do not use `budget_seconds`. Use `turn_seconds`
 (per-action) for those phases, or return `"turn_seconds": N` from the hook for
 that specific action to give all pending players a shared fixed window. Budget
 mode is reserved for games where exactly one player is pending at any given
-time.
+time — a hook that returns a multi-seat pending set in a budget-timed game is
+rejected as a game bug (500) before commit.
 
 ### Client-Side Display
 

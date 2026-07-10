@@ -8,8 +8,8 @@ discussion — "is there a high-level bias like the provisional-frame loop
 anywhere else?" — so findings lean architectural: assumptions, policy gaps,
 and design choices, not just bugs.
 
-Each finding carries a status: **Fixed** (resolved 2026-07-09, same day as
-the review), **Ignored** (reviewed and deliberately not pursued), or
+Each finding carries a status: **Fixed** (resolved 2026-07-09 unless dated
+otherwise), **Ignored** (reviewed and deliberately not pursued), or
 **Open** (to discuss later).
 
 ---
@@ -67,6 +67,21 @@ this implementable: a typed `EngineException` is a definitive server verdict
 double-submit guard reports `rejected` (the tap definitively did not become
 a move). Games that don't render optimistically ignore the result.
 
+### 5. Budget mode's "one pending player" rule was convention-only
+
+The SQL comment on `compute_next_deadline` admitted multi-pending budget games
+were only gracefully degraded (MIN of banks), and `deduct_bank` charges full
+elapsed time to each mover in that case. Nothing rejected the envelope that
+created the situation.
+
+**Resolution** (2026-07-10) — `assertBudgetPending` in `game-engine.ts`, run
+next to `assertHookState` at all three hook sites (`handleStart`,
+`applyGameAction`, `resolveLifecycle`): when the game has `budget_seconds`, an
+envelope with more than one pending seat 500s at the source as a game bug.
+Both read views (`readGameState`, `readForStart`) now carry `budget_seconds`.
+The MIN-over-pending in `compute_next_deadline` stays as the SQL backstop (a
+cross-table CHECK isn't expressible there).
+
 ---
 
 ## Ignored (reviewed, deliberately not pursued)
@@ -95,14 +110,6 @@ recomputes observation slices from `game_states` + `actions`, so
 finished > 7 days) reclaims the largest table (versions × seats rows per
 game) with zero functional loss. `game_states`/`actions` are the replay
 ground truth and need an actual archival decision someday.
-
-### 5. Budget mode's "one pending player" rule is convention-only
-
-The SQL comment on `compute_next_deadline` admits multi-pending budget games
-are only gracefully degraded (MIN of banks), and `deduct_bank` charges full
-elapsed time to each mover in that case. Enforce it where hooks are already
-validated: when the game has `budget_seconds`, assert
-`envelope.pending_players.length <= 1` next to `assertHookState`.
 
 ### 6. `handleStart` does the hook work before the creator check
 

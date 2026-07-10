@@ -21,6 +21,7 @@ import type {
   RatingWrite,
 } from "types/engine.types.ts";
 import {
+  assertBudgetPending,
   assertHookState,
   IllegalMoveError,
   parseClientPayload,
@@ -257,6 +258,7 @@ export function applyGameAction(
       throw e;
     }
     assertHookState(rules.schemas, envelope, version);
+    assertBudgetPending(read.meta.budget_seconds, envelope, version);
 
     const observations = fanOutObservations(rules, {
       state: envelope.state,
@@ -336,6 +338,7 @@ async function resolveLifecycle(
     ),
   });
   assertHookState(rules.schemas, envelope, version);
+  assertBudgetPending(read.meta.budget_seconds, envelope, version);
   const observations = fanOutObservations(rules, {
     state: envelope.state,
     pending: envelope.pending_players,

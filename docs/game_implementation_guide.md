@@ -478,7 +478,8 @@ Future<void> main() => runEngineApp(
 Multiple entries of the same subtype are allowed — a game can offer both a
 `'Blitz'` and a `'Daily'` `PerActionConfig` as distinct named segments.
 `BudgetConfig` must only appear in games where at most one player is pending at
-a time (see `engine_architecture.md §3`).
+a time — the harness rejects a hook envelope with more than one pending seat in
+a budget-timed game as a game bug (see `engine_architecture.md §3`).
 
 #### Variable player counts
 

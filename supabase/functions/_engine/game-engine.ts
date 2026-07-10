@@ -132,3 +132,25 @@ export function assertHookState(
     );
   }
 }
+
+/** Enforce budget mode's sequential-pending rule at the source: an accumulated
+ * clock only meters individual thinking time when at most one seat drains it,
+ * so a hook returning a multi-seat pending set in a budget-timed game is a game
+ * bug → 500 (same spirit as {@link assertHookState} — caught before commit, not
+ * on the next timeout). `compute_next_deadline`'s MIN-over-pending remains the
+ * SQL graceful-degradation safeguard should such a state ever be reached.
+ * No-op when the game has no budget clock. */
+export function assertBudgetPending(
+  budgetSeconds: number | null,
+  envelope: Envelope,
+  schemaVersion: number,
+): void {
+  if (budgetSeconds !== null && envelope.pending_players.length > 1) {
+    throw new HttpError(
+      500,
+      `Hook returned ${envelope.pending_players.length} pending players in a ` +
+        `budget-timed game (schema_version ${schemaVersion}); budget mode ` +
+        `allows at most one pending seat`,
+    );
+  }
+}

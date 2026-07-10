@@ -195,11 +195,13 @@ BEGIN
       THEN p_now + (p_action_seconds * interval '1 second')
     -- Use the minimum remaining budget across all pending players so the
     -- deadline fires as soon as the first player's clock runs out.
-    -- NOTE: budget mode with multiple simultaneous pending players is a
-    -- convention-only restriction (sequential games) — NOT enforced by any
-    -- CHECK. This MIN is the live graceful-degradation safeguard if a hook ever
-    -- returns multiple pending in a budget game; the system_timeout commit still
-    -- drains all pending players' banks when it fires, not just the first.
+    -- NOTE: budget mode allows at most one pending seat (sequential games) —
+    -- enforced at the source by the EF's assertBudgetPending, which 500s any
+    -- hook envelope that violates it before commit (no CHECK here: pending
+    -- lives on game_states, budget on games). This MIN remains the
+    -- graceful-degradation safeguard should a multi-pending state ever reach
+    -- SQL anyway; the system_timeout commit still drains all pending players'
+    -- banks when it fires, not just the first.
     WHEN p_budget_seconds IS NOT NULL AND cardinality(p_new_pending) > 0
       THEN p_now + (
         (SELECT MIN(p_new_player_times[idx + 1])

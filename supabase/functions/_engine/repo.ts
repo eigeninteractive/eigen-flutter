@@ -38,7 +38,7 @@ export async function readGameState(db: Db, gameId: string) {
   const { data, error } = await db
     .from("games")
     .select(
-      "config, schema_version, status, rated, rating_pool, participants(player_index, user_id, bot_id, bots(webhook_url, is_local)), game_states(version, state, pending_players, rng_seed)",
+      "config, schema_version, status, rated, rating_pool, budget_seconds, participants(player_index, user_id, bot_id, bots(webhook_url, is_local)), game_states(version, state, pending_players, rng_seed)",
     )
     .eq("id", gameId)
     .order("version", { referencedTable: "game_states", ascending: false })
@@ -57,6 +57,7 @@ export async function readGameState(db: Db, gameId: string) {
       status: data.status,
       rated: data.rated,
       rating_pool: data.rating_pool,
+      budget_seconds: data.budget_seconds,
     },
     latest: {
       version: latest.version,
@@ -89,7 +90,7 @@ export async function readForStart(db: Db, gameId: string) {
   const { data, error } = await db
     .from("games")
     .select(
-      "config, schema_version, status, rated, rating_pool, participants(count)",
+      "config, schema_version, status, rated, rating_pool, budget_seconds, participants(count)",
     )
     .eq("id", gameId)
     .maybeSingle();
@@ -103,6 +104,7 @@ export async function readForStart(db: Db, gameId: string) {
     status: data.status,
     rated: data.rated,
     rating_pool: data.rating_pool,
+    budget_seconds: data.budget_seconds,
     player_count: data.participants[0]?.count ?? 0,
   };
 }
