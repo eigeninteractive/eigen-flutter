@@ -1,8 +1,11 @@
 /**
  * Post-commit turn notifications — the EF side of what the SQL `notify_your_turn`
  * trigger used to do off the observation write. After a transition commits, the
- * seats that **newly** entered the pending set are told it's their turn: humans
- * get an FCM push, server bots get a signed wake carrying their observation.
+ * seats whose turn is starting are told: humans get an FCM push, server bots a
+ * signed wake carrying their observation. Who counts as "starting" depends on
+ * the transition's cause — the whole policy lives in {@link recipientSeats},
+ * and every commit path routes through {@link notifyTransition} so no path can
+ * forget to notify.
  *
  * Best-effort and run post-response via `EdgeRuntime.waitUntil`, so a slow or
  * failed send never blocks the action response. The fire-and-forget entry
@@ -87,32 +90,78 @@ export async function notifyGameInvite(db: Db, gameId: string): Promise<void> {
   }
 }
 
-/** Notify every seat that entered `finalPending` but was not in `prevPending`.
- * Never throws. */
+/** Why a transition committed — decides who is told it's their turn. */
+export type NotifyCause =
+  | { kind: "action"; actorSeat: number }
+  | { kind: "forfeit" }
+  | { kind: "timeout" }
+  | { kind: "start" };
+
+/** The seats a committed transition should alert.
+ *
+ * Seats that newly entered the pending set are always told — their turn is
+ * starting. Two cause-specific rules cover what a pure diff misses:
+ *
+ * - `timeout`: everyone still pending is (re-)notified. Pushes and wakes are
+ *   fire-and-forget, so the expiry sweep doubles as the retry for a lost
+ *   delivery; the deadline itself rate-limits the re-nudge.
+ * - `action`: the actor's own seat can re-enter pending (an extra turn). A
+ *   human actor is live in-app and needs no push, but a server bot's only
+ *   signal is the wake, so it is woken again.
+ */
+function recipientSeats(
+  cause: NotifyCause,
+  prevPending: number[],
+  finalPending: number[],
+  roster: Seat[],
+): number[] {
+  if (cause.kind === "timeout") return finalPending;
+  const prev = new Set(prevPending);
+  const recipients = finalPending.filter((seat) => !prev.has(seat));
+  if (
+    cause.kind === "action" &&
+    finalPending.includes(cause.actorSeat) &&
+    !recipients.includes(cause.actorSeat)
+  ) {
+    const actor = roster.find((r) => r.player_index === cause.actorSeat);
+    if (actor?.bot_id && !actor.is_local && actor.webhook_url) {
+      recipients.push(cause.actorSeat);
+    }
+  }
+  return recipients;
+}
+
+/** Notify the seats whose turn starts with this transition (see
+ * {@link recipientSeats} for the cause-aware policy). Never throws. */
 export async function notifyTransition(
   db: Db,
   args: {
     gameId: string;
+    cause: NotifyCause;
     prevPending: number[];
     finalPending: number[];
     roster: Seat[];
   },
 ): Promise<void> {
   try {
-    const prev = new Set(args.prevPending);
-    const newly = args.finalPending.filter((seat) => !prev.has(seat));
-    if (newly.length === 0) return;
+    const recipients = recipientSeats(
+      args.cause,
+      args.prevPending,
+      args.finalPending,
+      args.roster,
+    );
+    if (recipients.length === 0) return;
 
     // Display names are only needed to personalise a human's "your turn" push,
-    // so resolve them only when a human newly acts.
-    const hasHumanRecipient = newly.some(
+    // so resolve them only when a human is being notified.
+    const hasHumanRecipient = recipients.some(
       (seat) => args.roster.find((r) => r.player_index === seat)?.user_id,
     );
     const names = hasHumanRecipient
       ? await readDisplayNames(db, args.roster)
       : new Map<number, string>();
 
-    for (const seat of newly) {
+    for (const seat of recipients) {
       const ref = args.roster.find((r) => r.player_index === seat);
       if (!ref) continue;
       try {
@@ -145,6 +194,7 @@ export async function notifyGameStarted(
     const read = await readGameState(db, gameId);
     await notifyTransition(db, {
       gameId,
+      cause: { kind: "start" },
       prevPending: [],
       finalPending,
       roster: read.roster,

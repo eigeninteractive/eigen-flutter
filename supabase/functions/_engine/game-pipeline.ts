@@ -283,6 +283,7 @@ export function applyGameAction(
     EdgeRuntime.waitUntil(
       notifyTransition(db, {
         gameId: opts.gameId,
+        cause: { kind: "action", actorSeat: playerIndex },
         prevPending: read.latest.pending_players,
         finalPending: envelope.pending_players,
         roster: read.roster,
@@ -390,6 +391,17 @@ export async function forfeitGame(
       p_expected_version: read.latest.version,
       p_transitions: [transition],
     });
+    // In a 3+ player game a forfeit can hand the turn to another seat, so
+    // this path must notify like any other transition.
+    EdgeRuntime.waitUntil(
+      notifyTransition(db, {
+        gameId,
+        cause: { kind: "forfeit" },
+        prevPending: read.latest.pending_players,
+        finalPending: transition.new_pending,
+        roster: read.roster,
+      }),
+    );
   });
 }
 
@@ -434,6 +446,7 @@ export function expireGame(
     EdgeRuntime.waitUntil(
       notifyTransition(db, {
         gameId,
+        cause: { kind: "timeout" },
         prevPending: read.latest.pending_players,
         finalPending: transition.new_pending,
         roster: read.roster,
