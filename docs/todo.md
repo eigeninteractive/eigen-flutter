@@ -25,6 +25,7 @@
 
 # Migration Tasks
 
+- Database Broadcast Realtime
 - Per game object needed in Dart or Typescript?
 - If I'm playing a game with an anonymous user - what will be shown for add
   friend, etc.? I shouldn't be able to add friend right?
