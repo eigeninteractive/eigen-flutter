@@ -22,7 +22,9 @@ import type {
 } from "types/engine.types.ts";
 import {
   assertBudgetPending,
+  assertForfeitPending,
   assertHookState,
+  assertPendingIdentified,
   IllegalMoveError,
   parseClientPayload,
   parseStoredPayload,
@@ -267,6 +269,7 @@ export function applyGameAction(
     }
     assertHookState(rules.schemas, envelope, version);
     assertBudgetPending(read.meta.budget_seconds, envelope, version);
+    assertPendingIdentified(read.roster, envelope, version);
 
     const observations = fanOutObservations(rules, {
       state: envelope.state,
@@ -349,6 +352,10 @@ async function resolveLifecycle(
   });
   assertHookState(rules.schemas, envelope, version);
   assertBudgetPending(read.meta.budget_seconds, envelope, version);
+  assertPendingIdentified(read.roster, envelope, version);
+  if (step.type === "forfeit") {
+    assertForfeitPending(step.targetSeat, envelope, version);
+  }
   const observations = fanOutObservations(rules, {
     state: envelope.state,
     pending: envelope.pending_players,

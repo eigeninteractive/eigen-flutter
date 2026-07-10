@@ -154,3 +154,54 @@ export function assertBudgetPending(
     );
   }
 }
+
+/** Enforce that a forfeit actually removes the forfeited seat: a hook that
+ * leaves `targetSeat` in the pending set is a game bug → 500 (same spirit as
+ * {@link assertHookState}). Left uncaught, the account-deletion purge would
+ * turn that seat into a ghost — no identity, yet still holding a deadline the
+ * timeout sweep fires at forever. */
+export function assertForfeitPending(
+  targetSeat: number,
+  envelope: Envelope,
+  schemaVersion: number,
+): void {
+  if (envelope.pending_players.includes(targetSeat)) {
+    throw new HttpError(
+      500,
+      `Forfeit hook left the forfeited seat ${targetSeat} in the pending set ` +
+        `(schema_version ${schemaVersion}); a forfeit must remove its target ` +
+        `seat from pending`,
+    );
+  }
+}
+
+/** Enforce that every pending seat has someone behind it: a seat whose account
+ * was purged mid-game (both ids NULL) can never act, so a hook that returns it
+ * as pending is a game bug → 500 — typically rules deriving pending from the
+ * participant count instead of from who is still in the game. Backstop to
+ * {@link assertForfeitPending}: that one catches the forfeit itself; this one
+ * catches any later hook resurrecting the seat. */
+export function assertPendingIdentified(
+  roster: readonly {
+    player_index: number;
+    user_id: string | null;
+    bot_id: string | null;
+  }[],
+  envelope: Envelope,
+  schemaVersion: number,
+): void {
+  const identified = new Set(
+    roster
+      .filter((s) => s.user_id !== null || s.bot_id !== null)
+      .map((s) => s.player_index),
+  );
+  const ghost = envelope.pending_players.find((seat) => !identified.has(seat));
+  if (ghost !== undefined) {
+    throw new HttpError(
+      500,
+      `Hook returned pending seat ${ghost}, which has no identity ` +
+        `(schema_version ${schemaVersion}); a purged seat can never act and ` +
+        `must not be pending`,
+    );
+  }
+}

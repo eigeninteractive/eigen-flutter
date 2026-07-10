@@ -8,13 +8,16 @@ import 'package:eigen_engine/features/social/presentation/widgets/friend_actions
 import 'package:eigen_engine/shared/data/models/player_info.dart';
 import 'package:eigen_engine/shared/providers/player_providers.dart';
 import 'package:eigen_engine/shared/widgets/bot_tag.dart';
+import 'package:eigen_engine/shared/widgets/guest_tag.dart';
 import 'package:eigen_engine/shared/widgets/player_avatar.dart';
 
 /// Modal bottom sheet showing a player's public profile.
 ///
-/// Displays identity, ratings across all pools, and — for human players —
-/// friendship status with actions to add, accept, decline, or remove.
-/// Bot players show identity and ratings only (no social features).
+/// Displays identity, ratings across all pools, and — for registered human
+/// players — friendship status with actions to add, accept, decline, or
+/// remove. Bots and anonymous guests show identity and ratings only: bots
+/// have no social features, and guests cannot be friended (server-enforced),
+/// so the sheet tags them and omits the section.
 ///
 /// Use [PlayerProfileSheet.show] to present the sheet.
 class PlayerProfileSheet extends ConsumerWidget {
@@ -85,7 +88,12 @@ class PlayerProfileSheet extends ConsumerWidget {
               ),
             ),
             SliverToBoxAdapter(child: _RatingsSection(playerId: playerId)),
-            if (type == ParticipantType.human)
+            // Social section only for resolved, registered humans. While
+            // identity is still loading (or failed: deleted account) the
+            // section stays hidden rather than flashing an Add Friend button
+            // at a player who may turn out to be a guest.
+            if (type == ParticipantType.human &&
+                playerAsync.value?.isGuest == false)
               SliverToBoxAdapter(child: _SocialSection(playerId: playerId)),
             const SliverToBoxAdapter(child: SizedBox(height: 32)),
           ],
@@ -152,6 +160,9 @@ class _Header extends StatelessWidget {
           if (type == ParticipantType.bot) ...[
             const SizedBox(height: 12),
             const BotTag(),
+          ] else if (player.isGuest) ...[
+            const SizedBox(height: 12),
+            const GuestTag(),
           ],
         ],
       ),

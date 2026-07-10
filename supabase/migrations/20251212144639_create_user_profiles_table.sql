@@ -107,19 +107,24 @@ CREATE TRIGGER update_user_profiles_updated_at
 -- display_name is non-null for both branches:
 --   humans: user_profiles.display_name NOT NULL (defaulted to username on signup)
 --   bots:   bots.display_name NOT NULL
+--
+-- is_guest surfaces auth.users.is_anonymous so clients can hide social
+-- affordances (add friend, etc.) that the server rejects for guests anyway.
+-- Read live from auth.users — no denormalized copy to keep in sync.
 CREATE OR REPLACE FUNCTION public.app_players(p_ids UUID[])
-RETURNS TABLE(id UUID, username TEXT, display_name TEXT, avatar_url TEXT)
+RETURNS TABLE(id UUID, username TEXT, display_name TEXT, avatar_url TEXT, is_guest BOOLEAN)
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = ''
 AS $$
-  SELECT u.id, u.username, up.display_name, up.avatar_url
+  SELECT u.id, u.username, up.display_name, up.avatar_url, au.is_anonymous
   FROM public.users u
   JOIN public.user_profiles up ON up.id = u.id
+  JOIN auth.users au ON au.id = u.id
   WHERE u.id = ANY(p_ids)
   UNION ALL
-  SELECT b.id, b.username, b.display_name, b.avatar_url
+  SELECT b.id, b.username, b.display_name, b.avatar_url, false
   FROM public.bots b
   WHERE b.id = ANY(p_ids);
 $$;

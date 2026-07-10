@@ -9,6 +9,11 @@ import 'package:eigen_engine/features/social/providers/social_providers.dart';
 ///
 /// Returns [SizedBox.shrink] when [playerId] is the current user.
 ///
+/// Self-gates when the viewer is an anonymous guest — the server rejects all
+/// friend writes from guests, so instead of action buttons a guest sees a
+/// sign-in hint (or nothing, when [compact]). Gating here rather than in each
+/// parent keeps every embedding correct by construction.
+///
 /// Each button owns its mutation state machine, so this widget only needs
 /// to route on [FriendStatus] — no mutation watching or coordination needed.
 ///
@@ -29,6 +34,19 @@ class FriendActions extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final currentUserId = ref.watch(authServiceProvider).currentUser?.id;
     if (playerId == currentUserId) return const SizedBox.shrink();
+
+    if (ref.watch(isAnonymousProvider)) {
+      return compact
+          ? const SizedBox.shrink()
+          : Center(
+              child: Text(
+                'Sign in to add friends.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            );
+    }
 
     final statusAsync = ref.watch(friendStatusProvider(targetId: playerId));
 

@@ -745,6 +745,7 @@ export type Database = {
           avatar_url: string;
           display_name: string;
           id: string;
+          is_guest: boolean;
           username: string;
         }[];
       };

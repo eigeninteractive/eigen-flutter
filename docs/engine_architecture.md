@@ -3367,6 +3367,13 @@ write for it (`computeRatings`), and clients render it as "Deleted User".
 Replay for the others is unaffected: `game_states`/`actions` are game-keyed,
 and each player reads only their own observation history.
 
+The harness asserts the game-side half of this contract next to
+`assertHookState` (game bug → 500, before commit): `assertForfeitPending` —
+a forfeit hook must remove its target seat from the pending set, or the purge
+would leave a ghost seat holding a deadline the timeout sweep fires at
+forever — and `assertPendingIdentified` — no hook may return an identity-less
+seat as pending (backstop against rules resurrecting a purged seat later).
+
 #### Why forfeit + cancel/leave before the cascade?
 
 A plain `DELETE FROM auth.users` would SET NULL on `participants.user_id` and

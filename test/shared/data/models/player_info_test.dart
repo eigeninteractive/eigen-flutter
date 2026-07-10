@@ -9,8 +9,18 @@ void main() {
       'username': 'alice',
       'display_name': 'Alice',
       'avatar_url': 'https://cdn.example/a.png',
+      'is_guest': true,
     };
     check(PlayerInfo.fromJson(json).toJson()).deepEquals(json);
+  });
+
+  test('is_guest defaults to false when absent (pre-field cached JSON)', () {
+    final json = <String, Object?>{
+      'id': 'p1',
+      'username': 'alice',
+      'display_name': 'Alice',
+    };
+    check(PlayerInfo.fromJson(json).isGuest).isFalse();
   });
 
   test('copyWith produces an equal-by-value instance', () {

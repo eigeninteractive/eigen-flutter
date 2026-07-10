@@ -1766,6 +1766,16 @@ return {
 };
 ```
 
+Two contracts the harness enforces on the envelope (game bug → 500, before
+commit — same as the state-schema and budget-pending checks):
+
+- A forfeit **must remove its target seat from `pending_players`** — a
+  forfeited seat left pending becomes a ghost after the account purge, holding
+  a deadline the timeout sweep fires at forever.
+- **No pending seat may lack an identity.** After a purge, a departed seat has
+  neither `user_id` nor `bot_id` and can never act; derive pending from who is
+  still *in* the game, not from the participant count.
+
 ---
 
 ### Hook 3: `computeObservation(args: ComputeObservationArgs<State, Action, Config>): ObservationSlice`
