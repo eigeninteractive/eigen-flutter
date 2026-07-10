@@ -7,7 +7,8 @@ CREATE TABLE public.participants (
   game_id UUID NOT NULL REFERENCES public.games(id) ON DELETE CASCADE,
   user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
   -- Set for bot participants; NULL for humans.
-  -- Both may be NULL when a human account is deleted after the game finishes.
+  -- Both may be NULL when a human account is deleted — mid-game (the purge's
+  -- forfeit may leave a multiplayer game active) or after it finishes.
   bot_id UUID REFERENCES public.bots(id),
   player_index INT NOT NULL,
   type participant_type NOT NULL DEFAULT 'human',

@@ -15,16 +15,26 @@
 import { rate, rating } from "openskill";
 import type { PlayerInput, Rating, RatingResult } from "types/engine.types.ts";
 
-/** The human or bot occupying a seat, resolved once into both forms used here:
- * the discriminated `payload` written to the update, and a stable `key` for
- * grouping. A seat with neither id is a bug in the caller — fail loudly. */
-function resolveIdentity(player: PlayerInput) {
-  if (player.user_id) {
-    return { payload: { user_id: player.user_id }, key: `u:${player.user_id}` };
-  }
-  if (player.bot_id) {
-    return { payload: { bot_id: player.bot_id }, key: `b:${player.bot_id}` };
-  }
+/** Stable grouping key for the identity occupying a seat. A seat with neither
+ * id (its account was purged mid-game) keys by seat, so two purged players in
+ * one game are never lumped into a single identity. */
+function keyOf(player: PlayerInput): string {
+  if (player.user_id) return `u:${player.user_id}`;
+  if (player.bot_id) return `b:${player.bot_id}`;
+  return `x:${player.player_index}`;
+}
+
+/** Whether the seat still has a ratable identity — a purged seat shapes the
+ * field's posteriors but gets no {@link RatingResult} of its own. */
+function hasIdentity(player: PlayerInput): boolean {
+  return player.user_id !== null || player.bot_id !== null;
+}
+
+/** The discriminated identity payload written to the update. Only called for
+ * seats that passed {@link hasIdentity} — anything else is a bug here. */
+function identityOf(player: PlayerInput): RatingResult["identity"] {
+  if (player.user_id) return { user_id: player.user_id };
+  if (player.bot_id) return { bot_id: player.bot_id };
   throw new Error(`Player ${player.player_index} has no identity`);
 }
 
@@ -75,7 +85,7 @@ function singleSeatUpdate(
 ): RatingResult {
   const after = posteriorFor(fieldPosteriors, seat.player_index);
   return {
-    identity: resolveIdentity(seat).payload,
+    identity: identityOf(seat),
     mu: after.mu,
     sigma: after.sigma,
   };
@@ -99,8 +109,8 @@ function multiSeatUpdate(
   seats: PlayerInput[],
   field: PlayerInput[],
 ): RatingResult {
-  const ownKey = resolveIdentity(seats[0]).key;
-  const opponents = field.filter((p) => resolveIdentity(p).key !== ownKey);
+  const ownKey = keyOf(seats[0]);
+  const opponents = field.filter((p) => keyOf(p) !== ownKey);
   const ordered = [...seats].sort((a, b) => a.player_index - b.player_index);
 
   const prior: Rating = { mu: ordered[0].mu, sigma: ordered[0].sigma };
@@ -112,7 +122,7 @@ function multiSeatUpdate(
     );
   }
   return {
-    identity: resolveIdentity(seats[0]).payload,
+    identity: identityOf(seats[0]),
     mu: running.mu,
     sigma: running.sigma,
   };
@@ -127,12 +137,20 @@ function multiSeatUpdate(
  * {@link multiSeatUpdate}). The single full-field `rate()` is what every
  * single-seat player is scored against, so a human who faced a two-seat bot is
  * correctly rated against two distinct opponents.
+ *
+ * A seat with no identity — its account was purged mid-game — stays in the
+ * field (opponents' posteriors must account for everyone they actually faced,
+ * at that seat's supplied baseline) but yields no result: there is no
+ * `player_ratings` row left to update, and `player_rating_xor` forbids
+ * creating an identity-less one.
  */
 export function computeRatings(players: PlayerInput[]): RatingResult[] {
   const fieldPosteriors = rateField(players);
-  return groupBy(players, (p) => resolveIdentity(p).key).map((seats) =>
-    seats.length === 1
-      ? singleSeatUpdate(seats[0], fieldPosteriors)
-      : multiSeatUpdate(seats, players)
-  );
+  return groupBy(players, keyOf)
+    .filter((seats) => hasIdentity(seats[0]))
+    .map((seats) =>
+      seats.length === 1
+        ? singleSeatUpdate(seats[0], fieldPosteriors)
+        : multiSeatUpdate(seats, players)
+    );
 }

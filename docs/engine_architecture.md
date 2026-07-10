@@ -260,18 +260,24 @@ via the `game/replay` route — no action log re-execution needed.
   participants; SET NULL when the account is deleted so the seat row is
   preserved for `gamePlayersProvider` and replay participant counts
 - `bot_id` (uuid, nullable fk to bots) — null for human participants; both
-  `user_id` and `bot_id` can be null simultaneously when the account was deleted
-  after the game finished
+  `user_id` and `bot_id` can be null simultaneously when the account was
+  deleted — mid-game (after the purge's forfeit, when the rules leave the game
+  active) or after it finished
 - `player_index` (int) — 0-based seat (authoritative seat attribution key)
 - `type` (participant_type, default 'human')
 - `created_at`
 - **Unique**: `(game_id, user_id)` where `user_id IS NOT NULL`;
   `(game_id, player_index)`
 - **Identity constraint**: `NOT (user_id IS NOT NULL AND bot_id IS NOT NULL)` —
-  at most one identity is set. Both may be NULL after account deletion on a
-  finished game. The `game/delete-account` route explicitly removes the
-  participant row for waiting/ready games (cancel/leave inside
-  `engine_purge_user`) so this null state only ever occurs on finished games.
+  at most one identity is set. Both may be NULL after account deletion. The
+  `game/delete-account` route explicitly removes the participant row for
+  waiting/ready games (cancel/leave inside `engine_purge_user`), so the null
+  state occurs on finished games — or on a still-**active** game when the
+  purge's forfeit consequence leaves it live (game-defined; a 3+ player game
+  may continue). The engine tolerates such a seat: the observation fan-out
+  skips it (no viewer, no slice — see `write_observation_slices`) and a rated
+  finish emits no rating write for it (`computeRatings` keeps the seat in the
+  OpenSkill field but drops its result). Clients render it as "Deleted User".
 
 #### `actions` (Audit Log — Service Role Only)
 
@@ -3351,6 +3357,15 @@ The same `purgeUserGames` path backs the stale-guest cleanup
 (`internal/purge-users`), which batches guests that still hold active games;
 guests with no active games are purged in pure SQL by the cron sweep with no
 edge-function hop. See §25 / §21.
+
+A forfeit's consequence is game-defined: in a 3+ player game it may leave the
+game **active**, so the purged seat (both ids NULL) can exist in a live game.
+The remaining players continue normally — subsequent commits skip the seat in
+the observation fan-out (`write_observation_slices`: no viewer, no slice), a
+later rated finish keeps the seat in the OpenSkill field but emits no rating
+write for it (`computeRatings`), and clients render it as "Deleted User".
+Replay for the others is unaffected: `game_states`/`actions` are game-keyed,
+and each player reads only their own observation history.
 
 #### Why forfeit + cancel/leave before the cascade?
 

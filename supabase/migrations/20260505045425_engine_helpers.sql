@@ -256,7 +256,12 @@ BEGIN
          p_version, p_deadline, p_player_times, p_turn_started_at
   FROM jsonb_array_elements(p_observations) e
   JOIN public.participants part
-    ON part.game_id = p_game_id AND part.player_index = (e->>'player_index')::INT;
+    ON part.game_id = p_game_id AND part.player_index = (e->>'player_index')::INT
+  -- No viewer, no slice: a seat purged mid-game (post-forfeit account
+  -- deletion) has neither identity. Observations are keyed to their viewer
+  -- (RLS + realtime filter by identity), so a row here would be unreadable
+  -- forever — and would violate observation_identity_xor.
+  WHERE part.user_id IS NOT NULL OR part.bot_id IS NOT NULL;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 

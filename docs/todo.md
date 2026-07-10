@@ -27,8 +27,3 @@
 
 - Database Broadcast Realtime
 - Per game object needed in Dart or Typescript?
-- If I'm playing a game with an anonymous user - what will be shown for add
-  friend, etc.? I shouldn't be able to add friend right?
-- How isolated it the contract with supabase as the backend in the engine
-  flutter side? If required, can we cleanly swap out to another backend or a DB
-  by just touching the repository layer?

@@ -150,7 +150,11 @@ async function resolveRatingUpdates(
     seats.flatMap(({ seat }) => (seat.bot_id ? [seat.bot_id] : [])),
   );
   const byKey = new Map(ratings.map((r) => [keyOf(r), r]));
-  const fallback = rating(); // openskill default mu / sigma for never-rated
+  // Never-rated identities default here — as does a seat purged mid-game
+  // (both ids NULL, its rating rows cascade-deleted): it enters the OpenSkill
+  // field at the default so opponents are still rated against everyone they
+  // faced, and computeRatings emits no write for it.
+  const fallback = rating();
 
   const players: PlayerInput[] = seats.map(({ o, seat, key }) => {
     const r = byKey.get(key) ?? fallback;

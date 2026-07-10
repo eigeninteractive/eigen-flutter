@@ -69,8 +69,11 @@ BEGIN
     (p_game_id, 0, p_initial_state, v_pending, p_seed,
      v_dl.deadline, v_player_times, v_dl.turn_started_at);
 
-  -- One observation row per participant (human and bot), identity joined from
-  -- participants; the EF supplied the per-seat data/pending slices.
+  -- One observation row per identified participant (human and bot), identity
+  -- joined from participants; the EF supplied the per-seat data/pending
+  -- slices. The identity filter mirrors write_observation_slices (no viewer,
+  -- no slice) — unreachable here today, since engine_purge_user removes
+  -- participants from waiting/ready games, but the two inserts stay identical.
   INSERT INTO public.observations
     (game_id, user_id, bot_id, player_index, data, pending_players, version,
      turn_deadline, player_times, turn_started_at)
@@ -80,7 +83,8 @@ BEGIN
          0, v_dl.deadline, v_player_times, v_dl.turn_started_at
   FROM jsonb_array_elements(p_observations) e
   JOIN public.participants part
-    ON part.game_id = p_game_id AND part.player_index = (e->>'player_index')::INT;
+    ON part.game_id = p_game_id AND part.player_index = (e->>'player_index')::INT
+  WHERE part.user_id IS NOT NULL OR part.bot_id IS NOT NULL;
 
   UPDATE public.games SET status = 'active' WHERE id = p_game_id;
 END;
