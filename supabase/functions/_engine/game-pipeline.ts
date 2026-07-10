@@ -180,6 +180,10 @@ async function resolveRatingUpdates(
  * rating baseline (the only retryable conflict for a game action — a board
  * advance must reject).
  *
+ * Resolves to the caller's just-committed observation row (user mode; see
+ * `commitAction`) so the action response can carry the acting player's own
+ * frame; null for a local-bot move.
+ *
  * `resolve` runs against the freshly-read state each attempt: it validates the
  * caller's seat/identity and returns who is acting. Re-reading on retry is safe
  * because a rating conflict rolls the finish back, leaving the board at the same
@@ -199,7 +203,7 @@ export function applyGameAction(
       botId: string | null;
     };
   },
-): Promise<void> {
+) {
   return commitWithRetry(isRatingConflict, async () => {
     const read = await readGameState(db, opts.gameId);
     const { playerIndex, callerId, botId } = opts.resolve(read);
@@ -270,7 +274,7 @@ export function applyGameAction(
     });
     const ratings = await resolveRatingUpdates(db, read, envelope);
 
-    await commitAction(db, {
+    const committedFrame = await commitAction(db, {
       p_mode: opts.mode,
       p_game_id: opts.gameId,
       p_caller_id: callerId,
@@ -289,6 +293,7 @@ export function applyGameAction(
         roster: read.roster,
       }),
     );
+    return committedFrame;
   });
 }
 

@@ -26,11 +26,6 @@
 # Migration Tasks
 
 - Per game object needed in Dart or Typescript?
-- Lets say I'm playing Poker, and I'm a guest user too stale or I manually
-  delete my account, a forfeight signal is fired. The game is still active
-  right? After deleting all my details, will the game continue to work for other
-  players? Also, how would it look like when someone else replays the game from
-  history?
 - If I'm playing a game with an anonymous user - what will be shown for add
   friend, etc.? I shouldn't be able to add friend right?
 - How isolated it the contract with supabase as the backend in the engine

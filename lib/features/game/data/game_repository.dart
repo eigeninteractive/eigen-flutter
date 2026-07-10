@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:eigen_engine/core/errors/engine_exception.dart';
@@ -25,6 +26,14 @@ class GameRepository {
   GameRepository(this._client);
 
   final SupabaseClient _client;
+
+  /// Live observation pipelines by game id. [observationStream] registers its
+  /// enqueue callback here so [submitAction] can feed the caller's committed
+  /// frame (returned on the action response) into the same version-deduped
+  /// pipeline the Realtime events flow through — the own-move frame renders
+  /// off the HTTP response instead of waiting for the Realtime hop, and the
+  /// duplicate Realtime event is dropped by the pipeline's version check.
+  final _observationInjectors = <String, Set<void Function(Observation)>>{};
 
   /// Invokes an `engine` Edge Function game route.
   ///
@@ -139,9 +148,13 @@ class GameRepository {
 
   /// Submits an action via RPC.
   ///
-  /// Fire-and-forget: returns as soon as the server accepts the action.
-  /// The client waits for the observation update via Realtime subscription
-  /// to confirm the state change.
+  /// Returns as soon as the server accepts the action. The response carries
+  /// the caller's committed observation frame, which is fed into any live
+  /// [observationStream] pipeline for the game — the own-move frame renders
+  /// off the HTTP response (typically ahead of the Realtime event, whose
+  /// duplicate the pipeline then drops by version). State still flows to the
+  /// UI exclusively through the stream; the response body is never a second
+  /// state channel.
   ///
   /// On an optimistic-lock conflict the server raises a `Stale state` error,
   /// which the UI surfaces as a humanized "the game updated — try again" message.
@@ -150,11 +163,41 @@ class GameRepository {
     required Map<String, dynamic> actionData,
     required int expectedVersion,
   }) async {
-    await _invokeEngine('action', {
+    final data = await _invokeEngine('action', {
       'game_id': gameId,
       'data': actionData,
       'expected_version': expectedVersion,
     });
+    _injectOwnFrame(gameId, data);
+  }
+
+  /// Feeds the committed frame from an action response into the game's live
+  /// observation pipelines, if any.
+  ///
+  /// A malformed frame is logged and dropped rather than thrown: the action
+  /// itself committed, and the Realtime path still delivers the frame — a
+  /// failure of this latency shortcut must not surface as a submit failure.
+  void _injectOwnFrame(String gameId, dynamic responseData) {
+    final injectors = _observationInjectors[gameId];
+    if (injectors == null || injectors.isEmpty) return;
+    final json = responseData is Map<String, dynamic>
+        ? responseData['observation']
+        : null;
+    if (json is! Map<String, dynamic>) return;
+    try {
+      final observation = Observation.fromJson(json);
+      for (final inject in [...injectors]) {
+        inject(observation);
+      }
+    } catch (e, s) {
+      developer.log(
+        'Failed to parse action-response observation frame',
+        name: 'eigen_engine.game_repository',
+        level: 900,
+        error: e,
+        stackTrace: s,
+      );
+    }
   }
 
   /// Fetches the outcomes for a completed game.
@@ -523,6 +566,12 @@ class GameRepository {
       });
     }
 
+    // Registered so submitAction can inject the caller's own committed frame
+    // (from the action response) into this same pipeline — see
+    // [_observationInjectors].
+    final injectors = _observationInjectors.putIfAbsent(gameId, () => {});
+    injectors.add(enqueue);
+
     void fetchLatest() {
       getObservation(gameId).then(
         (obs) {
@@ -535,7 +584,11 @@ class GameRepository {
     }
 
     controller = StreamController<Observation>(
-      onCancel: () => channel.unsubscribe(),
+      onCancel: () {
+        injectors.remove(enqueue);
+        if (injectors.isEmpty) _observationInjectors.remove(gameId);
+        channel.unsubscribe();
+      },
     );
 
     channel = _client.channel('observations:$gameId:$userId')
@@ -576,101 +629,23 @@ class GameRepository {
     return controller.stream;
   }
 
-  /// Subscribes to game metadata updates via the Realtime channel API.
+  /// Subscribes to game metadata updates via the SDK's built-in `.stream()`.
   ///
   /// Useful for detecting when opponents join (status changes) or game ends.
-  /// Emits the current game immediately on subscribe and on every reconnect.
-  Stream<Game> gameStream(String gameId) {
-    return _channelStream(
-      channelName: 'games:$gameId',
-      table: 'games',
-      filter: PostgresChangeFilter(
-        type: PostgresChangeFilterType.eq,
-        column: 'id',
-        value: gameId,
-      ),
-      fetchCurrent: () async {
-        final data = await _client
-            .from('games')
-            .select()
-            .eq('id', gameId)
-            .single();
-        return Game.fromJson(data);
-      },
-      fromRecord: Game.fromJson,
-    );
-  }
-
-  /// Opens a Realtime channel for [table] rows matching [filter] and wraps it
-  /// in a [StreamController].
+  /// Emits the current game immediately on subscribe and re-fetches on every
+  /// reconnect; channel errors propagate as stream errors so Riverpod's retry
+  /// mechanism can schedule a reconnect with exponential backoff. Latest-state
+  /// snapshot semantics are all this needs, unlike [observationStream], which
+  /// must deliver every frame and therefore drives its own channel.
   ///
-  /// On every [RealtimeSubscribeStatus.subscribed] event (initial connect and
-  /// every reconnect), [fetchCurrent] is called via REST to guarantee the
-  /// stream reflects the latest row even if a change was missed while
-  /// disconnected. Change payloads are decoded via [fromRecord] and emitted
-  /// directly without a REST round-trip.
-  ///
-  /// [channelError] and [timedOut] propagate as stream errors so Riverpod's
-  /// retry mechanism can schedule a reconnect with exponential backoff.
-  /// [closed] is a no-op — Supabase's [RealtimeClient] automatically rejoins
-  /// all channels after a WebSocket drop, which fires [subscribed] again.
-  ///
-  /// The channel is unsubscribed when the stream subscription is cancelled
-  /// (e.g. when the Riverpod provider is disposed or invalidated). The channel
-  /// removes itself from [RealtimeClient.channels] via its own close callback.
-  Stream<T> _channelStream<T>({
-    required String channelName,
-    required String table,
-    required PostgresChangeFilter filter,
-    required Future<T?> Function() fetchCurrent,
-    required T Function(Map<String, dynamic>) fromRecord,
-  }) {
-    late RealtimeChannel channel;
-    late StreamController<T> controller;
-
-    void doFetch() {
-      fetchCurrent().then(
-        (v) {
-          if (v != null && !controller.isClosed) controller.add(v);
-        },
-        onError: (Object e) {
-          if (!controller.isClosed) controller.addError(e);
-        },
-      );
-    }
-
-    controller = StreamController<T>(onCancel: () => channel.unsubscribe());
-
-    channel = _client.channel(channelName)
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: table,
-        filter: filter,
-        callback: (payload) {
-          if (payload.newRecord.isNotEmpty && !controller.isClosed) {
-            controller.add(fromRecord(payload.newRecord));
-          }
-        },
-      )
-      ..subscribe((status, error) {
-        switch (status) {
-          case RealtimeSubscribeStatus.subscribed:
-            doFetch();
-          case RealtimeSubscribeStatus.channelError:
-          case RealtimeSubscribeStatus.timedOut:
-            if (!controller.isClosed) {
-              controller.addError(
-                error ?? Exception('Realtime subscription failed'),
-              );
-            }
-          case RealtimeSubscribeStatus.closed:
-            break;
-        }
-      });
-
-    return controller.stream;
-  }
+  /// An empty snapshot (row not visible yet, or deleted) is skipped rather
+  /// than emitted as an error — the stream simply keeps its last value.
+  Stream<Game> gameStream(String gameId) => _client
+      .from('games')
+      .stream(primaryKey: ['id'])
+      .eq('id', gameId)
+      .where((rows) => rows.isNotEmpty)
+      .map((rows) => Game.fromJson(rows.first));
 
   /// Fetches the current user's waiting/ready/active games with the
   /// structural data needed to derive turn info client-side.

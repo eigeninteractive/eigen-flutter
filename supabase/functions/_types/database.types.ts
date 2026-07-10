@@ -783,7 +783,7 @@ export type Database = {
           p_mode: string;
           p_transitions: Json;
         };
-        Returns: undefined;
+        Returns: Json;
       };
       engine_commit_start: {
         Args: {

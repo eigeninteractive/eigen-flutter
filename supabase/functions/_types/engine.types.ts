@@ -115,6 +115,12 @@ export type Database = Omit<DatabaseGenerated, "public"> & {
  * this constraint relies on is lost). */
 export type JsonObject = { [key: string]: Json | undefined };
 
+/** Re-exported so engine modules can annotate raw `jsonb` RPC results without
+ * importing the generated file directly (this module stays its only importer).
+ * An explicit `Json` return annotation also caps the inference chain that the
+ * TS2589 note above is about. */
+export type { Json };
+
 // ── DB-derived enums ──────────────────────────────────────────────────────────
 
 /** The trigger of a lifecycle action, resolved by the game's `applyLifecycle`

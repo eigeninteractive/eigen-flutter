@@ -17,6 +17,7 @@ import type { SupabaseClient } from "@supabase/server/peer/supabase-js";
 import type {
   AcceptFriendResult,
   Database,
+  Json,
   JsonObject,
   SendFriendResult,
 } from "types/engine.types.ts";
@@ -350,11 +351,14 @@ export async function purgeUser(db: Db, userId: string) {
   if (error) throw new HttpError(500, error.message);
 }
 
+/** Commit one transition. Returns the caller's just-committed observation row
+ * (user mode only — the SQL hands the acting human their own frame so the
+ * action response can carry it), null for every other mode. */
 export async function commitAction(
   db: Db,
   params: RpcArgs<"engine_commit_action">,
-) {
-  const { error } = await db.rpc("engine_commit_action", params);
+): Promise<Json> {
+  const { data, error } = await db.rpc("engine_commit_action", params);
   // Thread the SQLSTATE through so optimistic-conflict retries can classify it.
   if (error) {
     throw new HttpError(
@@ -363,6 +367,7 @@ export async function commitAction(
       error.code,
     );
   }
+  return data;
 }
 
 export async function commitStart(

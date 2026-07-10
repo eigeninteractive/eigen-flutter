@@ -79,7 +79,9 @@ class ExampleRulesV1 implements GameRules<State, Action, Config> {
 
   // Resolve a lifecycle action (timeout / forfeit / auto_forfeit) — always
   // unconditional; the game only decides the consequences.
-  applyLifecycle({ state }: ApplyLifecycleArgs<State, Config>): Envelope<State> {
+  applyLifecycle(
+    { state }: ApplyLifecycleArgs<State, Config>,
+  ): Envelope<State> {
     return {
       state,
       pending_players: [],

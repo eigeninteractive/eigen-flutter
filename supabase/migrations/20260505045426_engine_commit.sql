@@ -110,6 +110,9 @@ GRANT EXECUTE ON FUNCTION public.engine_commit_start(UUID, UUID, JSONB, JSONB, T
 --                real action already won the race or the version moved. One
 --                identity-less system transition resolving the whole pending set
 --                (the hook decides holistically); zeroes every pending seat's bank.
+-- Returns the caller's just-committed observation row (to_jsonb) for user mode,
+-- so the EF can hand the acting player their own frame on the action response
+-- without waiting for Realtime; NULL for every other mode (and on abstain).
 CREATE OR REPLACE FUNCTION public.engine_commit_action(
   p_mode             TEXT,
   p_game_id          UUID,
@@ -118,7 +121,7 @@ CREATE OR REPLACE FUNCTION public.engine_commit_action(
   p_expected_version INT,
   p_transitions      JSONB
 )
-RETURNS VOID AS $$
+RETURNS JSONB AS $$
 DECLARE
   v_status            public.game_status;
   v_config            JSONB;
@@ -159,7 +162,7 @@ BEGIN
   -- active, or the EF computed from a now-stale version — abstains; every other
   -- mode hard-fails.
   IF private.commit_should_abstain(p_mode, v_status, v_cur_version, p_expected_version) THEN
-    RETURN;
+    RETURN NULL;
   END IF;
 
   v_action_type := CASE p_mode
@@ -183,7 +186,7 @@ BEGIN
   IF p_mode = 'timeout' THEN
     -- Deadline must genuinely be expired (grace symmetry with submit acceptance).
     IF NOT private.deadline_expired(v_cur_deadline, v_now) THEN
-      RETURN;  -- a real action won the race, or it is not expired yet
+      RETURN NULL;  -- a real action won the race, or it is not expired yet
     END IF;
 
     v_new_player_times := v_cur_player_times;
@@ -197,7 +200,7 @@ BEGIN
       v_now, p_game_id, 'system', 'lifecycle', NULL, NULL, v_t,
       v_cur_version + 1, v_cur_seed, v_budget, v_turn_seconds, v_new_player_times
     );
-    RETURN;
+    RETURN NULL;
   END IF;
 
   -- ── User / bot move ─────────────────────────────────────────────────────────
@@ -229,7 +232,18 @@ BEGIN
       v_t, v_cur_version + 1, v_cur_seed, v_budget, v_turn_seconds,
       v_new_player_times
     );
-    RETURN;
+    -- Hand the acting human their own frame (RLS-equivalent: only the row
+    -- whose user_id is the verified caller). A local-bot move (mode 'bot')
+    -- has no caller row and returns NULL like every other mode.
+    IF p_mode = 'user' THEN
+      RETURN (
+        SELECT to_jsonb(o) FROM public.observations o
+        WHERE o.game_id = p_game_id
+          AND o.version = v_cur_version + 1
+          AND o.user_id = p_caller_id
+      );
+    END IF;
+    RETURN NULL;
   END IF;
 
   -- ── Resign / forfeit ────────────────────────────────────────────────────────
@@ -243,6 +257,7 @@ BEGIN
     NULL, v_t, v_cur_version + 1, v_cur_seed, v_budget, v_turn_seconds,
     v_cur_player_times
   );
+  RETURN NULL;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 

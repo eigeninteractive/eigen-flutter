@@ -140,7 +140,10 @@ export async function handleAction(
 ) {
   const { supabaseAdmin: db, userClaims } = c.var.supabaseContext;
   const userId = requireUserId(userClaims?.id);
-  await applyGameAction(gameModule, db, {
+  // The caller's own committed frame rides the response as a latency shortcut:
+  // the client feeds it into the same version-deduped observation pipeline the
+  // Realtime events flow through, which then drops the duplicate event.
+  const observation = await applyGameAction(gameModule, db, {
     gameId: body.game_id,
     data: body.data,
     expectedVersion: body.expected_version,
@@ -151,7 +154,7 @@ export async function handleAction(
       botId: null,
     }),
   });
-  return c.json({ ok: true });
+  return c.json({ ok: true, observation });
 }
 
 export async function handleStart(
