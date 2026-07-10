@@ -31,8 +31,8 @@ import 'package:eigen_engine/features/game/providers/game_providers.dart';
 import 'package:eigen_engine/features/game/providers/game_frame_provider.dart';
 import 'package:eigen_engine/features/game/providers/local_bot_driver.dart';
 import 'package:eigen_engine/features/social/presentation/widgets/player_profile_sheet.dart';
-import 'package:eigen_engine/shared/widgets/bot_tag.dart';
 import 'package:eigen_engine/shared/widgets/player_avatar.dart';
+import 'package:eigen_engine/shared/widgets/player_tags.dart';
 
 part 'game_screen_pre_game.dart';
 part 'game_screen_active.dart';

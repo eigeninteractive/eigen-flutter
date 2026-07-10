@@ -240,6 +240,7 @@ PlayerInfo _deletedPlayerInfo(String gameId, int playerIndex) => PlayerInfo(
   id: 'deleted_${gameId}_$playerIndex',
   username: 'player_$playerIndex',
   displayName: 'Deleted User',
+  isGuest: false,
 );
 
 /// Joins a game by invite code and returns the game ID.

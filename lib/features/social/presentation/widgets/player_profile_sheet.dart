@@ -7,9 +7,8 @@ import 'package:eigen_engine/features/rating/providers/rating_providers.dart';
 import 'package:eigen_engine/features/social/presentation/widgets/friend_actions.dart';
 import 'package:eigen_engine/shared/data/models/player_info.dart';
 import 'package:eigen_engine/shared/providers/player_providers.dart';
-import 'package:eigen_engine/shared/widgets/bot_tag.dart';
-import 'package:eigen_engine/shared/widgets/guest_tag.dart';
 import 'package:eigen_engine/shared/widgets/player_avatar.dart';
+import 'package:eigen_engine/shared/widgets/player_tags.dart';
 
 /// Modal bottom sheet showing a player's public profile.
 ///

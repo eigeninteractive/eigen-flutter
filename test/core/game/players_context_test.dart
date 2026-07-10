@@ -8,12 +8,22 @@ import 'package:flutter_test/flutter_test.dart';
 const _alice = GamePlayer(
   playerIndex: 0,
   type: ParticipantType.human,
-  info: PlayerInfo(id: '1', username: 'alice', displayName: 'Alice'),
+  info: PlayerInfo(
+    id: '1',
+    username: 'alice',
+    displayName: 'Alice',
+    isGuest: false,
+  ),
 );
 const _bob = GamePlayer(
   playerIndex: 1,
   type: ParticipantType.bot,
-  info: PlayerInfo(id: '2', username: 'bob', displayName: 'Bob'),
+  info: PlayerInfo(
+    id: '2',
+    username: 'bob',
+    displayName: 'Bob',
+    isGuest: false,
+  ),
 );
 
 void main() {

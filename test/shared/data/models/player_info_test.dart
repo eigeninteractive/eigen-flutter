@@ -14,19 +14,29 @@ void main() {
     check(PlayerInfo.fromJson(json).toJson()).deepEquals(json);
   });
 
-  test('is_guest defaults to false when absent (pre-field cached JSON)', () {
+  test('decoding without is_guest fails loudly (no fail-open default)', () {
     final json = <String, Object?>{
       'id': 'p1',
       'username': 'alice',
       'display_name': 'Alice',
     };
-    check(PlayerInfo.fromJson(json).isGuest).isFalse();
+    check(() => PlayerInfo.fromJson(json)).throws<TypeError>();
   });
 
   test('copyWith produces an equal-by-value instance', () {
-    const player = PlayerInfo(id: '1', username: 'u', displayName: 'U');
-    check(
-      player.copyWith(displayName: 'U2'),
-    ).equals(const PlayerInfo(id: '1', username: 'u', displayName: 'U2'));
+    const player = PlayerInfo(
+      id: '1',
+      username: 'u',
+      displayName: 'U',
+      isGuest: false,
+    );
+    check(player.copyWith(displayName: 'U2')).equals(
+      const PlayerInfo(
+        id: '1',
+        username: 'u',
+        displayName: 'U2',
+        isGuest: false,
+      ),
+    );
   });
 }

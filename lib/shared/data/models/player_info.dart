@@ -12,8 +12,10 @@ part 'player_info.g.dart';
 ///
 /// [isGuest] is true for anonymous (guest) accounts, always false for bots.
 /// Guests cannot be friended, so UI hides social affordances for them.
-/// Defaulted so cached entries persisted before the field existed still
-/// decode.
+/// Required, not defaulted: the RPC always returns it, and a default would
+/// silently map a decode gap to "not a guest" — the fail-open direction.
+/// Breaking JSON-shape changes are handled by the persisted cache's
+/// `destroyKey`, not by per-field defaults.
 @freezed
 abstract class PlayerInfo with _$PlayerInfo {
   const factory PlayerInfo({
@@ -21,7 +23,7 @@ abstract class PlayerInfo with _$PlayerInfo {
     required String username,
     required String displayName,
     String? avatarUrl,
-    @Default(false) bool isGuest,
+    required bool isGuest,
   }) = _PlayerInfo;
 
   factory PlayerInfo.fromJson(Map<String, dynamic> json) =>
