@@ -84,13 +84,15 @@ export type ReadGameState = Awaited<ReturnType<typeof readGameState>>;
 /** One roster seat (bot seats carry the wake fields). */
 export type Seat = ReadGameState["roster"][number];
 
-/** Read what the EF needs to compute the initial state (status must be `ready`,
- * enforced by the commit RPC). */
+/** Read what the EF needs to compute the initial state. `created_by` backs the
+ * route's creator fast-fail (the hooks + fan-out must not run for a
+ * non-creator); status `ready` and the authoritative creator check are
+ * enforced by the commit RPC under its lock. */
 export async function readForStart(db: Db, gameId: string) {
   const { data, error } = await db
     .from("games")
     .select(
-      "config, schema_version, status, rated, rating_pool, budget_seconds, participants(count)",
+      "config, schema_version, status, rated, rating_pool, budget_seconds, created_by, participants(count)",
     )
     .eq("id", gameId)
     .maybeSingle();
@@ -105,6 +107,7 @@ export async function readForStart(db: Db, gameId: string) {
     rated: data.rated,
     rating_pool: data.rating_pool,
     budget_seconds: data.budget_seconds,
+    created_by: data.created_by,
     player_count: data.participants[0]?.count ?? 0,
   };
 }

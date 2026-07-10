@@ -10,6 +10,7 @@
  */
 
 import type { Context } from "@hono/hono";
+import { pooledMap } from "@std/async";
 import type { GameModule } from "types/engine.types.ts";
 import { z } from "zod";
 import { expireGame, purgeUserGames } from "./game-pipeline.ts";
@@ -18,6 +19,13 @@ import type { AppEnv } from "./runtime.ts";
 export const expireBatchBody = z.object({ game_ids: z.array(z.string()) });
 
 export const purgeUsersBody = z.object({ user_ids: z.array(z.string()) });
+
+/** How many expire pipelines run concurrently per batch. The batch entries are
+ * independent games (the sweep query is DISTINCT ON game_id), so this is a
+ * throughput cap, not a correctness guard: it bounds concurrent PostgREST
+ * connections while keeping a full 200-game batch (~25 waves) well inside the
+ * EF wall clock, where the old sequential drain risked brushing against it. */
+const expireConcurrency = 8;
 
 /** The pg_cron expire sweep drives the timeout for a batch of games in one
  * hop (the participant nudge in `game-handlers.ts` is the per-game driver). */
@@ -29,7 +37,11 @@ export async function handleExpireBatch(
   const { supabaseAdmin: db } = c.var.supabaseContext;
   let processed = 0;
   let failed = 0;
-  for (const gameId of body.game_ids) {
+  // Failures are absorbed per game — pooledMap aborts the pool on a rejected
+  // item, which must never strand the rest of a self-healing sweep.
+  const expirations = pooledMap(expireConcurrency, body.game_ids, async (
+    gameId,
+  ) => {
     try {
       await expireGame(gameModule, db, gameId);
       processed++;
@@ -37,7 +49,8 @@ export async function handleExpireBatch(
       console.error(`expire failed for ${gameId}:`, e);
       failed++;
     }
-  }
+  });
+  await Array.fromAsync(expirations);
   // The cron caller PERFORMs net.http_post and discards the response, so the
   // outcome is logged rather than returned.
   console.log(`expire batch: ${processed} processed, ${failed} failed`);
@@ -48,7 +61,10 @@ export async function handleExpireBatch(
  * guests that still hold active games — purging a guest with no active games
  * is pure SQL and runs in the sweep itself. Each user needs the rules (a
  * forfeit's consequence is game-defined and may leave a multiplayer game
- * active), so this cannot be a per-game signal. */
+ * active), so this cannot be a per-game signal. Sequential on purpose (unlike
+ * the expire batch): two purged users can share an active game, and running
+ * them serially avoids churning the forfeit retry path for a sweep that has
+ * tiny batches and no latency requirement. */
 export async function handlePurgeUsers(
   gameModule: GameModule,
   c: Context<AppEnv>,

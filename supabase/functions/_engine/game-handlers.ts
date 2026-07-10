@@ -51,7 +51,12 @@ import {
   readGameState,
   readReplay,
 } from "./repo.ts";
-import { type AppEnv, EngineCode, HttpError, requireUserId } from "./runtime.ts";
+import {
+  type AppEnv,
+  EngineCode,
+  HttpError,
+  requireUserId,
+} from "./runtime.ts";
 
 // ── Request bodies ────────────────────────────────────────────────────────────
 // One Zod schema per route; `jsonBody` parses and 400s in the engine error
@@ -157,6 +162,12 @@ export async function handleStart(
   const { supabaseAdmin: db, userClaims } = c.var.supabaseContext;
   const userId = requireUserId(userClaims?.id);
   const start = await readForStart(db, body.game_id);
+  // Non-authoritative fast-fail (the commit RPC re-checks the creator under
+  // its lock): without it, anyone holding a game id could burn hook +
+  // fan-out compute on a request that is guaranteed to be rejected.
+  if (start.created_by !== userId) {
+    throw new HttpError(403, "Only the game creator can start the game");
+  }
   const rules = rulesFor(gameModule, start.schema_version);
   const config = parseStoredPayload(
     rules.schemas.config,
