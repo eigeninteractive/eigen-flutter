@@ -101,18 +101,28 @@ DECLARE
   v_max_players    INT;
   v_min_players    INT;
   v_rated          BOOLEAN;
+  v_turn_seconds   INT;
+  v_budget_seconds INT;
   v_game_config    JSONB;
   v_count          INT;
   v_bot            RECORD;
 BEGIN
-  SELECT status, schema_version, max_players, min_players, rated, config
+  SELECT status, schema_version, max_players, min_players, rated,
+         turn_seconds, budget_seconds, config
   INTO v_status, v_schema_version, v_max_players, v_min_players, v_rated,
-       v_game_config
+       v_turn_seconds, v_budget_seconds, v_game_config
   FROM public.games WHERE id = p_game_id;
 
   IF NOT FOUND THEN RAISE EXCEPTION 'Game not found' USING ERRCODE = 'EIG06'; END IF;
   IF v_status NOT IN ('waiting', 'ready') THEN
     RAISE EXCEPTION 'Game is not accepting players' USING ERRCODE = 'EIG10';
+  END IF;
+  -- Timing guard (invariant 4): a server bot's endpoint may be unreachable,
+  -- and the expiry sweep is the retry for a lost wake — which only exists
+  -- when the game has a turn deadline. Every caller of this function seats
+  -- server bots, so the game must be timed.
+  IF v_turn_seconds IS NULL AND v_budget_seconds IS NULL THEN
+    RAISE EXCEPTION 'A game with a server bot must be timed';
   END IF;
 
   SELECT schema_version, is_local, rated_eligible, config

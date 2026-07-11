@@ -379,6 +379,13 @@ export async function handleAddBot(
   ]);
   const bot = bots.get(body.bot_id);
   if (bot === undefined) throw new HttpError(404, "Bot not found");
+  // Same backstop rationale as create-solo: a server bot's endpoint may be
+  // unreachable, and the expiry sweep is the retry for a lost wake — which
+  // only exists when the game has a turn deadline. This route seats server
+  // bots exclusively, so the game must be timed.
+  if (game.turn_seconds === null && game.budget_seconds === null) {
+    throw new HttpError(400, "A game with a server bot must be timed");
+  }
   const rules = rulesFor(gameModule, game.schema_version);
   const gameConfig = parseStoredPayload(
     rules.schemas.config,

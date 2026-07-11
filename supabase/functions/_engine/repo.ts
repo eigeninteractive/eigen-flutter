@@ -204,13 +204,13 @@ export async function readBots(
   );
 }
 
-/** Read a game's opaque `config` blob and its `schema_version` — the pair the
- * caller needs to parse the config (pre-start, so {@link readGameState} —
- * which needs a committed state row — can't be used). */
+/** Read a game's opaque `config` blob, its `schema_version`, and its timing
+ * columns — what the pre-start policy gates need ({@link readGameState} needs
+ * a committed state row, so it can't be used before `/game/start`). */
 export async function readGameConfig(db: Db, gameId: string) {
   const { data, error } = await db
     .from("games")
-    .select("config, schema_version")
+    .select("config, schema_version, turn_seconds, budget_seconds")
     .eq("id", gameId)
     .maybeSingle();
   if (error) throw new HttpError(500, error.message);
@@ -220,6 +220,8 @@ export async function readGameConfig(db: Db, gameId: string) {
   return {
     config: (data.config ?? {}) as JsonObject,
     schema_version: data.schema_version,
+    turn_seconds: data.turn_seconds,
+    budget_seconds: data.budget_seconds,
   };
 }
 

@@ -964,7 +964,7 @@ is split by tier across dependency-ordered migrations (`…_engine_helpers`,
 | ----------------------------------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `game/create`                                               | `engine_create_game`                                                                   | Creates the `games` row (unique `short_code` retry) + seats the creator as participant 0. EF validates timing/players/access, blocks guests from `friends` access, derives the pool (`ratingPool`), and **validates the client's `rated` assertion** (rejects a mismatch).         |
 | `game/create-solo`                                          | `engine_create_solo_game`                                                              | Atomic **sole-human, unrated, private** game; seats caller + bots full at creation (never joinable). EF gates bot class: `botSeatable`, schema compat, guests ⇒ local bots only, **server ⇒ timed / local ⇒ untimed**.                                                             |
-| `game/add-bot`                                              | `engine_add_bot_to_game`                                                               | Creator-only waiting-room fill with a **server** bot. EF rejects guests + checks `botSeatable`; SQL holds the `FOR UPDATE` lock for the creator check, seat-count cap, and the server-only/schema/`rated_eligible` invariants (`seat_server_bot`).                                 |
+| `game/add-bot`                                              | `engine_add_bot_to_game`                                                               | Creator-only waiting-room fill with a **server** bot. EF rejects guests + untimed games, checks `botSeatable`; SQL holds the `FOR UPDATE` lock for the creator check, seat-count cap, and the server-only/timed/schema/`rated_eligible` invariants (`seat_server_bot`).            |
 | `game/start`                                                | `engine_commit_start`                                                                  | `initialState` → writes `game_states` v0 + per-seat `observations`, inits banks (budget mode), sets `turn_started_at`, marks `active`. Creator-only, under lock.                                                                                                                   |
 | `game/action`                                               | `engine_commit_action`                                                                 | The move chokepoint. EF runs `applyAction`; SQL row-locks `games`, validates version + deadline under lock, gates on `pending_players`, deducts bank, fans out observations, and on finish writes `game_outcomes` + rating updates **in the same transaction**.                    |
 | `game/forfeit`                                              | `engine_commit_action` (`resign`)                                                      | A user resign → `applyLifecycle('forfeit')`, logged as a `user` action (carries the resigning user + seat). No deadline/pending guard (resign any time, even off-turn); version-checked under the lock and retried on stale.                                                          |
@@ -4151,11 +4151,15 @@ enforced structurally by _which_ function may seat a bot:
 3. **Rated ⇒ server bots only, no guests** — a rated result needs trusted move
    provenance.
 
-A fourth, **timing** invariant partitions the bot class in a solo game: **local
-⇒ untimed, server ⇒ timed.** A turn deadline is a liveness backstop only a
-possibly-unreachable server bot needs; a local bot is driven by the present
-human's client and must not lose a turn because the human navigated away (this
-is also why local + server can't mix — one class per game). The "create a rated
+A fourth, **timing** invariant partitions the bot class: **local ⇒ untimed,
+server ⇒ timed.** A turn deadline is a liveness backstop only a
+possibly-unreachable server bot needs (the expiry sweep is the retry for a lost
+wake, and it only sees games with a deadline); a local bot is driven by the
+present human's client and must not lose a turn because the human navigated
+away (this is also why local + server can't mix — one class per game). The
+server⇒timed half is enforced wherever a server bot is seated: in TS on
+`game/create-solo` and `game/add-bot`, and as a backstop in
+`private.seat_server_bot` for any future caller. The "create a rated
 game
 
 - a local bot, then let a human join and cheat" scenario is thus **impossible by
@@ -4173,10 +4177,11 @@ Each path enforces one slice of the invariants (see §5 for signatures):
   1 holds with no extra guard. Anonymous callers may seat **local bots only**
   (server bots cost real per-move compute).
 - **`game/add-bot` (→ `engine_add_bot_to_game`)** — creator-only waiting-room
-  fill (the host's "Add bot" button). The route rejects guests in TS; the RPC,
-  under its seat-count `FOR UPDATE`, rejects local bots (invariant 2), a
-  schema/config-incompatible bot, and a non-`rated_eligible` bot in a rated game
-  (invariant 3, never downgraded). The seat/guard logic is factored into
+  fill (the host's "Add bot" button). The route rejects guests and untimed
+  games (invariant 4) in TS; the RPC, under its seat-count `FOR UPDATE`,
+  rejects local bots (invariant 2), untimed games (invariant 4, re-checked as
+  a backstop), a schema/config-incompatible bot, and a non-`rated_eligible`
+  bot in a rated game (invariant 3, never downgraded). The seat/guard logic is factored into
   `private.seat_server_bot` so the **deferred** matchmaking auto-fill can reuse
   it via service-role without the creator check.
 
