@@ -13,6 +13,7 @@
 
 import type { Context } from "@hono/hono";
 import { z } from "zod";
+import "./edge_runtime.ts";
 import { notifyUsers } from "./notify.ts";
 import {
   acceptFriendRequest,
@@ -56,7 +57,7 @@ export async function handleFriendRequest(c: Context<AppEnv>, target: string) {
         body: "Tap to respond.",
         data: { category: "friend_request", deep_link: "/social" },
       };
-    await notifyUsers(db, [res.notify_user_id], msg);
+    EdgeRuntime.waitUntil(notifyUsers(db, [res.notify_user_id], msg));
   }
   return c.json({ ok: true });
 }
@@ -69,11 +70,11 @@ export async function handleFriendAccept(c: Context<AppEnv>, target: string) {
   const res = await acceptFriendRequest(db, userId, target);
   if (res.accepted && res.requester_id) {
     const name = res.accepter_display_name ?? "Someone";
-    await notifyUsers(db, [res.requester_id], {
+    EdgeRuntime.waitUntil(notifyUsers(db, [res.requester_id], {
       title: `${name} accepted your friend request`,
       body: "Tap to view.",
       data: { category: "friend_accepted", deep_link: "/social" },
-    });
+    }));
   }
   return c.json({ ok: true });
 }

@@ -42,17 +42,7 @@ import {
   readRatingsForSeats,
 } from "./repo.ts";
 import { commitWithRetry, EngineCode, HttpError } from "./runtime.ts";
-
-declare global {
-  /** Injected by the Supabase Edge runtime. Its shipped `edge-runtime.d.ts`
-   * doesn't register ambient types under `deno check`, so the one API the
-   * engine uses is declared here. `waitUntil` keeps the worker alive until the
-   * promise settles, so a post-response notify isn't dropped; on a platform
-   * without `EdgeRuntime` the call throws loudly (deliberately unguarded). */
-  namespace EdgeRuntime {
-    function waitUntil<T>(promise: Promise<T>): Promise<T>;
-  }
-}
+import "./edge_runtime.ts";
 
 /** A user/bot move only retries when its rating baseline moved — never on a
  * board advance (a moved board must reject the move, not silently re-apply it). */

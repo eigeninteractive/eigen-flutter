@@ -22,8 +22,3 @@
 - [ ] Flag a game or player
 - [ ] Quick Match
 - [ ] Target web platform, Web App notifications
-
-# Migration Tasks
-
-- Database Broadcast Realtime
-- Per game object needed in Dart or Typescript?
