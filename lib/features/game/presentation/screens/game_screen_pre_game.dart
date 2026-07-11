@@ -370,11 +370,15 @@ class _ParticipantList extends StatelessWidget {
                 playerInfo: gp.info,
                 radius: 20,
                 isBot: isBot,
-                onTap: () => PlayerProfileSheet.show(
-                  context,
-                  playerId: gp.info.id,
-                  type: gp.type,
-                ),
+                // A deleted seat's info is a synthetic placeholder whose id
+                // resolves to no player — never open the profile sheet on it.
+                onTap: gp.isDeleted
+                    ? null
+                    : () => PlayerProfileSheet.show(
+                        context,
+                        playerId: gp.info.id,
+                        type: gp.type,
+                      ),
               ),
               const SizedBox(width: 12),
               Text(
