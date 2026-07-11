@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:eigen_engine/features/profile/data/models/user_profile.dart';
+import 'package:eigen_engine/shared/data/db_guard.dart';
 
 /// Repository for user profile data operations.
 ///
@@ -13,22 +14,24 @@ class ProfileRepository {
   /// Fetches a user's complete profile (users + user_profiles joined).
   Future<UserProfile> getUserProfile(String userId) async {
     // Query user_profiles and join with users table
-    final response = await _client
-        .from('user_profiles')
-        .select('''
-          id,
-          display_name,
-          avatar_url,
-          created_at,
-          updated_at,
-          users!inner (
-            username,
-            email,
-            payment_tier
-          )
-        ''')
-        .eq('id', userId)
-        .single();
+    final response = await dbGuard(
+      () => _client
+          .from('user_profiles')
+          .select('''
+            id,
+            display_name,
+            avatar_url,
+            created_at,
+            updated_at,
+            users!inner (
+              username,
+              email,
+              payment_tier
+            )
+          ''')
+          .eq('id', userId)
+          .single(),
+    );
 
     // Flatten the nested response
     final users = response['users'] as Map<String, dynamic>;
@@ -58,7 +61,9 @@ class ProfileRepository {
     if (avatarUrl != null) updates['avatar_url'] = avatarUrl;
 
     if (updates.isNotEmpty) {
-      await _client.from('user_profiles').update(updates).eq('id', userId);
+      await dbGuard(
+        () => _client.from('user_profiles').update(updates).eq('id', userId),
+      );
     }
 
     // Re-fetch the complete profile
@@ -69,9 +74,11 @@ class ProfileRepository {
   ///
   /// Throws on validation or uniqueness errors.
   Future<String> updateUsername(String newUsername) async {
-    final response = await _client.rpc(
-      'app_update_username',
-      params: {'new_username': newUsername},
+    final response = await dbGuard(
+      () => _client.rpc(
+        'app_update_username',
+        params: {'new_username': newUsername},
+      ),
     );
     return response as String;
   }

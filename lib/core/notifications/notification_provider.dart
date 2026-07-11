@@ -6,6 +6,7 @@ import 'package:eigen_engine/core/config/app_config.dart';
 import 'package:eigen_engine/core/navigation/providers/navigation_providers.dart';
 import 'package:eigen_engine/core/notifications/firebase_notification_service.dart';
 import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
+import 'package:eigen_engine/shared/providers/device_installation_providers.dart';
 
 part 'notification_provider.g.dart';
 
@@ -15,8 +16,9 @@ FirebaseNotificationService notificationService(Ref ref) =>
     FirebaseNotificationService(
       messaging: FirebaseMessaging.instance,
       installations: FirebaseInstallations.instance,
-      supabase: ref.watch(supabaseClientProvider),
+      installationRepository: ref.watch(deviceInstallationRepositoryProvider),
       localNotifications: FlutterLocalNotificationsPlugin(),
+      currentUserId: () => ref.read(authServiceProvider).currentUser?.id,
       activeGameId: () {
         final uri = ref
             .read(goRouterProvider)

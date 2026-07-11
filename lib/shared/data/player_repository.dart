@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:eigen_engine/shared/data/db_guard.dart';
 import 'package:eigen_engine/shared/data/models/player_info.dart';
 
 /// Repository for fetching public player identities.
@@ -12,11 +13,13 @@ class PlayerRepository {
 
   /// Fetches public identity for any player (human or bot) by ID.
   Future<PlayerInfo> getPlayer(String id) async {
-    final response = await _client.rpc(
-      'app_players',
-      params: {
-        'p_ids': [id],
-      },
+    final response = await dbGuard(
+      () => _client.rpc(
+        'app_players',
+        params: {
+          'p_ids': [id],
+        },
+      ),
     );
     return PlayerInfo.fromJson((response as List).single);
   }

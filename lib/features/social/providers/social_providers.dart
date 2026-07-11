@@ -9,6 +9,7 @@ import 'package:eigen_engine/core/storage/storage_provider.dart';
 import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
 import 'package:eigen_engine/features/social/data/models/friendship.dart';
 import 'package:eigen_engine/features/social/data/social_repository.dart';
+import 'package:eigen_engine/shared/providers/supabase_client_provider.dart';
 
 part 'social_providers.g.dart';
 

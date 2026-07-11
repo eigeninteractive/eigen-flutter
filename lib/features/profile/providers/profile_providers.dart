@@ -10,6 +10,7 @@ import 'package:eigen_engine/features/profile/data/avatar_storage_service.dart';
 import 'package:eigen_engine/features/profile/data/models/user_profile.dart';
 import 'package:eigen_engine/features/profile/data/profile_repository.dart';
 import 'package:eigen_engine/shared/providers/player_providers.dart';
+import 'package:eigen_engine/shared/providers/supabase_client_provider.dart';
 
 part 'profile_providers.g.dart';
 

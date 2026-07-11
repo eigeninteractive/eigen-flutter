@@ -1,14 +1,15 @@
 import 'dart:async';
 
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:eigen_engine/core/analytics/analytics_provider.dart';
 import 'package:eigen_engine/core/config/app_config.dart';
 import 'package:eigen_engine/core/notifications/notification_provider.dart';
 import 'package:eigen_engine/core/storage/storage_provider.dart';
 import 'package:eigen_engine/features/auth/data/auth_service.dart';
+import 'package:eigen_engine/features/auth/data/models/auth_user.dart';
 import 'package:eigen_engine/features/profile/providers/profile_providers.dart';
 import 'package:eigen_engine/shared/providers/player_providers.dart';
+import 'package:eigen_engine/shared/providers/supabase_client_provider.dart';
 
 part 'auth_providers.g.dart';
 
@@ -21,12 +22,6 @@ enum UpgradeOutcome {
   /// The Google account already existed, so the session switched into it and
   /// the guest's data was abandoned.
   switchedToExisting,
-}
-
-/// Provider for Supabase client instance
-@Riverpod(keepAlive: true)
-SupabaseClient supabaseClient(Ref ref) {
-  return Supabase.instance.client;
 }
 
 /// Provider for AuthService instance
@@ -47,21 +42,21 @@ AuthService authService(Ref ref) {
 /// changes — token refreshes re-emit the same id and propagate no further.
 @riverpod
 String? currentUserId(Ref ref) =>
-    ref.watch(authStateChangesProvider).value?.session?.user.id;
+    ref.watch(authStateChangesProvider).value?.user?.id;
 
 /// Provider for current authenticated user.
 ///
 /// Rebuilds when the signed-in user changes (sign-in, sign-out, account
 /// switch) so user-scoped providers watching this re-key per account.
 @riverpod
-User? currentUser(Ref ref) {
+AuthUser? currentUser(Ref ref) {
   ref.watch(currentUserIdProvider);
   return ref.watch(authServiceProvider).currentUser;
 }
 
 /// Provider for authentication state stream
 @riverpod
-Stream<AuthState> authStateChanges(Ref ref) {
+Stream<AuthStateChange> authStateChanges(Ref ref) {
   final authService = ref.watch(authServiceProvider);
   return authService.authStateChanges;
 }
@@ -74,7 +69,7 @@ Stream<AuthState> authStateChanges(Ref ref) {
 /// nudge) watch this; `==` on the bool keeps unrelated token refreshes inert.
 @riverpod
 bool isAnonymous(Ref ref) {
-  final user = ref.watch(authStateChangesProvider).value?.session?.user;
+  final user = ref.watch(authStateChangesProvider).value?.user;
   return user?.isAnonymous ?? false;
 }
 

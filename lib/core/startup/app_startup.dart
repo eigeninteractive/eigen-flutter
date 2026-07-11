@@ -5,11 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:eigen_engine/core/analytics/analytics_provider.dart';
 import 'package:eigen_engine/core/navigation/router/app_router.dart';
 import 'package:eigen_engine/core/notifications/notification_provider.dart';
 import 'package:eigen_engine/core/updates/update_notifier.dart';
+import 'package:eigen_engine/features/auth/data/models/auth_user.dart';
 import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
 import 'package:eigen_engine/features/game/providers/game_providers.dart';
 import 'package:eigen_engine/features/profile/providers/profile_providers.dart';
@@ -28,7 +28,7 @@ class AppStartup extends ConsumerStatefulWidget {
 
 class _AppStartupState extends ConsumerState<AppStartup> {
   late final AppLifecycleListener _lifecycleListener;
-  late final ProviderSubscription<AsyncValue<AuthState>> _authSub;
+  late final ProviderSubscription<AsyncValue<AuthStateChange>> _authSub;
   StreamSubscription<String>? _notificationSub;
 
   @override
@@ -79,7 +79,7 @@ class _AppStartupState extends ConsumerState<AppStartup> {
       // If authenticated, wait for the profile SQLite cache to restore before
       // revealing the home screen. Cap at 2 s — SQLite resolves in ~5 ms so
       // this only triggers when there is no local cache AND no network.
-      if (authState.session?.user.id != null) {
+      if (authState.user != null) {
         await ref
             .read(currentUserProfileProvider.future)
             .timeout(const Duration(seconds: 2));
@@ -97,16 +97,16 @@ class _AppStartupState extends ConsumerState<AppStartup> {
   }
 
   void _onAuthStateChange(
-    AsyncValue<AuthState>? _,
-    AsyncValue<AuthState> next,
+    AsyncValue<AuthStateChange>? _,
+    AsyncValue<AuthStateChange> next,
   ) {
     next.whenOrNull(
       data: (authState) {
         final analytics = ref.read(analyticsServiceProvider);
         switch (authState.event) {
-          case AuthChangeEvent.initialSession:
-          case AuthChangeEvent.signedIn:
-            if (authState.session?.user case final user?) {
+          case AuthEvent.initialSession:
+          case AuthEvent.signedIn:
+            if (authState.user case final user?) {
               unawaited(analytics.identify(user.id));
               // Segment all metrics by guest vs registered. Conversion later
               // re-tags to registered from AuthController.upgradeToGoogle.
@@ -127,9 +127,11 @@ class _AppStartupState extends ConsumerState<AppStartup> {
               // path (the waiting-room "Add bot" picker) before it is opened.
               ref.read(availableBotsProvider.future).ignore();
             }
-          case AuthChangeEvent.signedOut:
+          case AuthEvent.signedOut:
             unawaited(analytics.reset());
-          default:
+          case AuthEvent.tokenRefreshed:
+          case AuthEvent.userUpdated:
+          case AuthEvent.other:
             break;
         }
       },

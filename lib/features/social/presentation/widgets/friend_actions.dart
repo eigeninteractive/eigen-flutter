@@ -32,7 +32,7 @@ class FriendActions extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final currentUserId = ref.watch(authServiceProvider).currentUser?.id;
+    final currentUserId = ref.watch(currentUserIdProvider);
     if (playerId == currentUserId) return const SizedBox.shrink();
 
     if (ref.watch(isAnonymousProvider)) {

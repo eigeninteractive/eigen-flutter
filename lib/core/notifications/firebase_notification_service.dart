@@ -6,7 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:eigen_engine/shared/data/device_installation_repository.dart';
 
 // ── Android notification channels ────────────────────────────────────────────
 // Each channel appears as an independent toggle in Android system settings,
@@ -58,22 +58,28 @@ class FirebaseNotificationService {
   FirebaseNotificationService({
     required FirebaseMessaging messaging,
     required FirebaseInstallations installations,
-    required SupabaseClient supabase,
+    required DeviceInstallationRepository installationRepository,
     required FlutterLocalNotificationsPlugin localNotifications,
     required String? Function() activeGameId,
+    required String? Function() currentUserId,
     String? vapidKey,
   }) : _messaging = messaging,
        _installations = installations,
-       _supabase = supabase,
+       _installationRepository = installationRepository,
        _localNotifications = localNotifications,
        _activeGameId = activeGameId,
+       _currentUserId = currentUserId,
        _vapidKey = vapidKey;
 
   final FirebaseMessaging _messaging;
   final FirebaseInstallations _installations;
-  final SupabaseClient _supabase;
+  final DeviceInstallationRepository _installationRepository;
   final FlutterLocalNotificationsPlugin _localNotifications;
   final String? Function() _activeGameId;
+
+  /// Reads the signed-in user's id at call time (null when signed out), so
+  /// registration follows the live session without holding an auth handle.
+  final String? Function() _currentUserId;
 
   /// VAPID key for FCM Web Push, injected from [EngineConfig]; null on mobile.
   final String? _vapidKey;
@@ -191,10 +197,7 @@ class FirebaseNotificationService {
   Future<void> deleteCurrentInstallation() async {
     try {
       final fid = await _installations.getId();
-      await _supabase.rpc(
-        'app_delete_device_installation',
-        params: {'p_fid': fid},
-      );
+      await _installationRepository.delete(fid: fid);
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_registeredKey);
     } catch (e, stack) {
@@ -232,7 +235,7 @@ class FirebaseNotificationService {
   /// sign-in (user changes) or a FID rotation (FID changes) both miss the guard
   /// and re-register.
   Future<void> _register() async {
-    final userId = _supabase.auth.currentUser?.id;
+    final userId = _currentUserId();
     if (userId == null) return;
     final fid = await _installations.getId();
     final prefs = await SharedPreferences.getInstance();
@@ -252,10 +255,7 @@ class FirebaseNotificationService {
               'Push notifications not supported on $defaultTargetPlatform',
             ),
           };
-    await _supabase.rpc(
-      'app_upsert_device_installation',
-      params: {'p_fid': fid, 'p_platform': platform},
-    );
+    await _installationRepository.upsert(fid: fid, platform: platform);
   }
 
   void _showForegroundNotification(RemoteMessage message) {

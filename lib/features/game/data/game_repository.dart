@@ -9,6 +9,7 @@ import 'package:eigen_engine/features/game/data/models/game.dart';
 import 'package:eigen_engine/features/game/data/models/observation.dart';
 import 'package:eigen_engine/features/game/data/models/participant.dart';
 import 'package:eigen_engine/features/rating/data/models/rating_change.dart';
+import 'package:eigen_engine/shared/data/db_guard.dart';
 
 /// Number of games fetched per lobby page.
 const lobbyPageSize = 50;
@@ -112,12 +113,14 @@ class GameRepository {
     String gameId, {
     required int clientSchemaVersion,
   }) async {
-    final result = await _client.rpc(
-      'app_join_game',
-      params: {
-        'p_game_id': gameId,
-        'p_client_schema_version': clientSchemaVersion,
-      },
+    final result = await dbGuard(
+      () => _client.rpc(
+        'app_join_game',
+        params: {
+          'p_game_id': gameId,
+          'p_client_schema_version': clientSchemaVersion,
+        },
+      ),
     );
     return result as String;
   }
@@ -133,9 +136,14 @@ class GameRepository {
     String code, {
     required int clientSchemaVersion,
   }) async {
-    final result = await _client.rpc(
-      'app_join_game_by_code',
-      params: {'p_code': code, 'p_client_schema_version': clientSchemaVersion},
+    final result = await dbGuard(
+      () => _client.rpc(
+        'app_join_game_by_code',
+        params: {
+          'p_code': code,
+          'p_client_schema_version': clientSchemaVersion,
+        },
+      ),
     );
     return result as String;
   }
@@ -205,11 +213,13 @@ class GameRepository {
   /// Returns one [GameOutcome] per participant. Empty for games that are not
   /// yet finished. Call this once when [Game.status] transitions to finished.
   Future<List<GameOutcome>> getGameOutcomes(String gameId) async {
-    final response = await _client
-        .from('game_outcomes')
-        .select()
-        .eq('game_id', gameId)
-        .order('player_index');
+    final response = await dbGuard(
+      () => _client
+          .from('game_outcomes')
+          .select()
+          .eq('game_id', gameId)
+          .order('player_index'),
+    );
     return response.map((json) => GameOutcome.fromJson(json)).toList();
   }
 
@@ -248,12 +258,14 @@ class GameRepository {
     List<({Game game, List<Participant> participants, bool isParticipant})>
   >
   _getJoinableGames(String rpcName, DateTime? cursor) async {
-    final response = await _client.rpc(
-      rpcName,
-      params: {
-        if (cursor != null) 'p_cursor': cursor.toIso8601String(),
-        'p_limit': lobbyPageSize,
-      },
+    final response = await dbGuard(
+      () => _client.rpc(
+        rpcName,
+        params: {
+          if (cursor != null) 'p_cursor': cursor.toIso8601String(),
+          'p_limit': lobbyPageSize,
+        },
+      ),
     );
 
     return (response as List<dynamic>).map((item) {
@@ -285,12 +297,16 @@ class GameRepository {
   ///
   /// The creator cannot leave — use [cancelGame] instead.
   Future<void> leaveGame(String gameId) async {
-    await _client.rpc('app_leave_game', params: {'p_game_id': gameId});
+    await dbGuard(
+      () => _client.rpc('app_leave_game', params: {'p_game_id': gameId}),
+    );
   }
 
   /// Cancels a waiting game (creator only).
   Future<void> cancelGame(String gameId) async {
-    await _client.rpc('app_cancel_game', params: {'p_game_id': gameId});
+    await dbGuard(
+      () => _client.rpc('app_cancel_game', params: {'p_game_id': gameId}),
+    );
   }
 
   /// Forfeits an active game.
@@ -332,9 +348,10 @@ class GameRepository {
       query = query.lt('finished_at', cursor.toIso8601String());
     }
 
-    final response = await query
-        .order('finished_at', ascending: false)
-        .limit(historyPageSize);
+    final response = await dbGuard(
+      () =>
+          query.order('finished_at', ascending: false).limit(historyPageSize),
+    );
 
     return response.map((j) {
       final participant = (j['participants'] as List)
@@ -370,7 +387,7 @@ class GameRepository {
   /// Bots available for this deployment (display-safe columns), for the
   /// solo play and "Add bot" pickers.
   Future<List<BotInfo>> getBots() async {
-    final result = await _client.rpc('app_bots');
+    final result = await dbGuard(() => _client.rpc('app_bots'));
     return (result as List)
         .cast<Map<String, dynamic>>()
         .map(BotInfo.fromJson)
@@ -440,12 +457,14 @@ class GameRepository {
     required String gameId,
     required int playerIndex,
   }) async {
-    final response = await _client
-        .rpc(
-          'app_local_bot_observation',
-          params: {'p_game_id': gameId, 'p_player_index': playerIndex},
-        )
-        .maybeSingle();
+    final response = await dbGuard(
+      () => _client
+          .rpc(
+            'app_local_bot_observation',
+            params: {'p_game_id': gameId, 'p_player_index': playerIndex},
+          )
+          .maybeSingle(),
+    );
 
     if (response == null) return null;
     return Observation.fromJson(response);
@@ -456,11 +475,13 @@ class GameRepository {
   /// reference data (display via [PlayerInfo], capability/config via the cached
   /// bot catalog) is resolved separately by id, not joined here.
   Future<List<Participant>> getParticipants(String gameId) async {
-    final response = await _client
-        .from('participants')
-        .select()
-        .eq('game_id', gameId)
-        .order('player_index');
+    final response = await dbGuard(
+      () => _client
+          .from('participants')
+          .select()
+          .eq('game_id', gameId)
+          .order('player_index'),
+    );
     return response.map(Participant.fromJson).toList();
   }
 
@@ -471,13 +492,15 @@ class GameRepository {
   /// to the authenticated user's rows, so no explicit user_id filter is
   /// needed.
   Future<Observation?> getObservation(String gameId) async {
-    final response = await _client
-        .from('observations')
-        .select()
-        .eq('game_id', gameId)
-        .order('version', ascending: false)
-        .limit(1)
-        .maybeSingle();
+    final response = await dbGuard(
+      () => _client
+          .from('observations')
+          .select()
+          .eq('game_id', gameId)
+          .order('version', ascending: false)
+          .limit(1)
+          .maybeSingle(),
+    );
 
     if (response == null) return null;
     return Observation.fromJson(response);
@@ -490,13 +513,15 @@ class GameRepository {
     required int after,
     required int before,
   }) async {
-    final rows = await _client
-        .from('observations')
-        .select()
-        .eq('game_id', gameId)
-        .gt('version', after)
-        .lt('version', before)
-        .order('version', ascending: true);
+    final rows = await dbGuard(
+      () => _client
+          .from('observations')
+          .select()
+          .eq('game_id', gameId)
+          .gt('version', after)
+          .lt('version', before)
+          .order('version', ascending: true),
+    );
     return rows.map(Observation.fromJson).toList();
   }
 
@@ -674,17 +699,19 @@ class GameRepository {
     final userId = _client.auth.currentUser?.id;
     if (userId == null) return [];
 
-    final response = await _client
-        .from('games')
-        .select(
-          '*, participants!inner(user_id, player_index), '
-          'observations(pending_players, turn_deadline)',
-        )
-        .eq('participants.user_id', userId)
-        .inFilter('status', ['waiting', 'ready', 'active'])
-        .order('version', referencedTable: 'observations', ascending: false)
-        .limit(1, referencedTable: 'observations')
-        .order('updated_at', ascending: false);
+    final response = await dbGuard(
+      () => _client
+          .from('games')
+          .select(
+            '*, participants!inner(user_id, player_index), '
+            'observations(pending_players, turn_deadline)',
+          )
+          .eq('participants.user_id', userId)
+          .inFilter('status', ['waiting', 'ready', 'active'])
+          .order('version', referencedTable: 'observations', ascending: false)
+          .limit(1, referencedTable: 'observations')
+          .order('updated_at', ascending: false),
+    );
 
     return response.map((j) {
       // The .eq('participants.user_id', userId) filter both (a) drives the

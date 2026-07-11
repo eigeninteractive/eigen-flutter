@@ -2,6 +2,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
 import 'package:eigen_engine/features/rating/data/models/player_rating.dart';
 import 'package:eigen_engine/features/rating/data/rating_repository.dart';
+import 'package:eigen_engine/shared/providers/supabase_client_provider.dart';
 
 part 'rating_providers.g.dart';
 

@@ -1,20 +1,18 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:eigen_engine/core/errors/engine_exception.dart';
 
 /// Converts a raw exception into a human-readable message suitable for display
 /// in snackbars.
 ///
-/// Structured engine errors dispatch on their stable code
-/// ([EngineErrorCodes], carried by [EngineException] for edge-function routes
-/// and [PostgrestException.code] for client-direct RPCs) — copy edits on the
-/// server can never change which message the user sees. Everything without a
-/// code is either a transport failure (detected by exception shape) or an
-/// unexpected error, which gets the generic message; there is deliberately no
-/// message-text matching.
+/// Structured engine errors dispatch on their stable code ([EngineErrorCodes],
+/// carried by [EngineException] regardless of transport — the repository
+/// layer maps both edge-function and client-direct RPC failures to it) — copy
+/// edits on the server can never change which message the user sees.
+/// Everything without a code is either a transport failure (detected by
+/// exception shape) or an unexpected error, which gets the generic message;
+/// there is deliberately no message-text matching.
 String humanize(Object e) {
   final code = switch (e) {
     EngineException(:final code) => code,
-    PostgrestException(:final code) => code,
     _ => null,
   };
   final coded = _messageForCode(code);

@@ -2,7 +2,6 @@ import 'package:checks/checks.dart';
 import 'package:eigen_engine/core/errors/engine_exception.dart';
 import 'package:eigen_engine/core/errors/error_messages.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   group('humanize', () {
@@ -25,19 +24,21 @@ void main() {
       ).equals('The game updated — try again.');
     });
 
-    test('maps engine codes on PostgrestException (client-direct RPCs)', () {
+    test('maps codes from client-direct RPC failures (via dbGuard)', () {
+      // dbGuard rethrows PostgrestException as EngineException, so RPC
+      // failures arrive here already carrying their EIGxx / SQLSTATE code.
       check(
         humanize(
-          const PostgrestException(
-            message: 'Game is full',
+          const EngineException(
+            'Game is full',
             code: EngineErrorCodes.gameFull,
           ),
         ),
       ).equals('This game is already full.');
       check(
         humanize(
-          const PostgrestException(
-            message: 'duplicate key value violates unique constraint',
+          const EngineException(
+            'duplicate key value violates unique constraint',
             code: '23505',
           ),
         ),

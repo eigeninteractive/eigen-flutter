@@ -24,8 +24,9 @@ class EngineException implements Exception {
 /// registry (`_engine/runtime.ts`) and the SQL `EIGxx` SQLSTATEs. Keep the
 /// three in sync.
 ///
-/// The codes surface on [EngineException.code] for edge-function routes and
-/// on `PostgrestException.code` for client-direct `app_*` RPCs.
+/// The codes surface on [EngineException.code] for both transports: the
+/// repository layer maps edge-function error bodies and client-direct `app_*`
+/// RPC failures (via `dbGuard`) to [EngineException].
 abstract final class EngineErrorCodes {
   /// A rated finish raced a concurrent rating update (server-side retryable;
   /// reaching the client means retries were exhausted).

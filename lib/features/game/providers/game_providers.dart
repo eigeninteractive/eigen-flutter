@@ -15,6 +15,7 @@ import 'package:eigen_engine/features/game/data/models/game.dart';
 import 'package:eigen_engine/features/game/data/models/observation.dart';
 import 'package:eigen_engine/shared/data/models/player_info.dart';
 import 'package:eigen_engine/shared/providers/player_providers.dart';
+import 'package:eigen_engine/shared/providers/supabase_client_provider.dart';
 
 part 'game_providers.g.dart';
 

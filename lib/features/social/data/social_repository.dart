@@ -1,6 +1,8 @@
-import 'package:eigen_engine/shared/data/models/player_info.dart';
-import 'package:eigen_engine/features/social/data/models/friendship.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:eigen_engine/core/errors/engine_exception.dart';
+import 'package:eigen_engine/features/social/data/models/friendship.dart';
+import 'package:eigen_engine/shared/data/db_guard.dart';
+import 'package:eigen_engine/shared/data/models/player_info.dart';
 
 class SocialRepository {
   SocialRepository(this._client);
@@ -9,8 +11,8 @@ class SocialRepository {
 
   /// Invoke an `engine` edge-function social route. The friend *writes* go
   /// through the EF (gated `engine_*` RPCs) so it can emit the friend-request /
-  /// accepted FCM pushes directly. Unwraps `{ "error": "<message>" }` like the
-  /// game wrapper.
+  /// accepted FCM pushes directly. Unwraps `{ "error": "<message>", "code"? }`
+  /// into an [EngineException] like the game wrapper.
   Future<void> _invokeSocial(String route, Map<String, dynamic> body) async {
     try {
       await _client.functions.invoke('engine/social/$route', body: body);
@@ -19,12 +21,17 @@ class SocialRepository {
       final message = details is Map && details['error'] is String
           ? details['error'] as String
           : 'Edge function error (status ${e.status})';
-      throw Exception(message);
+      final code = details is Map && details['code'] is String
+          ? details['code'] as String
+          : null;
+      throw EngineException(message, code: code);
     }
   }
 
   Future<List<Friendship>> getFriendships() async {
-    final response = await _client.from('friends_view').select();
+    final response = await dbGuard(
+      () => _client.from('friends_view').select(),
+    );
     return response.map((json) => Friendship.fromJson(json)).toList();
   }
 
@@ -32,9 +39,8 @@ class SocialRepository {
   /// not routed through the social edge function.
   Future<List<PlayerInfo>> searchUsers(String query) async {
     if (query.trim().isEmpty) return [];
-    final response = await _client.rpc(
-      'app_search_users',
-      params: {'p_query': query},
+    final response = await dbGuard(
+      () => _client.rpc('app_search_users', params: {'p_query': query}),
     );
     return (response as List).map((json) => PlayerInfo.fromJson(json)).toList();
   }

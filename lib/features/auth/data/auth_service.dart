@@ -2,9 +2,13 @@ import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide AuthUser;
+import 'package:eigen_engine/features/auth/data/models/auth_user.dart';
 
-/// Authentication service that handles Google Sign-In with Supabase
+/// Authentication service that handles Google Sign-In with Supabase.
+///
+/// This is the auth boundary: Supabase types stay private and the public
+/// surface speaks only the domain types in `auth_user.dart`.
 class AuthService {
   AuthService(this._supabase, {required this.googleWebClientId});
 
@@ -13,11 +17,30 @@ class AuthService {
   /// Google Sign-In server client id, injected from [EngineConfig].
   final String googleWebClientId;
 
-  /// Get the current authenticated user
-  User? get currentUser => _supabase.auth.currentUser;
+  /// The current authenticated user, or null when signed out.
+  AuthUser? get currentUser => _toAuthUser(_supabase.auth.currentUser);
 
-  /// Stream of authentication state changes
-  Stream<AuthState> get authStateChanges => _supabase.auth.onAuthStateChange;
+  /// Stream of authentication state changes.
+  Stream<AuthStateChange> get authStateChanges =>
+      _supabase.auth.onAuthStateChange.map(
+        (state) => AuthStateChange(
+          event: _toAuthEvent(state.event),
+          user: _toAuthUser(state.session?.user),
+        ),
+      );
+
+  AuthUser? _toAuthUser(User? user) => user == null
+      ? null
+      : AuthUser(id: user.id, isAnonymous: user.isAnonymous);
+
+  AuthEvent _toAuthEvent(AuthChangeEvent event) => switch (event) {
+    AuthChangeEvent.initialSession => AuthEvent.initialSession,
+    AuthChangeEvent.signedIn => AuthEvent.signedIn,
+    AuthChangeEvent.signedOut => AuthEvent.signedOut,
+    AuthChangeEvent.tokenRefreshed => AuthEvent.tokenRefreshed,
+    AuthChangeEvent.userUpdated => AuthEvent.userUpdated,
+    _ => AuthEvent.other,
+  };
 
   /// Runs the native Google Sign-In flow and returns the resulting tokens.
   ///
@@ -39,7 +62,7 @@ class AuthService {
   }
 
   /// Sign in with Google
-  Future<AuthResponse> signInWithGoogle() async {
+  Future<void> signInWithGoogle() async {
     try {
       final tokens = await _googleTokens();
 
@@ -53,8 +76,6 @@ class AuthService {
         'User signed in: ${authResponse.user?.email}',
         name: 'auth.service',
       );
-
-      return authResponse;
     } catch (e, stackTrace) {
       developer.log(
         'Failed to sign in with Google',
@@ -69,11 +90,10 @@ class AuthService {
   /// Starts an anonymous (guest) session so a visitor can try the app without
   /// signing up. Provisions a real `authenticated` user with a generated
   /// `player_NNNNN` handle; convert later via [upgradeWithGoogle].
-  Future<AuthResponse> signInAnonymously() async {
+  Future<void> signInAnonymously() async {
     try {
-      final authResponse = await _supabase.auth.signInAnonymously();
+      await _supabase.auth.signInAnonymously();
       developer.log('Anonymous (guest) session started', name: 'auth.service');
-      return authResponse;
     } catch (e, stackTrace) {
       developer.log(
         'Failed to start anonymous session',
@@ -170,7 +190,7 @@ class AuthService {
 
   /// Signs the user into a Google account that already exists in the app,
   /// switching away from (and abandoning) the current guest session.
-  Future<AuthResponse> switchToExistingGoogleAccount() => signInWithGoogle();
+  Future<void> switchToExistingGoogleAccount() => signInWithGoogle();
 
   /// Sign out the current user
   Future<void> signOut() async {
