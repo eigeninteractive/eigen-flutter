@@ -1,4 +1,5 @@
 import 'package:checks/checks.dart';
+import 'package:eigen_engine/core/game/game_module.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/fakes.dart';
@@ -102,5 +103,31 @@ void main() {
     test('rejects a version with no rules entry (newer build or retired)', () {
       check(module.supportsSchema(2)).isFalse();
     });
+  });
+
+  group('GameModule defaults', () {
+    const module = SampleModule();
+
+    test('latestRules is the unit at the highest version key', () {
+      check(module.latestRules).isA<SampleRules>();
+    });
+
+    test('playersForConfig falls back to the creation spec bounds', () {
+      check(module.playersForConfig(const {})).equals((2, 2));
+    });
+
+    test('localBots defaults to none', () {
+      check(rules.localBots).isEmpty();
+    });
+  });
+
+  test('UnsupportedGameSchemaException names both versions', () {
+    const exception = UnsupportedGameSchemaException(
+      gameSchema: 3,
+      supportedSchema: 2,
+    );
+    check(
+      exception.toString(),
+    ).contains('no rules for game schema 3 (latest supported: 2)');
   });
 }

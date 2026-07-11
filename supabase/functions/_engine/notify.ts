@@ -11,7 +11,9 @@
  * failed send never blocks the action response. The fire-and-forget entry
  * points ({@link notifyTransition}, {@link notifyGameStarted},
  * {@link notifyGameInvite}) never throw — they log and give up, so callers can
- * hand them to `waitUntil` bare. The other EF-direct pushes live here too: the
+ * hand them to `waitUntil` bare. Human pushes get no retry (the DB is the
+ * truth; the app catches up on open); a bot wake is retried briefly on a
+ * failed ack (see {@link wakeBot}) because the wake is the bot's only signal. The other EF-direct pushes live here too: the
  * friends-game invite ({@link notifyGameInvite}, from the `/game/create`
  * route) and the generic fan-out ({@link notifyUsers}, reused by social
  * handlers).
@@ -21,6 +23,7 @@
  * notification flow reads top-to-bottom without storage details.
  */
 
+import { retry } from "@std/async";
 import { signForBot } from "./bot_auth.ts";
 import { getFirebaseEnv } from "./env.ts";
 import { type NotificationMessage, sendNotifications } from "./fcm.ts";
@@ -102,9 +105,10 @@ export type NotifyCause =
  * Seats that newly entered the pending set are always told — their turn is
  * starting. Two cause-specific rules cover what a pure diff misses:
  *
- * - `timeout`: everyone still pending is (re-)notified. Pushes and wakes are
- *   fire-and-forget, so the expiry sweep doubles as the retry for a lost
- *   delivery; the deadline itself rate-limits the re-nudge.
+ * - `timeout`: everyone still pending is (re-)notified. Pushes are
+ *   fire-and-forget and a wake retries only briefly (see {@link wakeBot}),
+ *   so the expiry sweep doubles as the delivery retry of last resort; the
+ *   deadline itself rate-limits the re-nudge.
  * - `action`: the actor's own seat can re-enter pending (an extra turn). A
  *   human actor is live in-app and needs no push, but a server bot's only
  *   signal is the wake, so it is woken again.
@@ -230,8 +234,30 @@ function turnPush(
   return { title: "Your turn", body: "It's your move.", data };
 }
 
+/** Wake retry policy: 3 attempts, pausing 2s then 8s. Short by design:
+ * these run inside the post-response worker (`waitUntil`), whose wall clock
+ * is finite — anything longer-lived than seconds is the expiry sweep's job. */
+const wakeRetryOptions = {
+  maxAttempts: 3,
+  minTimeout: 2000,
+  multiplier: 4,
+  jitter: 0,
+};
+
+/** How long a bot gets to *ack* a wake. Acking is "queued", not "acted", so
+ * a healthy bot answers near-instantly; a hung endpoint must not pin the
+ * worker for the platform's whole wall clock. */
+const wakeAckTimeoutMs = 10_000;
+
 /** Post a signed wake to a server bot, carrying its freshly-committed
- * observation so the bot needs no callback to fetch state. */
+ * observation so the bot needs no callback to fetch state.
+ *
+ * The bot's 2xx response is an ack of receipt only — the move arrives later
+ * on `bot/action` — so a failed ack (non-2xx, timeout, network error) is
+ * retried a few times with short backoff. Duplicate wakes are safe: each
+ * carries the same `version`, and a duplicated action loses the version
+ * check at commit. A bot that stays down past the retries rides the timeout
+ * backstop (server ⇒ timed). */
 async function wakeBot(
   db: Db,
   gameId: string,
@@ -256,12 +282,46 @@ async function wakeBot(
   });
   const signature = await signForBot(botId, "wake", body);
 
-  await fetch(webhookUrl, {
+  const attemptWake = async () => {
+    try {
+      await postWake(webhookUrl, signature, body);
+    } catch (e) {
+      console.error(
+        `bot wake attempt for game ${gameId} seat ${playerIndex} ` +
+          `failed: ${e instanceof Error ? e.message : e}`,
+      );
+      throw e;
+    }
+  };
+
+  try {
+    await retry(attemptWake, wakeRetryOptions);
+  } catch {
+    console.error(
+      `bot wake for game ${gameId} seat ${playerIndex} exhausted ` +
+        `${wakeRetryOptions.maxAttempts} attempts — giving up; ` +
+        `the turn deadline is the backstop`,
+    );
+  }
+}
+
+/** One wake POST. Resolves on a 2xx ack; throws on anything else (non-2xx
+ * status, timeout, network error) so {@link retry} treats it as a failed
+ * attempt. */
+async function postWake(
+  webhookUrl: string,
+  signature: string,
+  body: string,
+): Promise<void> {
+  const res = await fetch(webhookUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "x-wake-signature": signature,
     },
     body,
+    signal: AbortSignal.timeout(wakeAckTimeoutMs),
   });
+  await res.body?.cancel();
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }

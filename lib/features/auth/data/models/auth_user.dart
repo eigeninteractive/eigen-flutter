@@ -9,10 +9,8 @@ part 'auth_user.freezed.dart';
 /// (email, display name, avatar) live in the profile, not here.
 @freezed
 abstract class AuthUser with _$AuthUser {
-  const factory AuthUser({
-    required String id,
-    required bool isAnonymous,
-  }) = _AuthUser;
+  const factory AuthUser({required String id, required bool isAnonymous}) =
+      _AuthUser;
 }
 
 /// Auth lifecycle events surfaced by [AuthService.authStateChanges].

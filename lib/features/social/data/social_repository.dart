@@ -29,9 +29,7 @@ class SocialRepository {
   }
 
   Future<List<Friendship>> getFriendships() async {
-    final response = await dbGuard(
-      () => _client.from('friends_view').select(),
-    );
+    final response = await dbGuard(() => _client.from('friends_view').select());
     return response.map((json) => Friendship.fromJson(json)).toList();
   }
 

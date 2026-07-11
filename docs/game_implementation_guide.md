@@ -61,6 +61,10 @@ Which hooks live where:
 | `isValidAction`                          | — (`applyAction` is the check)   | ✅ UX-only transcription of its legality half |
 | `previewAction`                          | — (`applyAction` is the truth)   | ✅ required; the game's own optimistic projection (return null = server-driven). Infra never calls it |
 
+Every "keep in sync" in this table is enforceable, not aspirational: shared
+JSON fixtures run against **both** units and fail a test on divergence — see
+[Twin-drift fixtures](#twin-drift-fixtures) under Testing Your Game.
+
 ### Project setup
 
 Your game is a Flutter **app** that depends on `eigen_engine`. Until the engine
@@ -985,6 +989,13 @@ reference server below); the flow:
   carrying the observation:
   `{ game_id, bot_id, player_index, username, config,
   observation, version, pending_players, turn_deadline }`.
+- **Ack the wake with a 2xx *before* computing.** The wake response means
+  "queued", never "acted" — the engine gives you ~10 seconds to ack, then
+  treats the wake as undelivered and **retries it a few times** with short
+  backoff. Two contractual consequences: don't compute the move in the
+  request handler (a slow think would read as a failed delivery), and
+  tolerate **duplicate wakes for the same `version`** (recompute or ignore —
+  a duplicate submitted action is safely rejected by the version check).
 - The bot computes a move and `POST`s it to the **`bot/action`** edge-function
   route as `{ payload, signature }`, where `payload` is the signed JSON string
   `{ game_id, bot_id, player_index, version, data }`.
@@ -1010,7 +1021,7 @@ evolve the format:
 
 So the bot deployment holds **one derived key** (it signs actions and verifies
 wakes). Server-bot games must be **timed** (the turn deadline is the liveness
-backstop for an unreachable bot).
+backstop for a bot that stays down past the wake retries).
 
 **Reference server (Node 18+, built-in `crypto`).** The entire contract — verify
 the wake, decide a move for _this_ seat, sign the action, submit before
@@ -1342,7 +1353,8 @@ mirrors the backend's vendoring rule:
 | -------------------------------------------------------------- | ------- | --------------------------------------- |
 | `functions/_engine/**`, `functions/_types/**`                  | engine  | re-vendored (overwritten + pruned)      |
 | `functions/{game,social,internal,bot}/*` (`index.ts`, config…) | engine  | re-vendored (overwritten + pruned)      |
-| `functions/_lib/**` (`game.ts`, `game/v1.ts`, …)               | **you** | scaffolded **once**, then never touched |
+| `functions/_lib/**` (`game.ts`, `game/v1.ts`, fixtures…)       | **you** | scaffolded **once**, then never touched |
+| `functions/_tests/**` (your twin-fixture / EF test entrypoints) | **you** | never touched (not in the vendored set) |
 
 (`deno.lock` is git-ignored and regenerated per project, so it is never copied
 or pruned — your local lockfile is left alone.)
@@ -1908,7 +1920,136 @@ RLS): `app_join_game` / `app_join_game_by_code`, `app_cancel_game`,
 
 ## Testing Your Game
 
-**Unit tests** for game logic:
+### Twin-drift fixtures
+
+The TS unit and its Dart twin are two hand-written halves of one contract, so
+they *will* drift unless something fails when they do. The engine ships a
+fixture pipeline for exactly this: **one set of JSON fixtures per schema
+version, run against both sides**. The TS runner
+(`_engine/twin-fixtures.ts`, vendored by the sync) executes each case through
+the unit's Zod schemas, `applyAction`, and `computeObservation`; the Dart
+runner (`package:eigen_engine/testing/twin_fixtures.dart`) executes the same
+file through the twin's codec, `isValidAction`, and `previewAction`. A
+divergence fails a test instead of degrading UX in production.
+
+Fixtures live **beside the version units**, inside app-owned `_lib/`:
+
+```
+supabase/functions/_lib/game/
+├── v1.ts
+└── fixtures/
+    └── v1/            # a v2 unit gets fixtures/v2/
+        ├── actions.json
+        └── predicates.json
+```
+
+One file holds one `schemaVersion` and a list of named cases. Three case
+kinds exist (full format reference in the header of
+`_engine/twin-fixtures.ts`):
+
+```jsonc
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "kind": "action",
+      "name": "seat 0 marks an empty cell",
+      "config": {},
+      "state": { "board": [0,0,0,0,0,0,0,0,0], "action_count": 0 },
+      "pending": [0],
+      "playerIndex": 0,
+      "participantCount": 2,
+      "action": { "position": 4 },
+      "expected": {
+        "valid": true,
+        "state": { "board": [0,0,0,0,1,0,0,0,0], "action_count": 1 },
+        "pending": [1],
+        "observation": { "board": [0,0,0,0,1,0,0,0,0], "action_count": 1 }
+      }
+    },
+    { "kind": "ratingPool", "name": "…", "access": "public",
+      "minPlayers": 2, "maxPlayers": 2, "config": {}, "expected": null },
+    { "kind": "botSeatable", "name": "…",
+      "gameConfig": {}, "botConfig": {}, "expected": true }
+  ]
+}
+```
+
+What each side checks per `action` case:
+
+| Field                  | TS side                                                            | Dart side                                                             |
+| ---------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| `config`/`state`/`action` | must parse through the Zod schemas; the parsed action must equal the fixture action (a schema that strips fields is drift) | must parse through the codec; `serializeAction(parseAction(action))` must round-trip |
+| `expected.valid`       | `false` ⇒ `applyAction` throws `IllegalMoveError`; `true` ⇒ it must not | must equal `isValidAction`                                             |
+| `expected.state` / `pending` / `outcome` | compared against the returned envelope (TS-only)  | —                                                                      |
+| `expected.observation` | `computeObservation` of the new state for the acting seat          | `previewAction` result, when non-null (null = "server-driven", always correct) |
+
+`expected.observation` is the shared behavioral anchor — both sides are
+compared through one recorded value. For hidden-info games, add an `obs`
+field (the acting seat's observation) next to `state`; perfect-info games
+omit it and `state` serves both sides. A stochastic `applyAction` gets a
+fixed `rngSeed` per case.
+
+Two entrypoints wire the fixtures into your test suites — both are app-owned
+(`_tests/`, like `_lib/`, is never touched by a re-sync):
+
+`supabase/functions/_tests/twin_fixtures_test.ts`:
+
+```ts
+import { twinFixtureTests } from "engine/twin-fixtures.ts";
+import { gameModule } from "lib/game.ts";
+
+twinFixtureTests(
+  gameModule,
+  new URL("../_lib/game/fixtures/", import.meta.url),
+);
+```
+
+`test/game/twin_fixtures_test.dart`:
+
+```dart
+void main() {
+  const module = MyGameModule();
+  for (final suite
+      in loadTwinFixtureSuites('supabase/functions/_lib/game/fixtures')) {
+    final rules = module.versions[suite.schemaVersion];
+    group('twin fixtures v${suite.schemaVersion}', () {
+      for (final fixtureCase in suite.cases) {
+        test(fixtureCase.name, () {
+          expect(rules, isNotNull);
+          expect(runTwinFixtureCase(rules!, fixtureCase.json), isEmpty);
+        });
+      }
+    });
+  }
+}
+```
+
+Run them (and put both in CI — the Dart half rides `flutter test`):
+
+```sh
+deno test --config supabase/functions/deno.json \
+  --allow-read supabase/functions/_tests/
+flutter test
+```
+
+Gotchas the fixtures are strict about:
+
+- **Fixture payloads use the wire shape, not Dart field names.** With
+  json_serializable's `field_rename: snake` (this template's `build.yaml`),
+  the key is `action_count`, never `actionCount`. The TS Zod schemas must use
+  the same keys — the fixture is what pins this.
+- **The Dart observation type needs value equality** for the
+  `expected.observation` comparison — Freezed models have it; a hand-written
+  type must override `==`/`hashCode`.
+- **Grow the suite with the rules.** Cover at least: one legal move (with its
+  expected observation), one illegal move, one game-ending move (with
+  `outcome`), and one case per `ratingPool`/`botSeatable` branch.
+
+### Unit tests
+
+For logic beyond the twin contract (win detection helpers, bot heuristics),
+plain unit tests against the rules unit:
 
 ```dart
 test('valid action is accepted', () {

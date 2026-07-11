@@ -95,5 +95,20 @@ CREATE TRIGGER update_games_updated_at
   BEFORE UPDATE ON public.games
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
--- Enable Realtime for this table (for lobby and active games streams)
-ALTER PUBLICATION supabase_realtime ADD TABLE public.games;
+-- Broadcast-from-database fan-out: every games UPDATE is sent to the game's
+-- private broadcast topic `game:{id}`. All UPDATE sites are lifecycle
+-- transitions (status/finished_at) — move commits never write games — so no
+-- WHEN filter is needed. Who may join the topic is gated by RLS on
+-- realtime.messages (see participants migration, which defines the shared
+-- visibility predicate).
+CREATE OR REPLACE FUNCTION private.broadcast_game_update()
+RETURNS TRIGGER AS $$
+BEGIN
+  PERFORM realtime.send(to_jsonb(NEW), 'game', 'game:' || NEW.id, true);
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
+CREATE TRIGGER broadcast_games_update
+  AFTER UPDATE ON public.games
+  FOR EACH ROW EXECUTE FUNCTION private.broadcast_game_update();

@@ -259,7 +259,7 @@ BEGIN
     ON part.game_id = p_game_id AND part.player_index = (e->>'player_index')::INT
   -- No viewer, no slice: a seat purged mid-game (post-forfeit account
   -- deletion) has neither identity. Observations are keyed to their viewer
-  -- (RLS + realtime filter by identity), so a row here would be unreadable
+  -- (RLS + per-user broadcast topic), so a row here would be unreadable
   -- forever — and would violate observation_identity_xor.
   WHERE part.user_id IS NOT NULL OR part.bot_id IS NOT NULL;
 END;
@@ -367,8 +367,8 @@ BEGIN
   VALUES (p_game_id, p_acting_user_id, p_acting_bot_id, p_action_type,
           p_action_kind, v_action_data, v_player_index, p_new_version);
 
-  -- finish_game before observations so the games realtime event precedes the
-  -- observations event.
+  -- finish_game before observations so the games broadcast message precedes
+  -- the observation messages (AFTER-row triggers fire in statement order).
   -- On a rated finish, write the EF-computed OpenSkill updates in the SAME
   -- transaction, so ratings land atomically with the result. The
   -- rating_history unique (game, identity) index still guards double-apply.

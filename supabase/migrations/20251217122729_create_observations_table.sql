@@ -55,12 +55,48 @@ CREATE TABLE public.observations (
   PRIMARY KEY (game_id, player_index, version)
 );
 
--- Index for realtime subscriptions (human rows are filtered by user_id).
+-- Index for RLS-augmented queries on human rows (user_id = auth.uid()).
 CREATE INDEX idx_observations_user_id ON public.observations(user_id)
   WHERE user_id IS NOT NULL;
 
--- Enable Realtime for this table
-ALTER PUBLICATION supabase_realtime ADD TABLE public.observations;
+-- Broadcast-from-database fan-out: each human seat's frame is sent to that
+-- seat's private topic `game:{game_id}:user:{user_id}` via realtime.send.
+-- The trigger's WHEN clause is the guarantee that bot rows never broadcast.
+-- A trigger (rather than sends inlined in the commit functions) covers both
+-- insert choke points — engine_commit_start's version-0 fan-out and
+-- write_observation_slices — and any future insert path.
+CREATE OR REPLACE FUNCTION private.broadcast_observation()
+RETURNS TRIGGER AS $$
+BEGIN
+  PERFORM realtime.send(
+    to_jsonb(NEW),
+    'observation',
+    'game:' || NEW.game_id || ':user:' || NEW.user_id,
+    true
+  );
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+
+CREATE TRIGGER broadcast_observation_insert
+  AFTER INSERT ON public.observations
+  FOR EACH ROW
+  WHEN (NEW.user_id IS NOT NULL)
+  EXECUTE FUNCTION private.broadcast_observation();
+
+-- Private-channel authorization: a user may join only their own seat topics
+-- (any topic ending in `:user:{auth.uid()}`). No participant check is needed:
+-- only rows with user_id = auth.uid() are ever sent to such a topic, and
+-- clients cannot publish on private channels (no INSERT policy on
+-- realtime.messages), so joining a foreign game's own-seat topic yields
+-- nothing.
+CREATE POLICY "observations_broadcast_read" ON realtime.messages
+  FOR SELECT
+  TO authenticated
+  USING (
+    extension = 'broadcast'
+    AND split_part(realtime.topic(), ':user:', 2) = (SELECT auth.uid()::text)
+  );
 
 -- RLS: Users can only see their own observations
 ALTER TABLE public.observations ENABLE ROW LEVEL SECURITY;

@@ -42,16 +42,44 @@ RETURNS BOOLEAN AS $$
   );
 $$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
 
+-- Single source of game visibility: shared by the games_select and
+-- participants_select table policies and the realtime.messages broadcast
+-- policy below, so the table and channel authorization rules cannot drift.
+CREATE OR REPLACE FUNCTION private.can_read_game(p_game_id UUID, p_user_id UUID)
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.games g
+    WHERE g.id = p_game_id
+      AND (g.access = 'public'
+        OR g.created_by = p_user_id
+        OR private.is_game_participant(g.id, p_user_id))
+  );
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
+
 -- ============================================
 -- Games RLS policy (deferred from games migration)
 -- ============================================
 CREATE POLICY "games_select" ON public.games
   FOR SELECT
   TO authenticated
+  USING (private.can_read_game(id, (SELECT auth.uid())));
+
+-- Private-channel authorization for the game metadata topic `game:{uuid}`
+-- (broadcast by the games UPDATE trigger). The anchored two-segment regex
+-- cannot match the three-segment per-seat observation topics. No INSERT
+-- policy exists on realtime.messages, so clients can never publish on these
+-- channels — only database triggers can.
+CREATE POLICY "games_broadcast_read" ON realtime.messages
+  FOR SELECT
+  TO authenticated
   USING (
-    access = 'public'
-    OR created_by = (SELECT auth.uid())
-    OR private.is_game_participant(id, (SELECT auth.uid()))
+    extension = 'broadcast'
+    AND realtime.topic() ~
+      '^game:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    AND private.can_read_game(
+      split_part(realtime.topic(), ':', 2)::uuid,
+      (SELECT auth.uid())
+    )
   );
 
 -- ============================================
@@ -62,13 +90,4 @@ ALTER TABLE public.participants ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "participants_select" ON public.participants
   FOR SELECT
   TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.games g
-      WHERE g.id = game_id AND (
-        g.access = 'public'
-        OR g.created_by = (SELECT auth.uid())
-        OR private.is_game_participant(g.id, (SELECT auth.uid()))
-      )
-    )
-  );
+  USING (private.can_read_game(game_id, (SELECT auth.uid())));

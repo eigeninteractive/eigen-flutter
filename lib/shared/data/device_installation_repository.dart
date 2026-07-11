@@ -24,9 +24,6 @@ class DeviceInstallationRepository {
   /// Deletes the current user's registration row for [fid] so the server
   /// stops targeting this install.
   Future<void> delete({required String fid}) => dbGuard(
-    () => _client.rpc(
-      'app_delete_device_installation',
-      params: {'p_fid': fid},
-    ),
+    () => _client.rpc('app_delete_device_installation', params: {'p_fid': fid}),
   );
 }

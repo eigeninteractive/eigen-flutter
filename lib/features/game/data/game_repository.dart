@@ -349,8 +349,7 @@ class GameRepository {
     }
 
     final response = await dbGuard(
-      () =>
-          query.order('finished_at', ascending: false).limit(historyPageSize),
+      () => query.order('finished_at', ascending: false).limit(historyPageSize),
     );
 
     return response.map((j) {
@@ -506,6 +505,18 @@ class GameRepository {
     return Observation.fromJson(response);
   }
 
+  /// Gets a game's current metadata row, or null when the row is not
+  /// visible to the caller (RLS) or does not exist.
+  ///
+  /// Used by [gameStream] as its fetch-on-subscribe snapshot.
+  Future<Game?> getGame(String gameId) async {
+    final response = await dbGuard(
+      () => _client.from('games').select().eq('id', gameId).maybeSingle(),
+    );
+    if (response == null) return null;
+    return Game.fromJson(response);
+  }
+
   /// The caller's missed observation frames in `(after, before)` exclusive,
   /// version-ascending — the gap-recovery fetch for [observationStream].
   Future<List<Observation>> _fetchMissedObservations(
@@ -528,18 +539,21 @@ class GameRepository {
   /// Subscribes to the caller's observation frames for a game, delivered in
   /// **version order with gaps recovered**.
   ///
-  /// Observations are append-only server-side (one row per seat per state
-  /// version), which is what makes this stream reliable: Realtime can drop or
-  /// reorder INSERT events, but a version jump is detected and the missing
-  /// rows are fetched and emitted in order, so a live client sees every
-  /// transition and can animate through each one. Duplicates and stale events
-  /// are dropped.
+  /// Frames arrive on the caller's private broadcast topic
+  /// `game:{gameId}:user:{userId}` (sent by a database trigger on
+  /// observation inserts; RLS on `realtime.messages` restricts who may join
+  /// the topic). Observations are append-only server-side (one row per seat
+  /// per state version), which is what makes this stream reliable: Realtime
+  /// can drop or reorder broadcast messages, but a version jump is detected
+  /// and the missing rows are fetched and emitted in order, so a live client
+  /// sees every transition and can animate through each one. Duplicates and
+  /// stale events are dropped.
   ///
   /// The first emission (on subscribe, and the re-fetch on every reconnect)
   /// is the seat's *latest* frame — a cold load snaps to now rather than
   /// replaying history; if the reconnect fetch reveals a gap, the missed
-  /// frames are emitted in order first. RLS restricts results to the
-  /// authenticated user's own rows.
+  /// frames are emitted in order first. RLS restricts fetched rows to the
+  /// authenticated user's own.
   Stream<Observation> observationStream({required String gameId}) {
     final userId = _client.auth.currentUser?.id;
     // Signed out (e.g. session expired mid-game) — emit nothing rather than
@@ -616,61 +630,117 @@ class GameRepository {
       },
     );
 
-    channel = _client.channel('observations:$gameId:$userId')
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.insert,
-        schema: 'public',
-        table: 'observations',
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: 'game_id',
-          value: gameId,
-        ),
-        callback: (payload) {
-          if (payload.newRecord.isNotEmpty && !controller.isClosed) {
-            enqueue(Observation.fromJson(payload.newRecord));
-          }
-        },
-      )
-      ..subscribe((status, error) {
-        switch (status) {
-          case RealtimeSubscribeStatus.subscribed:
-            // Initial connect and every reconnect: fetch the latest frame so
-            // nothing stays missed while disconnected (a gap it reveals is
-            // back-filled by the pipeline).
-            fetchLatest();
-          case RealtimeSubscribeStatus.channelError:
-          case RealtimeSubscribeStatus.timedOut:
-            if (!controller.isClosed) {
-              controller.addError(
-                error ?? Exception('Realtime subscription failed'),
-              );
+    channel =
+        _client.channel(
+            'game:$gameId:user:$userId',
+            opts: const RealtimeChannelConfig(private: true),
+          )
+          ..onBroadcast(
+            event: 'observation',
+            callback: (payload) {
+              if (controller.isClosed) return;
+              final record = payload['payload'];
+              if (record is Map) {
+                try {
+                  enqueue(
+                    Observation.fromJson(Map<String, dynamic>.from(record)),
+                  );
+                } on Object {
+                  // Undecodable frame (e.g. a future slim/oversize fallback
+                  // payload): treat it as a wake-up and fetch instead; the
+                  // pipeline orders and gap-fills as usual.
+                  fetchLatest();
+                }
+              }
+            },
+          )
+          ..subscribe((status, error) {
+            switch (status) {
+              case RealtimeSubscribeStatus.subscribed:
+                // Initial connect and every reconnect: fetch the latest frame so
+                // nothing stays missed while disconnected (a gap it reveals is
+                // back-filled by the pipeline).
+                fetchLatest();
+              case RealtimeSubscribeStatus.channelError:
+              case RealtimeSubscribeStatus.timedOut:
+                if (!controller.isClosed) {
+                  controller.addError(
+                    error ?? Exception('Realtime subscription failed'),
+                  );
+                }
+              case RealtimeSubscribeStatus.closed:
+                break;
             }
-          case RealtimeSubscribeStatus.closed:
-            break;
-        }
-      });
+          });
 
     return controller.stream;
   }
 
-  /// Subscribes to game metadata updates via the SDK's built-in `.stream()`.
+  /// Subscribes to game metadata updates on the private broadcast topic
+  /// `game:{gameId}` (sent by a database trigger on games UPDATEs — all of
+  /// which are lifecycle transitions such as opponents joining or the game
+  /// ending).
   ///
-  /// Useful for detecting when opponents join (status changes) or game ends.
-  /// Emits the current game immediately on subscribe and re-fetches on every
-  /// reconnect; channel errors propagate as stream errors so Riverpod's retry
-  /// mechanism can schedule a reconnect with exponential backoff. Latest-state
-  /// snapshot semantics are all this needs, unlike [observationStream], which
-  /// must deliver every frame and therefore drives its own channel.
+  /// Emits the current game on subscribe and re-fetches on every reconnect;
+  /// channel errors propagate as stream errors so Riverpod's retry mechanism
+  /// can schedule a reconnect with exponential backoff. Latest-state snapshot
+  /// semantics are all this needs, unlike [observationStream], which must
+  /// deliver every frame and therefore orders and gap-fills.
   ///
   /// An empty snapshot (row not visible yet, or deleted) is skipped rather
   /// than emitted as an error — the stream simply keeps its last value.
-  Stream<Game> gameStream(String gameId) => _client
-      .from('games')
-      .stream(primaryKey: ['id'])
-      .eq('id', gameId)
-      .where((rows) => rows.isNotEmpty)
-      .map((rows) => Game.fromJson(rows.first));
+  Stream<Game> gameStream(String gameId) {
+    late RealtimeChannel channel;
+    late StreamController<Game> controller;
+
+    void fetchCurrent() {
+      getGame(gameId).then(
+        (game) {
+          if (game != null && !controller.isClosed) controller.add(game);
+        },
+        onError: (Object e) {
+          if (!controller.isClosed) controller.addError(e);
+        },
+      );
+    }
+
+    controller = StreamController<Game>(onCancel: () => channel.unsubscribe());
+
+    channel =
+        _client.channel(
+            'game:$gameId',
+            opts: const RealtimeChannelConfig(private: true),
+          )
+          ..onBroadcast(
+            event: 'game',
+            callback: (payload) {
+              if (controller.isClosed) return;
+              final record = payload['payload'];
+              if (record is Map) {
+                controller.add(
+                  Game.fromJson(Map<String, dynamic>.from(record)),
+                );
+              }
+            },
+          )
+          ..subscribe((status, error) {
+            switch (status) {
+              case RealtimeSubscribeStatus.subscribed:
+                fetchCurrent();
+              case RealtimeSubscribeStatus.channelError:
+              case RealtimeSubscribeStatus.timedOut:
+                if (!controller.isClosed) {
+                  controller.addError(
+                    error ?? Exception('Realtime subscription failed'),
+                  );
+                }
+              case RealtimeSubscribeStatus.closed:
+                break;
+            }
+          });
+
+    return controller.stream;
+  }
 
   /// Fetches the current user's waiting/ready/active games with the
   /// structural data needed to derive turn info client-side.

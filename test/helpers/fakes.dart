@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:eigen_engine/core/game/game_creation_spec.dart';
 import 'package:eigen_engine/core/game/game_module.dart';
@@ -6,6 +7,9 @@ import 'package:eigen_engine/features/game/data/models/game.dart'
 
 /// Minimal tic-tac-toe-like observation: a flat board of 9 cells where each
 /// entry is the occupying player index, or null if empty.
+///
+/// Value equality (like a Freezed model's) so twin-fixture preview
+/// comparisons can use `==`.
 class SampleObservation {
   const SampleObservation(this.board);
 
@@ -13,6 +17,15 @@ class SampleObservation {
       SampleObservation((json['board'] as List).map((e) => e as int?).toList());
 
   final List<int?> board;
+
+  Map<String, dynamic> toJson() => {'board': board};
+
+  @override
+  bool operator ==(Object other) =>
+      other is SampleObservation && listEquals(other.board, board);
+
+  @override
+  int get hashCode => Object.hashAll(board);
 }
 
 /// Candidate move: place a mark in [cell].

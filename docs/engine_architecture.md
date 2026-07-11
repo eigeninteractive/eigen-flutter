@@ -206,8 +206,8 @@ via the `game/replay` route — no action log re-execution needed.
 - `game_id`, `player_index`, `version` (**PK composite**) — **append-only
   history**, mirroring `game_states`: one row per participant per state
   version, human **or** bot; rows are immutable once written. Append-only is
-  what makes the client's frame stream *reliable*: Realtime can drop INSERT
-  events, but a client that sees a version gap fetches the missing rows and
+  what makes the client's frame stream *reliable*: Realtime can drop broadcast
+  messages, but a client that sees a version gap fetches the missing rows and
   animates through them in order — and the live stream and a replay become
   the same shape (an ordered per-seat frame sequence). "Current observation"
   = a seat's highest-version row. The table is generalised so bot seats
@@ -240,17 +240,21 @@ via the `game/replay` route — no action log re-execution needed.
   the active player's live countdown without polling:
   `remaining = player_times[myIndex] - elapsed_since(turn_started_at)`.
 - `created_at`
-- **Realtime**: enabled (INSERT events). The game screen subscribes by
-  `game_id`; the repository delivers frames **in version order with gaps
-  recovered** (a missed version is fetched by range), starting from the
-  latest frame on a cold (re)connect. Home screen uses fetch-on-enter +
-  pull-to-refresh.
+- **Realtime**: Broadcast-from-Database. An `AFTER INSERT` trigger sends each
+  human seat's row (`to_jsonb(NEW)`, event `observation`) to that seat's
+  private topic `game:{game_id}:user:{user_id}` via `realtime.send`; joining
+  the topic is authorized by RLS on `realtime.messages` (a user may join only
+  topics ending in `:user:{auth.uid()}`). The repository delivers frames **in
+  version order with gaps recovered** (a missed version is fetched by range),
+  starting from the latest frame on a cold (re)connect. Home screen uses
+  fetch-on-enter + pull-to-refresh.
 - **Identity constraint**: `(user_id IS NULL) != (bot_id IS NULL)` — exactly one
   identity per row.
 - **RLS**: Users see only their own rows (`user_id = auth.uid()`). Bot rows
-  (`user_id` NULL) are invisible to clients and Realtime — bots never subscribe;
-  a server bot's row is pushed to its webhook and a local bot's latest is read
-  by a gated RPC (see §26).
+  (`user_id` NULL) never broadcast at all — the trigger's
+  `WHEN (NEW.user_id IS NOT NULL)` guard skips them; a server bot's row is
+  pushed to its webhook and a local bot's latest is read by a gated RPC
+  (see §26).
 
 #### `participants`
 
@@ -336,7 +340,7 @@ via the `game/replay` route — no action log re-execution needed.
 - **RLS**: `SELECT` for authenticated users where
   `auth.uid() IN (user_id_1, user_id_2)`. All mutations go through
   `SECURITY DEFINER` RPCs.
-- **Realtime**: enabled.
+- **Realtime**: none — the friends UI uses fetch + pull-to-refresh.
 
 #### `bots` (Bot Player Registry)
 
@@ -489,8 +493,8 @@ WHERE user_id_2 = (SELECT auth.uid());
 
 The view is scoped to `auth.uid()` at definition time, so a simple
 `SELECT * FROM friends_view WHERE status = 'accepted'` returns only the caller's
-accepted friends. Realtime subscriptions must use the base `relationships`
-table.
+accepted friends. (Views are invisible to Realtime; relationships have no
+realtime surface today — the friends UI fetches.)
 
 ### Search Indexes
 
@@ -1044,11 +1048,11 @@ queries:
 Each player receives only their personal `observations` row, which is computed
 by `computeObservation` after every state change. This makes hidden-info games
 (Poker, Literature, Exploding Kittens, Mafia) structurally secure — the server
-computes each player's slice and Realtime pushes only that slice to the right
-subscriber.
+computes each player's slice and broadcasts only that slice to that seat's
+private per-user topic (`game:{game_id}:user:{user_id}`).
 
-RLS on `observations` (`user_id = auth.uid()`) means a client subscribing to
-`game_id = X` receives at most one row — their own.
+RLS on `observations` (`user_id = auth.uid()`) gates fetches the same way:
+a client querying `game_id = X` receives at most its own rows.
 
 ---
 
@@ -1471,8 +1475,9 @@ Each frame:
   every move, forfeit, and timeout commits through `engine_commit_action` for
   the same game. Because `game_states` is append-only (no single mutable row to
   lock), the lock migrated to `games`. `FOR UPDATE` acquires a row lock without
-  writing, so no Realtime events fire on `games` during normal gameplay — only
-  `finish_game()` writes to `games`, and that write was already there.
+  writing, so the games broadcast trigger (`AFTER UPDATE`) never fires during
+  normal gameplay — only `finish_game()` writes to `games`, and that write was
+  already there.
 - **TOCTOU-free status check**: `engine_commit_action` merges the game-status
   check into the same `FOR UPDATE` read. There is no separate pre-lock status
   read that could race with a concurrent `finish_game`.
@@ -1686,6 +1691,9 @@ lib/
 │       ├── player_avatar.dart            # PlayerAvatar — network image, person-icon fallback, optional border
 │       ├── overlapping_avatars.dart      # OverlappingAvatars — for game cards
 │       └── status_banner.dart            # StatusBanner — slim full-width system status banner
+├── testing/
+│   └── twin_fixtures.dart               # Dart half of the twin-drift fixture runner (framework-free;
+│                                        #   apps consume it from test/; TS half: _engine/twin-fixtures.ts)
 ├── features/
 │   ├── game/
 │   │   ├── data/
@@ -1767,9 +1775,14 @@ my_app/                                  # repo root (a standard Flutter app)
 │           ├── rules.dart               # MyGameRulesV1 (client GameRules unit)
 │           ├── data/models/game_models.dart # ObservationData, ActionData, GameConfigData
 │           └── presentation/{my_game_board,my_game_content}.dart
+├── test/
+│   └── game/twin_fixtures_test.dart     # Dart half of the twin-drift guard (see the implementation guide)
 ├── android/ ios/ web/ macos/ linux/ windows/
 ├── assets/                              # google_fonts, icons
 └── supabase/                            # config.toml, functions, seed.sql, migrations/ (committed)
+    └── functions/
+        ├── _lib/game/fixtures/v1/*.json # shared twin fixtures, versioned with the units
+        └── _tests/twin_fixtures_test.ts # TS half of the twin-drift guard (app-owned, like _lib/)
 ```
 
 The engine's infra migrations are **vendored** into the app's committed
@@ -2659,23 +2672,42 @@ screen is now consistent with that pattern.
 
 ### Realtime Channel Implementation
 
-`GameRepository._channelStream<T>` is the shared helper that backs both
-`gameStream()` and `observationStream()`. It uses Supabase's lower-level channel
-API — `supabase.channel()` + `onPostgresChanges()` + `subscribe(callback)` —
-rather than the `.stream()` convenience method.
+Both `gameStream()` and `observationStream()` are hand-rolled **private
+broadcast channels** (Broadcast-from-Database): database triggers send rows
+via `realtime.send`, and the client subscribes with `supabase.channel(topic,
+opts: RealtimeChannelConfig(private: true))` + `onBroadcast()` +
+`subscribe(callback)`. The `.stream()` convenience method (postgres_changes)
+is no longer used anywhere; neither table is in the `supabase_realtime`
+publication.
 
-The key difference: `.stream()` closes its `StreamController` on
-`RealtimeSubscribeStatus.closed` (a plain WebSocket drop). Riverpod sees a
-completed stream, holds the last `AsyncData`, and never retries.
-`_channelStream` keeps the `StreamController` open across `closed`, trusting
-Supabase's auto-reconnect to fire `subscribed` again and calling
-`fetchCurrent()` at that point to guarantee fresh state.
+| Stream                | Topic                          | Event         | Sent by                                          |
+| --------------------- | ------------------------------ | ------------- | ------------------------------------------------ |
+| `observationStream()` | `game:{gameId}:user:{userId}`  | `observation` | `AFTER INSERT` trigger on `observations` (human rows only) |
+| `gameStream()`        | `game:{gameId}`                | `game`        | `AFTER UPDATE` trigger on `games` (lifecycle transitions)  |
+
+The payload is `to_jsonb(NEW)` — snake_case keys identical to PostgREST rows,
+so `Observation.fromJson` / `Game.fromJson` decode it unmodified. In the
+`onBroadcast` callback the row sits at `payload['payload']`. Joining a topic
+is authorized once, at channel join, by RLS `SELECT` policies on
+`realtime.messages`: observation topics require the `:user:{auth.uid()}`
+suffix; game topics require the shared `private.can_read_game` predicate
+(the same one behind `games_select`). There is no INSERT policy, so clients
+can never publish on these channels. If an observation payload fails to
+decode, the client treats the message as a wake-up and fetches the latest
+frame instead — the version pipeline orders and gap-fills as usual.
+
+Why hand-rolled rather than `.stream()`: `.stream()` closes its
+`StreamController` on `RealtimeSubscribeStatus.closed` (a plain WebSocket
+drop). Riverpod sees a completed stream, holds the last `AsyncData`, and never
+retries. Both streams instead keep the `StreamController` open across
+`closed`, trusting Supabase's auto-reconnect to fire `subscribed` again and
+re-fetching at that point to guarantee fresh state.
 
 **Status handling:**
 
 | Status                      | Action                                                                                |
 | --------------------------- | ------------------------------------------------------------------------------------- |
-| `subscribed`                | `fetchCurrent()` via REST — initial load and every reconnect                          |
+| `subscribed`                | re-fetch via REST (latest frame / current game row) — initial load and every reconnect |
 | `channelError` / `timedOut` | `controller.addError(…)` — Riverpod catches this and retries with exponential backoff |
 | `closed`                    | No-op — Supabase auto-reconnects; next `subscribed` fires `fetchCurrent()`            |
 
@@ -2789,7 +2821,7 @@ has arrived.
 | `lib/core/connectivity/connectivity_provider.dart`        | `connectivityProvider` + `isOfflineProvider`                                                   |
 | `lib/shared/widgets/status_banner.dart`                   | `StatusBanner` — slim full-width banner primitive                                              |
 | `lib/core/navigation/widgets/shell_scaffold.dart`         | `_OfflineBanner` — shown on all shell screens                                                  |
-| `lib/features/game/data/game_repository.dart`             | `_channelStream<T>` — Realtime channel helper; `gameStream()` and `observationStream()`        |
+| `lib/features/game/data/game_repository.dart`             | `gameStream()` and `observationStream()` — private broadcast channels + fetch-on-subscribe     |
 | `lib/features/game/providers/game_providers.dart`         | `gameStreamProvider` + `gameObservationProvider` — plain `@riverpod` (inherits `defaultRetry`) |
 | `lib/features/game/presentation/screens/game_screen.dart` | `_ReconnectingBannerSlot`, `_ReconnectingBanner`, `_onConnectivityChange`, `_onObservation`    |
 
@@ -4192,9 +4224,14 @@ one into a rated or multi-human game.
 
 - **Server bot.** Woken post-commit by `notifyTransition` → `wakeBot` `fetch`es
   the seat's observation to `webhook_url` (HMAC `x-wake-signature`; see §20).
-  The bot replies on the **`bot/action`** route (anon; HMAC-gated). One wake,
-  two transports; the timeout commit is the liveness backstop for an unreachable
-  bot (hence server ⇒ timed).
+  The bot's 2xx response is an **ack of receipt only** ("queued", not
+  "acted") — it replies with the move later on the **`bot/action`** route
+  (anon; HMAC-gated). A failed ack (non-2xx, ~10s timeout, network error) is
+  retried a few times with short backoff inside the post-response worker;
+  duplicates are safe because the wake carries the committed `version` and a
+  duplicated action loses the version check. One wake, two transports; the
+  timeout commit remains the liveness backstop for a bot that stays down
+  past the retries (hence server ⇒ timed).
 - **Local bot.** A device can't receive a webhook and must not hold a secret, so
   it uses what the client already has: its own observation Realtime sub carries
   `pending_players`. When a bot seat in a **solo** game goes pending, the client

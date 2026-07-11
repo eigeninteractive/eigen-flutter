@@ -5,10 +5,7 @@
 - [ ] Spectating Support
 - [ ] Persisting game history, games, etc. using Drift
 - [ ] Persisting ratings, showing ratings UI
-- [ ] Add thorough docs and tests
-- [ ] Twin-drift tests: shared JSON fixtures per version unit (obs, pending,
-      action, playerIndex, config → expected) consumed by both the TS and Dart
-      rules tests, so Dart/TS twin drift fails CI instead of degrading UX
+- [ ] Add thorough docs
 
 # App Implementations
 

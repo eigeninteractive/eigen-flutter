@@ -2,10 +2,11 @@ name: Supabase
 
 # Everything that validates the engine's Supabase backend, path-scoped to
 # `supabase/**` so Dart-only PRs skip it entirely. Two jobs:
-#   - lint:          deno fmt + lint + type-check over the edge functions (cheap;
-#                    every supabase change, incl. TS-only ones). `deno check`
-#                    resolves imports (fetches jsr deps) and type-checks each
-#                    function through its own import map.
+#   - lint:          deno fmt + lint + type-check + unit tests over the edge
+#                    functions (cheap; every supabase change, incl. TS-only
+#                    ones). `deno check` resolves imports (fetches jsr deps)
+#                    and type-checks each function through its own import map;
+#                    `deno test` runs the pure-module suite in `_tests/`.
 #   - types-in-sync: boots the stack, regenerates the engine-owned DB types from
 #                    the live schema, and fails on any diff with the committed
 #                    file — so migrations and `_types/database.types.ts` can't drift.
@@ -35,7 +36,7 @@ on:
 
 jobs:
   lint:
-    name: Edge functions (deno fmt + lint + check)
+    name: Edge functions (deno fmt + lint + check + test)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -58,6 +59,14 @@ jobs:
           for cfg in supabase/functions/*/deno.json; do
             deno check --config "$cfg" "$(dirname "$cfg")/index.ts"
           done
+
+      # Pure-module unit tests in `_tests/` (type-checked by `deno test`
+      # itself). --allow-read: the twin-drift suite loads the shared JSON
+      # fixtures; --allow-env: bot_auth signs with an env-var secret.
+      - name: Unit tests
+        run: |
+          deno test --config supabase/functions/deno.json \
+            --allow-read --allow-env supabase/functions/_tests/
 
   types-in-sync:
     name: DB types in sync with migrations

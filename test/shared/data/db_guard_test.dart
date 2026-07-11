@@ -10,20 +10,22 @@ void main() {
       check(await dbGuard(() async => 42)).equals(42);
     });
 
-    test('rethrows PostgrestException as EngineException with the code',
-        () async {
-      await check(
-        dbGuard<void>(
-          () => throw const PostgrestException(
-            message: 'Game is full',
-            code: EngineErrorCodes.gameFull,
+    test(
+      'rethrows PostgrestException as EngineException with the code',
+      () async {
+        await check(
+          dbGuard<void>(
+            () => throw const PostgrestException(
+              message: 'Game is full',
+              code: EngineErrorCodes.gameFull,
+            ),
           ),
-        ),
-      ).throws<EngineException>((thrown) {
-        thrown.has((e) => e.message, 'message').equals('Game is full');
-        thrown.has((e) => e.code, 'code').equals(EngineErrorCodes.gameFull);
-      });
-    });
+        ).throws<EngineException>((thrown) {
+          thrown.has((e) => e.message, 'message').equals('Game is full');
+          thrown.has((e) => e.code, 'code').equals(EngineErrorCodes.gameFull);
+        });
+      },
+    );
 
     test('preserves a codeless PostgrestException as codeless', () async {
       await check(

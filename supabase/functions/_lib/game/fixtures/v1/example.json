@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "kind": "action",
+      "name": "the single move ends the game with a win for seat 0",
+      "config": {},
+      "state": { "moves": 0 },
+      "pending": [0],
+      "playerIndex": 0,
+      "participantCount": 1,
+      "action": {},
+      "expected": {
+        "valid": true,
+        "state": { "moves": 1 },
+        "pending": [],
+        "outcome": [
+          {
+            "player_index": 0,
+            "result": "win",
+            "placement": 1,
+            "team_index": 0
+          }
+        ],
+        "observation": { "moves": 1 }
+      }
+    },
+    {
+      "kind": "ratingPool",
+      "name": "the example game is never rated",
+      "access": "public",
+      "minPlayers": 1,
+      "maxPlayers": 1,
+      "config": {},
+      "expected": null
+    },
+    {
+      "kind": "botSeatable",
+      "name": "the example game seats every bot",
+      "gameConfig": {},
+      "botConfig": {},
+      "expected": true
+    }
+  ]
+}
