@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
 import 'package:eigen_engine/features/social/presentation/widgets/friend_buttons.dart';
 import 'package:eigen_engine/features/social/providers/social_providers.dart';
@@ -11,8 +12,9 @@ import 'package:eigen_engine/features/social/providers/social_providers.dart';
 ///
 /// Self-gates when the viewer is an anonymous guest — the server rejects all
 /// friend writes from guests, so instead of action buttons a guest sees a
-/// sign-in hint (or nothing, when [compact]). Gating here rather than in each
-/// parent keeps every embedding correct by construction.
+/// sign-in hint that routes to the account-upgrade flow in settings (or
+/// nothing, when [compact]). Gating here rather than in each parent keeps
+/// every embedding correct by construction.
 ///
 /// Each button owns its mutation state machine, so this widget only needs
 /// to route on [FriendStatus] — no mutation watching or coordination needed.
@@ -36,16 +38,7 @@ class FriendActions extends ConsumerWidget {
     if (playerId == currentUserId) return const SizedBox.shrink();
 
     if (ref.watch(isAnonymousProvider)) {
-      return compact
-          ? const SizedBox.shrink()
-          : Center(
-              child: Text(
-                'Sign in to add friends.',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            );
+      return compact ? const SizedBox.shrink() : const _GuestSignInHint();
     }
 
     final statusAsync = ref.watch(friendStatusProvider(targetId: playerId));
@@ -78,6 +71,41 @@ class FriendActions extends ConsumerWidget {
     return compact
         ? _CompactActions(playerId: playerId, status: status)
         : _FullActions(playerId: playerId, status: status);
+  }
+}
+
+/// Guest replacement for friend actions: the sign-in hint plus a button
+/// routing to the settings screen, where the account-upgrade card lives.
+/// Mirrors the "Sign in" treatment on the lobby's locked friends tab.
+class _GuestSignInHint extends StatelessWidget {
+  const _GuestSignInHint();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'Sign in to add friends.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 8),
+        FilledButton.tonal(
+          onPressed: () {
+            final router = GoRouter.of(context);
+            // The enclosing profile sheet lives on the presenting navigator
+            // and would stay up over the settings tab; dismiss it first.
+            final navigator = Navigator.of(context);
+            if (navigator.canPop()) navigator.pop();
+            router.goNamed('settings');
+          },
+          child: const Text('Sign in'),
+        ),
+      ],
+    );
   }
 }
 

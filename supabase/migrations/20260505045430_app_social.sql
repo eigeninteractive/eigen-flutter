@@ -149,7 +149,8 @@ RETURNS TABLE (
   id           UUID,
   username     TEXT,
   display_name TEXT,
-  avatar_url   TEXT
+  avatar_url   TEXT,
+  is_guest     BOOLEAN
 ) AS $$
 DECLARE
   v_pattern TEXT;
@@ -161,7 +162,9 @@ BEGIN
   -- _ is kept: it's valid in usernames and its single-char wildcard is harmless.
   v_pattern := '%' || replace(p_query, '%', '') || '%';
   RETURN QUERY
-  SELECT u.id, u.username, up.display_name, up.avatar_url
+  -- is_guest is always false here (guests are filtered below), but selecting
+  -- au.is_anonymous keeps the shape honest if that filter ever changes.
+  SELECT u.id, u.username, up.display_name, up.avatar_url, au.is_anonymous
   FROM public.users u
   JOIN public.user_profiles up ON up.id = u.id
   -- Exclude anonymous guests: they are throwaway accounts and cannot be friended.
