@@ -8,6 +8,7 @@ import 'package:eigen_engine/features/game/presentation/screens/game_screen.dart
 import 'package:eigen_engine/features/game/presentation/screens/history_screen.dart';
 import 'package:eigen_engine/features/game/presentation/screens/join_game_screen.dart';
 import 'package:eigen_engine/features/game/presentation/screens/lobby_screen.dart';
+import 'package:eigen_engine/features/game/presentation/screens/replay_screen.dart';
 import 'package:eigen_engine/features/game/providers/game_providers.dart';
 import 'package:eigen_engine/features/home/presentation/screens/home_screen.dart';
 import 'package:eigen_engine/features/profile/presentation/screens/profile_screen.dart';
@@ -76,6 +77,20 @@ final List<RouteBase> appRoutes = [
       final gameId = state.pathParameters['gameId']!;
       return GameScreen(gameId: gameId);
     },
+    routes: [
+      // Replay - full-screen over the game screen (root navigator), so back
+      // returns to the finished game. Used both by a participant replaying
+      // their own game and by a non-participant replaying a public one.
+      GoRoute(
+        path: 'replay',
+        name: 'replay',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) {
+          final gameId = state.pathParameters['gameId']!;
+          return ReplayScreen(gameId: gameId);
+        },
+      ),
+    ],
   ),
 
   // Join route - handles deep linking or manual code entry

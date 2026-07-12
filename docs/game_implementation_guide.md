@@ -419,11 +419,24 @@ your `parseConfig`, long-lived; cast it to your concrete type) and `frame`
 (the per-event observation snapshot: `frame.observation`,
 `frame.pendingPlayers`, `frame.version`, `frame.timing`) — plus `gameStatus`,
 `outcomes`, `actionPending`, `onAction`, `onInvalidAction`, `playersContext`,
-and the convenience getters `myPlayerIndex` (delegates to
-`playersContext.myPlayerIndex`) and `timing` (delegates to `frame.timing`).
+`isReplay`, and the convenience getters `mySeat` (delegates to
+`playersContext.mySeat`) and `timing` (delegates to `frame.timing`).
 Your rules-unit methods (`isValidAction`, `serializeAction`, helpers) are
 available as `this` — pass the unit (or just what a widget needs) down to
 private widgets explicitly.
+
+`isReplay` is `true` when the frame is being stepped through in replay (a
+finished game, viewed frame by frame) rather than played live. A game never
+_needs_ it to stay correct — the frame is a real observation, `onAction` is
+inert, and input already disables off the pending set — but it is there for
+replay-only presentation, e.g. surfacing move-by-move narration or hiding
+"your turn" hints. During replay `gameStatus` is `finished` for every frame,
+and `outcomes` is populated only on the final frame (so a win banner appears
+at the end, not mid-replay). When `mySeat` is a `Viewer` the current user did
+not play in the game — a non-participant replaying a public game — which only
+happens in replay. The same `buildContent`, cue embedding, and successor-frame
+animation contract (see **Animating transitions**) serve live play and replay
+alike; you write the rendering once.
 
 `buildRules` is required and returns your game's how-to-play content for the
 engine's About page. Return plain, non-scrolling content (e.g. a `Column` of
@@ -596,15 +609,17 @@ class MyGameContent extends StatelessWidget {
     final observation = content.frame.observation as ObservationData;
     final pendingPlayers = content.frame.pendingPlayers;
     final gameStatus = content.gameStatus;
-    final myPlayerIndex = content.myPlayerIndex;
+    // Null when a Viewer (a non-participant replaying) — every "is it me"
+    // check below then simply never matches, which is exactly right.
+    final mySeatIndex = content.mySeat.indexOrNull;
     final outcomes = content.outcomes;
     final actionPending = content.actionPending;
     // Also available: content.timing (clocks), content.playersContext (names).
 
-    final isMyTurn = pendingPlayers.contains(myPlayerIndex);
+    final isMyTurn = pendingPlayers.contains(mySeatIndex);
     final isGameOver = gameStatus == GameStatus.finished;
     final didIWin = outcomes.any(
-      (o) => o.playerIndex == myPlayerIndex && o.result == OutcomeResult.win,
+      (o) => o.playerIndex == mySeatIndex && o.result == OutcomeResult.win,
     );
     final isDraw =
         isGameOver && !outcomes.any((o) => o.result == OutcomeResult.win);
@@ -619,7 +634,9 @@ class MyGameContent extends StatelessWidget {
           obs: observation,
           pending: pendingPlayers,
           data: action,
-          playerIndex: myPlayerIndex,
+          // Non-null here: the board is only `enabled` on your own turn,
+          // which a Viewer never has.
+          playerIndex: mySeatIndex!,
           config: config,
         );
         if (legal) {
@@ -736,10 +753,16 @@ opponent.info.username;    // "seenu_k" (always present)
 opponent.info.avatarUrl;   // "https://..." or null
 opponent.type;            // ParticipantType.human
 
-// Get the current user
+// Get the current user (null when a Viewer — a non-participant replaying)
 final me = playersContext.me;
-me.info.username;          // your username
-me.playerIndex;            // your seat index (same as myPlayerIndex)
+me?.info.username;         // your username
+me?.playerIndex;           // your seat index
+
+// Or branch on the seat explicitly
+switch (playersContext.mySeat) {
+  case Seated(:final index): // you play seat `index`
+  case Viewer():             // you're a non-participant watching a replay
+}
 
 // Iterate all players
 for (final gp in playersContext.players.values) {
@@ -766,9 +789,14 @@ for (final gp in playersContext.players.values) {
 | Member             | Type                   | Description                            |
 | ------------------ | ---------------------- | -------------------------------------- |
 | `players`          | `Map<int, GamePlayer>` | All players keyed by index             |
-| `myPlayerIndex`    | `int`                  | Current user's seat (-1 if spectating) |
+| `mySeat`           | `MySeat`               | Sealed `Seated(index)` \| `Viewer` — the user's seat, or a non-participant replay viewer |
 | `operator [](int)` | `GamePlayer`           | Non-nullable access by index           |
-| `me`               | `GamePlayer`           | Convenience for `this[myPlayerIndex]`  |
+| `me`               | `GamePlayer?`          | Current user's player; null for a `Viewer` |
+
+`MySeat` is a sealed type: `Seated(int index)` for a participant, `Viewer()`
+for a non-participant replaying a public game (only in replay). `switch` on it,
+or read `mySeat.indexOrNull` (the index, or null for a viewer) for "is it my
+turn" style checks where a viewer simply never matches.
 
 ### Displaying Avatars
 
@@ -1813,6 +1841,11 @@ narrow `pending_players` — each seat's row carries its own **view** of the tru
 who else holds an interrupt. Use `isReplay` to reveal information post-game
 (e.g. all hole cards in a Poker replay).
 
+`args.playerIndex` is `null` when the projection is for a **non-participant
+replay viewer** — someone replaying a public finished game they did not play in.
+This only ever happens with `isReplay = true`, so treat it like any other replay
+seat and return the full revealed view; never index `state` by a `null` seat.
+
 Narrowing is presentation only: infra keys everything authoritative — the
 not-your-turn gate, timeout resolution, clock math, notifications — off the
 true set, so a projection can mislead a client but never the server. Two rules
@@ -1836,16 +1869,19 @@ computeObservation(
   args: ComputeObservationArgs<State, Action, Config>,
 ): ObservationSlice {
   if (args.isReplay) {
-    // Finished game: reveal everything for review.
+    // Finished game: reveal everything for review. Also the only path where
+    // args.playerIndex may be null (a non-participant replay viewer), so don't
+    // index state by it.
     return { data: args.state, pending_players: args.pending };
   }
-  // Live: strip every seat's private info except args.playerIndex, embed
-  // this seat's view of what just happened (the animation cue), and
-  // optionally narrow the pending set this seat is allowed to see.
+  // Live: strip every seat's private info except this seat's. `playerIndex` is
+  // only ever null in the replay branch above (a viewer), so live play always
+  // has a real seat.
+  const seat = args.playerIndex!;
   return {
     data: {
-      ...stripOpponentHands(args.state, args.playerIndex),
-      lastMove: cueFor(args.cause, args.playerIndex),
+      ...stripOpponentHands(args.state, seat),
+      lastMove: cueFor(args.cause, seat),
     },
     pending_players: args.pending,
   };
@@ -1853,7 +1889,8 @@ computeObservation(
 ```
 
 `isReplay` is `true` **only** when projecting a finished game for replay, so the
-live fan-out always passes `false`.
+live fan-out always passes `false` (and a real seat). A non-participant's replay
+of a public game additionally passes `playerIndex = null` (see above).
 
 ---
 
@@ -1907,7 +1944,7 @@ commits through a gated `engine_*` RPC):
 | `game/action`                                               | The move: runs `applyAction`, commits under the row lock (version + deadline + pending checks), fans out observations, writes outcome/ratings on finish.                       |
 | `game/forfeit` · `game/expire`                              | `applyLifecycle('forfeit')` / `('timeout')`. `expire` is the client deadline nudge (cron is the backstop).                                                                        |
 | `game/add-bot` · `game/local-bot-action`                    | Seat a server bot (host) / drive a local bot seat.                                                                                                                             |
-| `game/replay`                                               | The caller's observation slice at every version (finished, participant-only), projected through `computeObservation` (`isReplay = true`).                                      |
+| `game/replay`                                               | The caller's observation slice at every version (finished games), projected through `computeObservation` (`isReplay = true`). Participants replay their own seat; non-participants may replay a **public** game as a viewer (`playerIndex = null`). |
 | `game/delete-account`                                       | Account teardown (forfeits active games, then purges).                                                                                                                         |
 | `social/friend-request` · `social/accept` · `social/remove` | Friend writes; the EF gates the caller and pushes the notification.                                                                                                            |
 

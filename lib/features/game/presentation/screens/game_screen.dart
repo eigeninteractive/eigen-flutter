@@ -19,6 +19,7 @@ import 'package:eigen_engine/core/game/game_outcome.dart';
 import 'package:eigen_engine/core/game/participant_type.dart';
 import 'package:eigen_engine/core/game/players_context.dart';
 import 'package:eigen_engine/core/game/game_status.dart';
+import 'package:eigen_engine/core/game/my_seat.dart';
 import 'package:eigen_engine/core/game/timing_constants.dart';
 import 'package:eigen_engine/core/game/timing_context.dart';
 import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
@@ -154,13 +155,13 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   }
 
   void _maybeTriggerWinHaptic(List<GameOutcome> outcomes) {
-    final myPlayerIndex = ref
+    final mySeat = ref
         .read(gamePlayersProvider(gameId: widget.gameId))
         .value
-        ?.myPlayerIndex;
-    if (myPlayerIndex == null || myPlayerIndex < 0) return;
+        ?.mySeat;
+    if (mySeat is! Seated) return;
     final didWin = outcomes.any(
-      (o) => o.playerIndex == myPlayerIndex && o.result == OutcomeResult.win,
+      (o) => o.playerIndex == mySeat.index && o.result == OutcomeResult.win,
     );
     if (didWin) unawaited(HapticFeedback.heavyImpact());
   }
@@ -250,14 +251,14 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   }
 
   void _maybeRequestReview(List<GameOutcome> outcomes) {
-    final myPlayerIndex = ref
+    final mySeat = ref
         .read(gamePlayersProvider(gameId: widget.gameId))
         .value
-        ?.myPlayerIndex;
-    if (myPlayerIndex == null || myPlayerIndex < 0) return;
+        ?.mySeat;
+    if (mySeat is! Seated) return;
 
     final myOutcome = outcomes
-        .where((o) => o.playerIndex == myPlayerIndex)
+        .where((o) => o.playerIndex == mySeat.index)
         .firstOrNull;
     if (myOutcome?.result != OutcomeResult.win) return;
 

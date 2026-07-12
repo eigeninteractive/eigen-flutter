@@ -10,6 +10,16 @@
 Uri? gameInviteLink(String code, {required String? appHost}) =>
     appHost != null ? Uri.https(appHost, '/join/$code') : null;
 
+/// Returns a shareable link to replay the finished game with [gameId], or
+/// `null` if [appHost] is not configured.
+///
+/// Produces a URL such as `https://strategy.eigeninteractive.com/game/<id>`
+/// that opens the game on the recipient's device. A recipient who did not play
+/// in the game lands on its replay entry; only meaningful for public games,
+/// since the server refuses a non-participant's replay of a private one.
+Uri? gameReplayLink(String gameId, {required String? appHost}) =>
+    appHost != null ? Uri.https(appHost, '/game/$gameId') : null;
+
 /// Returns a URL for the given legal [path] on the shared root domain, or
 /// `null` if [legalHost] is not configured.
 ///

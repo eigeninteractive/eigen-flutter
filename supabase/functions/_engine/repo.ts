@@ -130,12 +130,13 @@ export async function readActiveGameIds(
 
 /** Every historical state with its producing action, for the replay route to
  * project through the observation hook. Raw state returned only to the trusted
- * EF; `handleReplay` applies the finished + participant gate. */
+ * EF; `handleReplay` applies the finished + participant/public gate (`access`
+ * is read here so a non-participant can replay a public game). */
 export async function readReplay(db: Db, gameId: string) {
   const { data, error } = await db
     .from("games")
     .select(
-      "config, schema_version, status, participants(player_index, user_id), game_states(version, state, pending_players, created_at, actions(type, kind, data, player_index))",
+      "config, schema_version, status, access, participants(player_index, user_id), game_states(version, state, pending_players, created_at, actions(type, kind, data, player_index))",
     )
     .eq("id", gameId)
     .order("version", { referencedTable: "game_states" })

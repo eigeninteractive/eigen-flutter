@@ -287,7 +287,11 @@ export interface ComputeObservationArgs<
 > extends HookContext<TConfig> {
   state: TState;
   pending: number[];
-  playerIndex: number;
+  /** The seat this projection is for, or `null` for a viewer (a non-participant
+   * replaying a public game). A viewer projection only ever occurs with
+   * `isReplay` true (a public finished game), so a game may safely reveal the
+   * full post-game view for it. */
+  playerIndex: number | null;
   participantCount: number;
   /** What produced `state` — see {@link TransitionCause}. Shared across the
    * per-seat fan-out; per-seat filtering of what it reveals is this hook's
@@ -534,7 +538,9 @@ export interface AcceptFriendResult {
  * typed-response inference (TS2589). */
 export interface ReplayFrame {
   version: number;
-  /** The caller's observation slice for this frame (game-defined). */
+  /** The caller's observation slice for this frame (game-defined) — the
+   * caller's own seat when a participant, or the viewer projection
+   * (`playerIndex: null`) when a non-participant replays a public game. */
   data: unknown;
   pending_players: number[];
   created_at: string;

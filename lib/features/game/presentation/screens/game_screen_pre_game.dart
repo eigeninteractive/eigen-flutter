@@ -358,7 +358,7 @@ class _ParticipantList extends StatelessWidget {
 
     return Column(
       children: players.map((gp) {
-        final isMe = gp.playerIndex == playersContext.myPlayerIndex;
+        final isMe = gp.playerIndex == playersContext.mySeat.indexOrNull;
         final isBot = gp.type == ParticipantType.bot;
 
         return Padding(

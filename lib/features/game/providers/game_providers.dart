@@ -6,6 +6,8 @@ import 'package:eigen_engine/core/game/game_creation_spec.dart';
 import 'package:eigen_engine/core/game/game_module.dart';
 import 'package:eigen_engine/core/game/game_player.dart';
 import 'package:eigen_engine/core/game/game_outcome.dart';
+import 'package:eigen_engine/core/game/my_seat.dart';
+import 'package:eigen_engine/core/game/participant_type.dart';
 import 'package:eigen_engine/core/game/players_context.dart';
 import 'package:eigen_engine/core/storage/storage_provider.dart';
 import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
@@ -211,16 +213,14 @@ Future<PlayersContext> gamePlayers(Ref ref, {required String gameId}) async {
       }(),
   ]);
 
-  final myPlayerIndex =
-      participants
-          .where((p) => p.userId == currentUserId)
-          .map((p) => p.playerIndex)
-          .firstOrNull ??
-      -1;
+  final seat = participants
+      .where((p) => p.userId == currentUserId)
+      .map((p) => p.playerIndex)
+      .firstOrNull;
 
   return PlayersContext(
     players: Map.fromEntries(entries),
-    myPlayerIndex: myPlayerIndex,
+    mySeat: seat == null ? const Viewer() : Seated(seat),
   );
 }
 
@@ -272,4 +272,22 @@ Future<List<GameOutcome>> gameOutcomes(
 }) async {
   final repository = ref.watch(gameRepositoryProvider);
   return repository.getGameOutcomes(gameId);
+}
+
+/// A player's most recent public finished games, for the replay list on their
+/// profile.
+///
+/// Works for any player, human or bot ([type] selects the identity column);
+/// the target need not be the current user. Backed by existing public-game RLS,
+/// so private games are never returned. Each entry carries the target player's
+/// own result. See [GameRepository.getPlayerPublicFinishedGames].
+@riverpod
+Future<List<({Game game, OutcomeResult? result})>> playerPublicFinishedGames(
+  Ref ref, {
+  required String playerId,
+  required ParticipantType type,
+}) {
+  return ref
+      .watch(gameRepositoryProvider)
+      .getPlayerPublicFinishedGames(playerId: playerId, type: type);
 }

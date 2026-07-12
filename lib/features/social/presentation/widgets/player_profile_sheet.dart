@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:eigen_engine/core/errors/error_messages.dart';
+import 'package:eigen_engine/core/game/game_outcome.dart';
 import 'package:eigen_engine/core/game/participant_type.dart';
+import 'package:eigen_engine/features/game/data/models/game.dart';
+import 'package:eigen_engine/features/game/presentation/extensions/game_ui.dart';
+import 'package:eigen_engine/features/game/providers/game_providers.dart';
 import 'package:eigen_engine/features/rating/data/models/player_rating.dart';
 import 'package:eigen_engine/features/rating/providers/rating_providers.dart';
 import 'package:eigen_engine/features/social/presentation/widgets/friend_actions.dart';
@@ -87,6 +93,9 @@ class PlayerProfileSheet extends ConsumerWidget {
               ),
             ),
             SliverToBoxAdapter(child: _RatingsSection(playerId: playerId)),
+            SliverToBoxAdapter(
+              child: _RecentGamesSection(playerId: playerId, type: type),
+            ),
             // Social section only for resolved, registered humans. While
             // identity is still loading (or failed: deleted account) the
             // section stays hidden rather than flashing an Add Friend button
@@ -279,6 +288,89 @@ class _RatingRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── Recent games section ──────────────────────────────────────────────────────
+
+/// A player's recent public finished games, each opening its replay.
+///
+/// Hidden entirely when the player has no public finished games (or the fetch
+/// fails), so a player with nothing to show adds no empty chrome to the sheet.
+class _RecentGamesSection extends ConsumerWidget {
+  const _RecentGamesSection({required this.playerId, required this.type});
+
+  final String playerId;
+  final ParticipantType type;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final gamesAsync = ref.watch(
+      playerPublicFinishedGamesProvider(playerId: playerId, type: type),
+    );
+
+    final games = gamesAsync.whenOrNull(data: (g) => g) ?? const [];
+    if (games.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Divider(color: colorScheme.outlineVariant),
+          const SizedBox(height: 8),
+          Text(
+            'Recent games',
+            style: textTheme.titleSmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          for (final entry in games)
+            _RecentGameRow(game: entry.game, result: entry.result),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecentGameRow extends StatelessWidget {
+  const _RecentGameRow({required this.game, required this.result});
+
+  final Game game;
+  final OutcomeResult? result;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final locale = Localizations.localeOf(context).toString();
+    final date = game.finishedAt ?? game.updatedAt;
+    final dateLabel = DateFormat.yMMMd(locale).format(date.toLocal());
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(result.icon, color: result.color(colorScheme)),
+      title: Text(
+        'Game #${game.id.substring(0, 8)}',
+        style: textTheme.bodyLarge,
+      ),
+      subtitle: Text(
+        '${result.label} • $dateLabel',
+        style: textTheme.bodySmall,
+      ),
+      trailing: Icon(Icons.chevron_right, color: colorScheme.onSurfaceVariant),
+      onTap: () {
+        // Capture the router before closing the sheet — the row's context is
+        // torn down by the pop.
+        final router = GoRouter.of(context);
+        Navigator.of(context).pop();
+        router.pushNamed('replay', pathParameters: {'gameId': game.id});
+      },
     );
   }
 }

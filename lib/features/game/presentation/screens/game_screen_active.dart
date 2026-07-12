@@ -37,19 +37,30 @@ class _ActiveGameContent extends ConsumerWidget {
     // Resolved before the config (the config provider awaits it), so a
     // non-null config implies non-null rules.
     final rules = ref.watch(gameRulesProvider(gameId: game.id)).value;
-    final frame = ref.watch(gameFrameProvider(gameId: game.id));
     final gamePlayersAsync = ref.watch(gamePlayersProvider(gameId: game.id));
 
-    if (config == null ||
-        rules == null ||
-        frame == null ||
-        frame.observation == null ||
-        !gamePlayersAsync.hasValue) {
+    // Essentials that don't depend on the live observation stream come first,
+    // so a non-participant (who has no frame stream) can be handled before we
+    // touch the frame.
+    if (config == null || rules == null || !gamePlayersAsync.hasValue) {
       return const Center(child: CircularProgressIndicator());
     }
 
     final gamePlayers = gamePlayersAsync.value!;
-    final myPlayerIndex = gamePlayers.myPlayerIndex;
+
+    // A non-participant has no observation rows and no per-seat frame stream,
+    // so the live board can never render for them — it would spin forever.
+    // Offer the replay (finished) or a wait message (active) instead.
+    if (gamePlayers.mySeat case Viewer()) {
+      return _NonParticipantContent(game: game);
+    }
+    // Past the viewer guard the current user holds a seat.
+    final mySeatIndex = (gamePlayers.mySeat as Seated).index;
+
+    final frame = ref.watch(gameFrameProvider(gameId: game.id));
+    if (frame == null || frame.observation == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
     // Outcomes are fetched once when the game finishes (invalidated by the
     // gameStreamProvider listener in _GameScreenState). Empty list for active
@@ -69,7 +80,7 @@ class _ActiveGameContent extends ConsumerWidget {
               game: game,
               timing: frame.timing,
               pendingPlayers: frame.pendingPlayers,
-              myPlayerIndex: myPlayerIndex,
+              myPlayerIndex: mySeatIndex,
             ),
           Expanded(
             child: rules.buildContent(
@@ -97,12 +108,112 @@ class _ActiveGameContent extends ConsumerWidget {
           if (game.status == GameStatus.finished)
             Padding(
               padding: const EdgeInsets.only(top: 16),
-              child: OutlinedButton.icon(
-                onPressed: () => context.go('/home'),
-                icon: const Icon(Icons.arrow_back),
-                label: const Text('Back to Home'),
+              child: Column(
+                children: [
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      FilledButton.tonalIcon(
+                        onPressed: () => context.pushNamed(
+                          'replay',
+                          pathParameters: {'gameId': game.id},
+                        ),
+                        icon: const Icon(Icons.play_circle_outline),
+                        label: const Text('Watch replay'),
+                      ),
+                      _ShareReplayButton(game: game),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: () => context.go('/home'),
+                    icon: const Icon(Icons.arrow_back),
+                    label: const Text('Back to Home'),
+                  ),
+                ],
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shares a public finished game's replay link. Renders nothing for a private
+/// game (a non-participant cannot replay it) or when no app host is configured.
+class _ShareReplayButton extends ConsumerWidget {
+  const _ShareReplayButton({required this.game});
+
+  final Game game;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (game.access != GameAccess.public) return const SizedBox.shrink();
+    final appHost = ref.watch(appConfigProvider).engine.appHost;
+    final link = gameReplayLink(game.id, appHost: appHost);
+    if (link == null) return const SizedBox.shrink();
+
+    return OutlinedButton.icon(
+      onPressed: () => SharePlus.instance.share(
+        ShareParams(text: 'Replay this game: $link'),
+      ),
+      icon: const Icon(Icons.share),
+      label: const Text('Share replay'),
+    );
+  }
+}
+
+/// Shown when a non-participant opens a public game.
+///
+/// A non-participant has no observation frames to render live, so a finished
+/// game offers its replay and an in-progress game asks the viewer to come back.
+class _NonParticipantContent extends StatelessWidget {
+  const _NonParticipantContent({required this.game});
+
+  final Game game;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final isFinished = game.status == GameStatus.finished;
+
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            isFinished ? Icons.play_circle_outline : Icons.hourglass_top,
+            size: 48,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            isFinished
+                ? 'This game has finished.'
+                : 'Game in progress — the replay will be available when it '
+                      'finishes.',
+            style: textTheme.titleMedium,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          if (isFinished)
+            FilledButton.icon(
+              onPressed: () => context.pushNamed(
+                'replay',
+                pathParameters: {'gameId': game.id},
+              ),
+              icon: const Icon(Icons.play_circle_outline),
+              label: const Text('Watch replay'),
+            ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () => context.go('/home'),
+            icon: const Icon(Icons.arrow_back),
+            label: const Text('Back to Home'),
+          ),
         ],
       ),
     );

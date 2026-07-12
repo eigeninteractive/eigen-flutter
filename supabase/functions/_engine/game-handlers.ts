@@ -491,21 +491,25 @@ export async function handleReplay(
   const { supabaseAdmin: db, userClaims } = c.var.supabaseContext;
   const userId = requireUserId(userClaims?.id);
   const replay = await readReplay(db, body.game_id);
-  // Gate in TS (the raw read is service-role): finished games only, caller must
-  // hold a seat. Affected seats of a timeout come from the pending diff, not
-  // the identity-less action row, so action_player_index is null for
-  // system-performed lifecycle actions.
+  // Gate in TS (the raw read is service-role): finished games only. A
+  // participant replays through their own seat; a non-participant may replay
+  // only a public game, projected as a viewer (playerIndex null). Affected
+  // seats of a timeout come from the pending diff, not the identity-less action
+  // row, so action_player_index is null for system-performed lifecycle actions.
   if (replay.status !== "finished") {
     throw new HttpError(400, "Replay is only available for finished games");
   }
   const caller = replay.participants.find((p) => p.user_id === userId);
-  if (!caller) {
+  if (!caller && replay.access !== "public") {
     throw new HttpError(
       403,
       "Not a participant in this game",
       EngineCode.notParticipant,
     );
   }
+  // null signals a viewer projection; only ever reached for a public finished
+  // game, and always with isReplay so hidden-info games reveal the full view.
+  const playerIndex = caller ? caller.player_index : null;
 
   const rules = rulesFor(gameModule, replay.schema_version);
   const config = parseStoredPayload(
@@ -525,7 +529,7 @@ export async function handleReplay(
         replay.schema_version,
       ),
       pending: frame.pending_players,
-      playerIndex: caller.player_index,
+      playerIndex,
       participantCount: replay.participants.length,
       config,
       cause: replayCause(rules, replay.schema_version, frame.actions),

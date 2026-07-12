@@ -1113,9 +1113,10 @@ state JSON, interpreted by the game module.)
 `buildContent`:
 
 - `players` (Map<int, GamePlayer>) — all players keyed by index
-- `myPlayerIndex` (int) — current user's seat (-1 if spectating)
+- `mySeat` (`MySeat`) — sealed `Seated(index)` | `Viewer`: the current user's
+  seat, or a `Viewer` (no seat) when a non-participant replays a public game
 - `operator [](int)` → `GamePlayer` — non-nullable access
-- `me` → `GamePlayer` — convenience accessor
+- `me` → `GamePlayer?` — convenience accessor; null for a `Viewer`
 
 ### Provider Architecture
 
@@ -1408,7 +1409,7 @@ then applies the gate in TS:
 ```
 game/replay { game_id }
   → games.select(…, game_states(…, actions(type, data, player_index)))  // FK embed
-  → gate in TS: finished only + caller is a participant
+  → gate in TS: finished only + (caller is a participant OR game is public)
   → for each game_states row (ordered by version):
        computeObservation(state, pending_players, player_index, …, is_replay=true)
   → [{version, data, pending_players, created_at,
@@ -1438,7 +1439,11 @@ Each frame:
 
 - Only finished games are replayable. The EF gate rejects
   `status != 'finished'`.
-- The caller must be a participant. Non-participants (spectators) cannot replay.
+- A participant replays through their own seat. A **non-participant may replay
+  a public game** (`access = 'public'`): the frames are projected as a viewer
+  (`player_index = null`), always with `is_replay = true`, so a hidden-info
+  game can choose to reveal the full post-game view. A non-participant is still
+  rejected (403) for a private/friends game.
 - Raw state is **never** exposed — every version is projected through
   `computeObservation`. Post-game hidden-info reveal (e.g. a poker hand-history
   that still hides folded hands) is controlled entirely by the hook. If the hook

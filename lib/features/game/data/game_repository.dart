@@ -4,10 +4,12 @@ import 'dart:developer' as developer;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:eigen_engine/core/errors/engine_exception.dart';
 import 'package:eigen_engine/core/game/game_outcome.dart';
+import 'package:eigen_engine/core/game/participant_type.dart';
 import 'package:eigen_engine/features/game/data/models/bot_info.dart';
 import 'package:eigen_engine/features/game/data/models/game.dart';
 import 'package:eigen_engine/features/game/data/models/observation.dart';
 import 'package:eigen_engine/features/game/data/models/participant.dart';
+import 'package:eigen_engine/features/game/data/models/replay_frame.dart';
 import 'package:eigen_engine/features/rating/data/models/rating_change.dart';
 import 'package:eigen_engine/shared/data/db_guard.dart';
 
@@ -16,6 +18,9 @@ const lobbyPageSize = 50;
 
 /// Number of games fetched per history page.
 const historyPageSize = 30;
+
+/// Number of games shown in the replay list on a player's profile.
+const profileGamesPageSize = 10;
 
 /// Repository for game operations.
 ///
@@ -381,6 +386,63 @@ class GameRepository {
     }).toList();
   }
 
+  /// Fetches a player's most recent public finished games, for the replay
+  /// list on their profile.
+  ///
+  /// Works for any player — the target need not be the caller. Existing RLS
+  /// (`can_read_game`) already exposes public games' rows, rosters, and
+  /// outcomes to any authenticated user, so no privileged read is needed;
+  /// private/friends games are simply invisible and never returned. [type]
+  /// selects the identity column (`user_id` for a human, `bot_id` for a bot).
+  /// Each entry carries the *target's* result. Pass [cursor] to page to games
+  /// finished before a given time.
+  Future<List<({Game game, OutcomeResult? result})>>
+  getPlayerPublicFinishedGames({
+    required String playerId,
+    required ParticipantType type,
+    DateTime? cursor,
+  }) async {
+    final identityColumn = type == ParticipantType.bot ? 'bot_id' : 'user_id';
+
+    var query = _client
+        .from('games')
+        .select(
+          '*, '
+          'participants!inner(user_id, bot_id, player_index), '
+          'game_outcomes(player_index, result)',
+        )
+        .eq('participants.$identityColumn', playerId)
+        .eq('access', 'public')
+        .eq('status', 'finished');
+
+    if (cursor != null) {
+      query = query.lt('finished_at', cursor.toIso8601String());
+    }
+
+    final response = await dbGuard(
+      () => query
+          .order('finished_at', ascending: false)
+          .limit(profileGamesPageSize),
+    );
+
+    return response.map((j) {
+      final participant = (j['participants'] as List)
+          .cast<Map<String, dynamic>>()
+          .firstWhere((p) => p[identityColumn] == playerId);
+      final targetPlayerIndex = participant['player_index'] as int;
+
+      final outcomeJson = (j['game_outcomes'] as List)
+          .cast<Map<String, dynamic>>()
+          .where((o) => o['player_index'] == targetPlayerIndex)
+          .firstOrNull;
+      final result = outcomeJson == null
+          ? null
+          : OutcomeResult.values.byName(outcomeJson['result'] as String);
+
+      return (game: Game.fromJson(j), result: result);
+    }).toList();
+  }
+
   // ── Bots ───────────────────────────────────────────────────────────────────
 
   /// Bots available for this deployment (display-safe columns), for the
@@ -503,6 +565,22 @@ class GameRepository {
 
     if (response == null) return null;
     return Observation.fromJson(response);
+  }
+
+  /// Fetches every frame of a finished game for replay, ordered by version.
+  ///
+  /// Routes through the `game/replay` Edge Function (the raw history is
+  /// service-role). A participant receives their own seat's projection; a
+  /// non-participant may replay only a **public** finished game, and receives
+  /// the observer projection. The EF returns 400 for a non-finished game and
+  /// 403 for a non-participant of a private game — both surface as
+  /// [EngineException].
+  Future<List<ReplayFrame>> getReplay(String gameId) async {
+    final data = await _invokeEngine('replay', {'game_id': gameId});
+    return (data as List)
+        .cast<Map<String, dynamic>>()
+        .map(ReplayFrame.fromJson)
+        .toList();
   }
 
   /// Gets a game's current metadata row, or null when the row is not

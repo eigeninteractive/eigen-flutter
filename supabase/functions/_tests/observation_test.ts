@@ -48,7 +48,8 @@ Deno.test("a slice misreporting the seat's own pending status is a 500", () => {
   // Claims *every* seat is pending — a lie for seats 0 and 2.
   const lying = rulesWith(({ state, playerIndex }) => ({
     data: state,
-    pending_players: [playerIndex],
+    // The fan-out always projects a real seat, never a viewer.
+    pending_players: [playerIndex!],
   }));
   const error = assertThrows(
     () => fanOutObservations(lying, fanArgs),
@@ -63,7 +64,7 @@ Deno.test("hiding OTHER seats' pending status is allowed", () => {
   // other seats see nobody.
   const masking = rulesWith(({ state, pending, playerIndex }) => ({
     data: state,
-    pending_players: pending.includes(playerIndex) ? [playerIndex] : [],
+    pending_players: pending.includes(playerIndex!) ? [playerIndex!] : [],
   }));
   const slices = fanOutObservations(masking, fanArgs);
   assertEquals(slices.map((s) => s.pending_players), [[], [1], []]);

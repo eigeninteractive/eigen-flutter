@@ -16,6 +16,7 @@ export 'core/game/game_frame.dart';
 export 'core/game/game_module.dart';
 export 'core/game/game_outcome.dart';
 export 'core/game/game_player.dart';
+export 'core/game/my_seat.dart';
 export 'core/game/game_status.dart';
 export 'core/game/players_context.dart';
 export 'core/game/timing_context.dart';

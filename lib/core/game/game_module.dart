@@ -4,6 +4,7 @@ import 'package:eigen_engine/core/game/game_creation_spec.dart';
 import 'package:eigen_engine/core/game/game_frame.dart';
 import 'package:eigen_engine/core/game/game_outcome.dart';
 import 'package:eigen_engine/core/game/game_status.dart';
+import 'package:eigen_engine/core/game/my_seat.dart';
 import 'package:eigen_engine/core/game/players_context.dart';
 import 'package:eigen_engine/core/game/timing_context.dart';
 import 'package:eigen_engine/features/game/data/models/game.dart'
@@ -40,7 +41,7 @@ enum ActionSubmitResult {
 /// Passing a single context (instead of a long parameter list) means adding a
 /// new piece of infra data later does not change the [GameRules.buildContent]
 /// signature — and therefore does not force every game to update. Redundant
-/// values ([myPlayerIndex], [timing]) are exposed as getters that delegate to
+/// values ([mySeat], [timing]) are exposed as getters that delegate to
 /// the authoritative source so there is only ever one of each.
 ///
 /// The two halves of the live game are kept separate: [config] is parsed once
@@ -57,6 +58,7 @@ class GameContentContext {
     required this.onAction,
     required this.onInvalidAction,
     required this.playersContext,
+    this.isReplay = false,
   });
 
   /// The game's parsed config ([GameRules.parseConfig] of `games.config`),
@@ -95,8 +97,20 @@ class GameContentContext {
   /// Resolved player identities, keyed by seat index.
   final PlayersContext playersContext;
 
-  /// The current user's seat index, or -1 if spectating.
-  int get myPlayerIndex => playersContext.myPlayerIndex;
+  /// True when the frame is being shown in replay (a finished game stepped
+  /// through frame by frame), false during live play.
+  ///
+  /// [frame] is a historical snapshot and [onAction] is inert, so a game
+  /// never needs this to stay correct — it disables input off the pending set
+  /// as usual. Use it only for replay-specific presentation, e.g. surfacing
+  /// move-by-move narration or suppressing "your turn" prompts. When [mySeat]
+  /// is a [Viewer] the current user did not play in the game (a public replay
+  /// opened by a non-participant), which only happens in replay.
+  final bool isReplay;
+
+  /// The current user's place in the game: [Seated] at an index, or a [Viewer]
+  /// (no seat — only when replaying a public game they did not play in).
+  MySeat get mySeat => playersContext.mySeat;
 
   /// Timing metadata for the current turn (mirrors [GameFrame.timing]).
   TimingContext get timing => frame.timing;

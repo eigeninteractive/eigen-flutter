@@ -1,8 +1,6 @@
 # P0
 
 - [ ] Monetization Flows
-- [ ] Replay Support
-- [ ] Spectating Support
 - [ ] Persisting game history, games, etc. using Drift
 - [ ] Persisting ratings, showing ratings UI
 - [ ] Add thorough docs
@@ -17,5 +15,6 @@
 
 - [ ] Offline App Support with Bot Play
 - [ ] Flag a game or player
+- [ ] Spectating Support
 - [ ] Quick Match
 - [ ] Target web platform, Web App notifications
