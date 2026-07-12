@@ -2,14 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:eigen_engine/core/errors/error_messages.dart';
 import 'package:eigen_engine/core/game/game_outcome.dart';
 import 'package:eigen_engine/core/game/participant_type.dart';
 import 'package:eigen_engine/features/game/data/models/game.dart';
 import 'package:eigen_engine/features/game/presentation/extensions/game_ui.dart';
 import 'package:eigen_engine/features/game/providers/game_providers.dart';
-import 'package:eigen_engine/features/rating/data/models/player_rating.dart';
-import 'package:eigen_engine/features/rating/providers/rating_providers.dart';
+import 'package:eigen_engine/features/rating/presentation/widgets/player_ratings.dart';
 import 'package:eigen_engine/features/social/presentation/widgets/friend_actions.dart';
 import 'package:eigen_engine/shared/data/models/player_info.dart';
 import 'package:eigen_engine/shared/providers/player_providers.dart';
@@ -92,7 +90,12 @@ class PlayerProfileSheet extends ConsumerWidget {
                 error: (e, _) => const _DeletedPlayerHeader(),
               ),
             ),
-            SliverToBoxAdapter(child: _RatingsSection(playerId: playerId)),
+            SliverToBoxAdapter(
+              child: _SheetSection(
+                title: 'Ratings',
+                child: PlayerRatings.forPlayer(playerId),
+              ),
+            ),
             SliverToBoxAdapter(
               child: _RecentGamesSection(playerId: playerId, type: type),
             ),
@@ -217,16 +220,17 @@ class _DeletedPlayerHeader extends StatelessWidget {
   }
 }
 
-class _RatingsSection extends ConsumerWidget {
-  const _RatingsSection({required this.playerId});
+/// A titled section of the sheet, separated from the one above by a divider.
+class _SheetSection extends StatelessWidget {
+  const _SheetSection({required this.title, required this.child});
 
-  final String playerId;
+  final String title;
+  final Widget child;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
-    final ratingsAsync = ref.watch(playerRatingsProvider(playerId));
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
@@ -236,56 +240,14 @@ class _RatingsSection extends ConsumerWidget {
           Divider(color: colorScheme.outlineVariant),
           const SizedBox(height: 8),
           Text(
-            'Ratings',
+            title,
             style: textTheme.titleSmall?.copyWith(
               color: colorScheme.onSurfaceVariant,
               fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 12),
-          ratingsAsync.when(
-            data: (ratings) {
-              if (ratings.isEmpty) {
-                return Text(
-                  'No rated games yet',
-                  style: textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                );
-              }
-              return Column(
-                children: ratings.map((r) => _RatingRow(rating: r)).toList(),
-              );
-            },
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Text(humanize(e)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RatingRow extends StatelessWidget {
-  const _RatingRow({required this.rating});
-
-  final PlayerRating rating;
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final poolName = rating.pool[0].toUpperCase() + rating.pool.substring(1);
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(poolName, style: textTheme.bodyMedium),
-          Text(
-            '${rating.displayRating}',
-            style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
-          ),
+          child,
         ],
       ),
     );
@@ -306,8 +268,6 @@ class _RecentGamesSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
     final gamesAsync = ref.watch(
       playerPublicFinishedGamesProvider(playerId: playerId, type: type),
     );
@@ -315,21 +275,11 @@ class _RecentGamesSection extends ConsumerWidget {
     final games = gamesAsync.whenOrNull(data: (g) => g) ?? const [];
     if (games.isEmpty) return const SizedBox.shrink();
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+    return _SheetSection(
+      title: 'Recent games',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Divider(color: colorScheme.outlineVariant),
-          const SizedBox(height: 8),
-          Text(
-            'Recent games',
-            style: textTheme.titleSmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 4),
           for (final entry in games)
             _RecentGameRow(game: entry.game, result: entry.result),
         ],

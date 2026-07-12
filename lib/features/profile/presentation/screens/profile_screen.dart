@@ -6,8 +6,7 @@ import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:eigen_engine/features/profile/data/models/user_profile.dart';
 import 'package:eigen_engine/features/profile/providers/profile_providers.dart';
-import 'package:eigen_engine/features/rating/data/models/player_rating.dart';
-import 'package:eigen_engine/features/rating/providers/rating_providers.dart';
+import 'package:eigen_engine/features/rating/presentation/widgets/player_ratings.dart';
 
 /// Profile screen: cinematic hero, per-pool rating cards, link to history.
 ///
@@ -299,14 +298,13 @@ class _PersonIconCircle extends StatelessWidget {
 
 // ── Ratings section ───────────────────────────────────────────────────────────
 
-class _RatingsSection extends ConsumerWidget {
+class _RatingsSection extends StatelessWidget {
   const _RatingsSection();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
-    final ratingsAsync = ref.watch(myRatingsProvider);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 28, 16, 8),
@@ -322,85 +320,8 @@ class _RatingsSection extends ConsumerWidget {
               ),
             ),
           ),
-          ratingsAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (_, _) => Text(
-              'Failed to load ratings',
-              style: TextStyle(color: colorScheme.error),
-            ),
-            data: (ratings) {
-              if (ratings.isEmpty) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text(
-                    'No rated games yet.',
-                    style: textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                );
-              }
-              return LayoutBuilder(
-                builder: (context, constraints) {
-                  final cardWidth = ratings.length == 1
-                      ? constraints.maxWidth
-                      : (constraints.maxWidth - 12) / 2;
-                  return Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: ratings
-                        .map(
-                          (r) => SizedBox(
-                            width: cardWidth,
-                            child: _RatingCard(rating: r),
-                          ),
-                        )
-                        .toList(),
-                  );
-                },
-              );
-            },
-          ),
+          const PlayerRatings.me(),
         ],
-      ),
-    );
-  }
-}
-
-class _RatingCard extends StatelessWidget {
-  const _RatingCard({required this.rating});
-
-  final PlayerRating rating;
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
-    final poolName = rating.pool[0].toUpperCase() + rating.pool.substring(1);
-
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              poolName,
-              style: textTheme.labelMedium?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                letterSpacing: 0.5,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${rating.displayRating}',
-              style: textTheme.headlineLarge?.copyWith(
-                color: colorScheme.onSurface,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

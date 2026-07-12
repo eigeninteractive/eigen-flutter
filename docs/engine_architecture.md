@@ -1871,20 +1871,18 @@ The `flutter_native_splash:` block is a top-level key — **not** nested under
 
 ```yaml
 flutter_native_splash:
-  color: "#FFFBFF" # Material 3 light surface (deepPurple seed)
-  color_dark: "#141218" # Material 3 dark surface (deepPurple seed)
-  image: assets/splash/logo.png # centered logo, 1152×1152 px
-  image_dark: assets/splash/logo_dark.png # white/light version for dark background
+  color: "#FFFFFF"
+  color_dark: "#141218"
+  image: assets/icon/icon_foreground.png # reuses the launcher-icon foreground
+  fullscreen: true
 
   android_12: # covers Android 12, 13, 14, 15, 16+ (API 31+)
-    color: "#FFFBFF"
-    color_dark: "#141218"
-    image: assets/splash/logo.png
-    image_dark: assets/splash/logo_dark.png
-    icon_background_color: "#FFFBFF"
-    icon_background_color_dark: "#141218"
+    color: "#FFFFFF"
+    color_dark: "#FFFFFF"
+    icon_background_color: "#FFFFFF"
+    icon_background_color_dark: "#FFFFFF"
 
-  web: false # set true to generate a web splash
+  web: true
 ```
 
 Colors must stay in sync with the branding seed (`Branding.seedColor`, set in
@@ -1893,24 +1891,27 @@ changes, update both `color`/`color_dark` here and regenerate.
 
 ### Asset Requirements
 
-Declare the folder in `pubspec.yaml` under `flutter: assets:` before adding
-files:
+The splash image is the **launcher icon's adaptive foreground**
+(`assets/icon/icon_foreground.png`, the source for `flutter_launcher_icons` —
+see `game_implementation_guide.md` → _App Icon, Favicon & Social Preview_). One
+mark, one source file, and the splash always matches the home-screen icon. No
+`assets/splash/` folder exists in the reference app.
 
-```yaml
-flutter:
-  assets:
-    - assets/splash/
-```
+On Android 12+ the `image:` key is ignored: the platform builds the splash from
+the adaptive launcher icon itself, so the `android_12:` block only sets colors.
 
-**Required:**
+To use a splash mark that differs from the launcher icon, add
+`assets/splash/logo.png` (plus `logo_dark.png` for the dark background), declare
+`assets/splash/` under `flutter: assets:`, and point `image:` / `image_dark:` at
+them:
 
 | File                          | Size               | Notes                                                                                                                     |
 | ----------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
 | `assets/splash/logo.png`      | **1152 × 1152 px** | Light-mode logo. Keep artwork within the inner **640 px** — the outer ring is cropped by Android 12's circular icon mask. |
 | `assets/splash/logo_dark.png` | **1152 × 1152 px** | Dark-mode logo (white/light version for dark background).                                                                 |
 
-The generator produces all Android density variants (mdpi → xxxhdpi) from these
-single sources. Do not create per-density files manually.
+The generator produces all Android density variants (mdpi → xxxhdpi) from a
+single source. Do not create per-density files manually.
 
 **Optional — bottom branding (studio name, tagline):**
 

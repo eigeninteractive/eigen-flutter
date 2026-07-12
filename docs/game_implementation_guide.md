@@ -2304,6 +2304,129 @@ Common failure causes:
 
 ---
 
+## App Icon, Favicon & Social Preview
+
+These are **app-owned**. The engine ships no branding assets — it has no app to
+ship. Everything below lives in the game app repo (`strategy` is the reference).
+
+The engine prescribes no design tool. Author the marks in any vector editor
+(Figma, Illustrator, Inkscape) and export the PNG sources below; every
+platform-specific size is generated from them.
+
+### Source Assets
+
+Two PNGs, both **1024 × 1024 px**, in `assets/icon/`. They do not need to be
+declared under `flutter: assets:` — they are build-time inputs to the generator,
+not runtime assets bundled into the app.
+
+| File                              | Notes                                                                                                                                                                                     |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `assets/icon/icon.png`            | The full, square icon — artwork edge-to-edge, opaque. Used for iOS, macOS, web, and the legacy (pre-adaptive) Android icon. iOS rejects alpha; set `remove_alpha_ios: true` if the source has transparency. |
+| `assets/icon/icon_foreground.png` | Adaptive-icon foreground: the mark alone on a **transparent** background, sized to the inner ~66% of the canvas. Android masks this to a circle/squircle and parallaxes it, so anything near the edge is cropped. Also reused as the splash image. |
+
+Android composites the foreground over `adaptive_icon_background` (a hex color
+in the reference app; it can also be an image path).
+
+### `pubspec.yaml` — the reference config
+
+`flutter_launcher_icons` is a **dev** dependency, and its config is a top-level
+key:
+
+```yaml
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
+  min_sdk_android: 21
+  web:
+    generate: true
+    image_path: "assets/icon/icon.png"
+  macos:
+    generate: true
+    image_path: "assets/icon/icon.png"
+```
+
+### Generate
+
+```bash
+dart run flutter_launcher_icons
+```
+
+| Target      | Written                                                                                                                            |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| **Android** | `mipmap-*/ic_launcher.png` (all densities), `mipmap-anydpi-v26/ic_launcher.xml`, the adaptive background color in `values/colors.xml` |
+| **iOS**     | `ios/Runner/Assets.xcassets/AppIcon.appiconset/`                                                                                    |
+| **macOS**   | `macos/Runner/Assets.xcassets/AppIcon.appiconset/`                                                                                  |
+| **Web**     | `web/favicon.png` (16 × 16), `web/icons/Icon-{192,512}.png` and the two `Icon-maskable-*` variants, and the `icons` array in `web/manifest.json` |
+
+Two things it does **not** do:
+
+- **It never touches `web/index.html`.** The `<link rel="icon">` and
+  `apple-touch-icon` tags already exist in the Flutter web template and point at
+  the files it writes, so there is nothing to wire up — but any tag you want
+  beyond those (OG, description, title) is yours to add by hand.
+- **It does not generate the Android notification icon.** That is a separate,
+  hand-maintained monochrome vector — see
+  [Analytics & Push Notifications](#analytics--push-notifications).
+
+Regeneration rewrites the `icons` array in `manifest.json` and, only if you set
+`background_color` / `theme_color` under the `web:` config key, those two fields.
+Every other manifest key (`name`, `short_name`, `description`) is preserved, so
+hand-edits there are safe.
+
+### Web: Title, Description, Manifest, Social Preview
+
+A fresh Flutter app ships template values, and they are easy to miss because
+nothing fails: `web/index.html` says `<title>strategy</title>` and
+`"A new Flutter project."`, and `web/manifest.json` carries Flutter's default
+`#0175C2` theme color. Replace all of them per app.
+
+Flutter's web template has **no Open Graph tags at all**, so a link to the app
+pasted into Slack, iMessage, or a social feed renders as a bare URL. Add them to
+`<head>` in `web/index.html`:
+
+```html
+<title>Strategy — play by mail, at your own pace</title>
+<meta name="description" content="Asynchronous turn-based strategy…" />
+
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://example.com/" />
+<meta property="og:title" content="Strategy" />
+<meta property="og:description" content="Asynchronous turn-based strategy…" />
+<meta property="og:image" content="https://example.com/og-image.png" />
+
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:image" content="https://example.com/og-image.png" />
+```
+
+`og:image` must be an **absolute URL** — scrapers do not resolve relative paths,
+and a relative `og:image` is the usual reason a preview silently renders blank.
+Author it at **1200 × 630 px** (the 1.91:1 ratio both Facebook and Twitter
+expect) and place it at `web/og-image.png`, which Flutter copies to the build
+output as-is. Keep text in the middle: some clients crop to a square thumbnail.
+
+Verify with the [Facebook Sharing Debugger](https://developers.facebook.com/tools/debug/)
+after deploying — both it and Slack cache aggressively, so scrape once, then
+re-scrape after any change.
+
+### Checklist
+
+- [ ] `assets/icon/icon.png` + `assets/icon/icon_foreground.png` at 1024 × 1024
+- [ ] Foreground artwork inside the inner ~66% safe zone
+- [ ] `flutter_launcher_icons:` block updated (adaptive background matches the
+      brand), then `dart run flutter_launcher_icons`
+- [ ] `web/index.html`: real `<title>`, real `description`, OG + Twitter tags
+      with an **absolute** `og:image`
+- [ ] `web/og-image.png` at 1200 × 630
+- [ ] `web/manifest.json`: real `name`, `short_name`, `description`, and
+      `background_color` / `theme_color` matching the app theme (not `#0175C2`)
+- [ ] `android/app/src/main/res/drawable/ic_notification.xml` replaced with the
+      new app's monochrome silhouette (not generated — see below)
+
+---
+
 ## Splash Screen Assets
 
 The splash screen is **infra-owned**. Game implementors do not call
@@ -2316,43 +2439,52 @@ generated file inventory.
 When deploying a new game app, provide the logo assets and regenerate the
 platform files.
 
-### Asset Files to Create
+### Splash Image
 
-Place in `assets/splash/` and declare the folder in `pubspec.yaml` under
-`flutter: assets:`.
+The reference app does **not** keep a separate splash logo. It reuses the
+launcher icon's foreground layer (`assets/icon/icon_foreground.png` — see
+[App Icon, Favicon & Social Preview](#app-icon-favicon--social-preview)) as the
+splash image, so the mark on the splash is the same one the OS shows on the home
+screen. Nothing extra to author.
 
-| File                          | Size               | Notes                                                                                                                                                        |
-| ----------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `assets/splash/logo.png`      | **1152 × 1152 px** | Light-mode logo. Keep artwork within the inner **640 px** — the outer ring is cropped on Android 12's circular icon mask. PNG with transparency recommended. |
-| `assets/splash/logo_dark.png` | **1152 × 1152 px** | Dark-mode logo (white/light version for the dark `#141218` background).                                                                                      |
+On **Android 12+** the image key is ignored entirely: the platform composes the
+splash from the adaptive launcher icon, so only the background colors matter in
+the `android_12:` block.
 
-Optional:
+If the brand needs a splash mark that differs from the launcher icon, add
+`assets/splash/logo.png` (and `logo_dark.png` for the dark background), declare
+`assets/splash/` under `flutter: assets:`, and point `image:` / `image_dark:` at
+them. Author at **1152 × 1152 px** with the artwork inside the inner **640 px** —
+the outer ring is cropped by Android 12's circular icon mask.
+
+Optional bottom branding (studio name / tagline):
 
 | File                              | Size          | Notes                                                                                                             |
 | --------------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `assets/splash/branding.png`      | ≥ 600 px wide | Studio name / tagline shown at screen bottom. Add `branding:` and `branding_bottom_padding:` to the config block. |
+| `assets/splash/branding.png`      | ≥ 600 px wide | Shown at screen bottom. Add `branding:` and `branding_bottom_padding:` to the config block.                       |
 | `assets/splash/branding_dark.png` | ≥ 600 px wide | Dark variant of branding image.                                                                                   |
 
-### `pubspec.yaml` — add `image:` fields once assets exist
+### `pubspec.yaml` — the reference config
 
-The `flutter_native_splash:` block already configures background colors. Add the
-image lines when the assets are ready:
+`flutter_native_splash:` is a **top-level key**, not nested under `flutter:`:
 
 ```yaml
 flutter_native_splash:
-  color: "#FFFBFF"
+  color: "#FFFFFF"
   color_dark: "#141218"
-  image: assets/splash/logo.png # add this
-  image_dark: assets/splash/logo_dark.png # add this
-
+  image: assets/icon/icon_foreground.png
+  fullscreen: true
   android_12:
-    color: "#FFFBFF"
-    color_dark: "#141218"
-    image: assets/splash/logo.png # add this
-    image_dark: assets/splash/logo_dark.png # add this
-    icon_background_color: "#FFFBFF"
-    icon_background_color_dark: "#141218"
+    color: "#FFFFFF"
+    color_dark: "#FFFFFF"
+    icon_background_color: "#FFFFFF"
+    icon_background_color_dark: "#FFFFFF"
+  web: true
 ```
+
+The colors must be kept in sync by hand with the app's theme surface colors
+(derived from `Branding.seedColor` in `main.dart`) — the native splash config
+can't read Dart, so a seed change means editing these and regenerating.
 
 ### Regenerate After Any Asset or Config Change
 
@@ -2360,16 +2492,21 @@ flutter_native_splash:
 dart run flutter_native_splash:create
 ```
 
+This rewrites Android/iOS platform files and, with `web: true`, injects the
+`splash-screen-style` / `splash-screen-script` blocks into `web/index.html` and
+writes `web/splash/img/*`. It edits `index.html` in place — hand-written markup
+elsewhere in the file (title, meta, OG tags) survives.
+
 ### Checklist
 
-- [ ] Create `assets/splash/logo.png` and `logo_dark.png` at 1152 × 1152 px
-- [ ] Add `assets/splash/` to `flutter: assets:` in `pubspec.yaml`
-- [ ] Add `image:` / `image_dark:` to both the root and `android_12:` config
-      blocks
+- [ ] Splash image resolves (either the launcher foreground, or a dedicated
+      `assets/splash/logo.png` + `logo_dark.png` declared under
+      `flutter: assets:`)
+- [ ] `color` / `color_dark` match the app's theme surface colors
 - [ ] Run `dart run flutter_native_splash:create`
 - [ ] Verify on a physical device: logo appears on the splash, splash disappears
       after auth resolves (not on a fixed timer), both light and dark OS themes
-      show the correct logo variant
+      look correct
 
 ---
 
@@ -2692,6 +2829,9 @@ release APK before uploading.
 - [ ] Replace `android/app/src/main/res/drawable/ic_notification.xml` with a
       monochrome silhouette of the new app's launcher icon foreground (Android
       API 21+ renders the full-colour launcher icon as a solid white box)
+- [ ] Branding assets replaced — launcher icon, favicon/web icons, splash, web
+      title/description/OG tags, manifest colours (see
+      [App Icon, Favicon & Social Preview](#app-icon-favicon--social-preview))
 - [ ] Add `LEGAL_HOST` as a GitHub Actions secret (e.g. `eigeninteractive.com`)
       — controls the terms/privacy links in the settings screen
 - [ ] PITR (Point-in-Time Recovery) enabled on Supabase Pro — `game_states` is
@@ -2738,3 +2878,43 @@ Per-app setup:
 
 iOS store submission (TestFlight/App Store) is not yet wired in the reference
 app; add an `ios` fastlane lane when you target iOS.
+
+### Store Listing Assets
+
+The reference `Fastfile` uploads **the binary only** — both lanes pass
+`skip_upload_metadata`, `skip_upload_images`, and `skip_upload_screenshots`. So
+the listing (icon, feature graphic, screenshots, description) is maintained **by
+hand in the Play Console**, and CI will never overwrite it. That is deliberate:
+store copy changes on a different cadence than code.
+
+What Play asks for, at the time of writing:
+
+| Asset               | Spec                                                                |
+| ------------------- | ------------------------------------------------------------------- |
+| Store icon          | 512 × 512 PNG — the same mark as `assets/icon/icon.png`, re-exported |
+| Feature graphic     | 1024 × 500 PNG or JPEG — shown at the top of the listing            |
+| Phone screenshots   | At least 2 (up to 8), 16:9 or 9:16                                  |
+| Tablet screenshots  | Required only if the listing targets tablets                        |
+
+Google tightens these periodically (screenshot minimums and aspect-ratio rules
+have both changed), so confirm against the
+[Play graphic asset specs](https://support.google.com/googleplay/android-developer/answer/9866151)
+before a first submission rather than trusting the table above.
+
+**Capturing screenshots.** There is no screenshot automation in the reference app
+(no `integration_test` harness exists yet). Run the app on an emulator whose
+resolution already satisfies the listing requirements, drive it to the screen you
+want, and capture the framebuffer:
+
+```bash
+adb exec-out screencap -p > screenshots/01-home.png
+```
+
+Prefer a seeded account with realistic games in progress — an empty home screen
+makes a poor first screenshot.
+
+**If you later want CI to own the listing:** drop the assets into
+`fastlane/metadata/android/en-US/images/` (`phoneScreenshots/`,
+`featureGraphic.png`, `icon.png`) and remove the corresponding `skip_upload_*`
+flags from the lane. Once you do, the repo becomes the source of truth and
+fastlane will overwrite anything edited in the Console.
