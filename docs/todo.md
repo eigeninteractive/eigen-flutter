@@ -1,7 +1,8 @@
-# App Implementations
+# Tracks
 
-- [ ] Implement Strategy
-- [ ] Implement Bravado
+- Implement Bravado
+- Cloudflare Migration
+- Docs
 
 # P1
 
