@@ -282,7 +282,7 @@ class MyGameRulesV1
   }) {
     // Boundary / empty-cell / rule-specific legality.
     // Do NOT re-check whose turn it is for the sequential case —
-    // the caller already gated on pending.contains(myPlayerIndex).
+    // the caller already gated on pending.contains(playerIndex).
     return true;
   }
 
@@ -629,22 +629,24 @@ class MyGameContent extends StatelessWidget {
       board: observation.board,
       enabled: canPlay,
       onCellTap: (position) {
-        final action = ActionData(position: position);
-        final legal = rules.isValidAction(
-          obs: observation,
-          pending: pendingPlayers,
-          data: action,
-          // Non-null here: the board is only `enabled` on your own turn,
-          // which a Viewer never has.
-          playerIndex: mySeatIndex!,
-          config: config,
-        );
-        if (legal) {
-          // Infra wires onInvalidAction to HapticFeedback.selectionClick() —
-          // do not import flutter/services or choose the haptic yourself.
-          content.onAction(rules.serializeAction(action));
-        } else {
-          content.onInvalidAction();
+        // The board is only `enabled` on your own turn, so the seat is always
+        // present here; a Viewer never reaches this.
+        if (content.mySeat case Seated(:final index)) {
+          final action = ActionData(position: position);
+          final legal = rules.isValidAction(
+            obs: observation,
+            pending: pendingPlayers,
+            data: action,
+            playerIndex: index,
+            config: config,
+          );
+          if (legal) {
+            // Infra wires onInvalidAction to HapticFeedback.selectionClick() —
+            // do not import flutter/services or choose the haptic yourself.
+            content.onAction(rules.serializeAction(action));
+          } else {
+            content.onInvalidAction();
+          }
         }
       },
     );
@@ -1241,10 +1243,12 @@ Chess showing each player's clock next to their captured pieces, or a 6-player
 game only showing the active player's clock), use the headless builder widgets
 directly.
 
-> The fragments below assume you've pulled locals off the context in `build`, as
-> in the content-widget template: `final timing = content.timing;`,
-> `final pendingPlayers = content.frame.pendingPlayers;`,
-> `final myPlayerIndex = content.myPlayerIndex;`.
+> The fragments below are for live participant play (a replay carries no live
+> clocks), so they assume a seated player. Pull locals off the context in
+> `build` as in the content-widget template — `final timing = content.timing;`,
+> `final pendingPlayers = content.frame.pendingPlayers;` — and read your seat
+> index from a `Seated` match, e.g. wrap the timing UI in
+> `if (content.mySeat case Seated(:final mySeatIndex)) { … }`.
 
 ### `TurnTimerBuilder` — per-action countdown
 
@@ -1284,7 +1288,7 @@ Owns a `Timer.periodic(1 s)`. For the active player it drains live using
 `(int remainingMs, bool isActive)` to your `builder` callback.
 
 `playerTimes` is 0-indexed by player index — the same scheme as
-`pendingPlayers`. `playerTimes[myPlayerIndex]` is your bank; `playerTimes[i]` is
+`pendingPlayers`. `playerTimes[mySeatIndex]` is your bank; `playerTimes[i]` is
 any player's bank.
 
 Pass `isPaused: ref.watch(isOfflineProvider)` for the same reason as
@@ -1301,7 +1305,7 @@ PlayerTimerBuilder(
   playerTimes: timing.playerTimes!,
   turnStartedAt: timing.turnStartedAt,
   pendingPlayers: pendingPlayers,
-  playerIndex: myPlayerIndex,
+  playerIndex: mySeatIndex,
   isPaused: ref.watch(isOfflineProvider),
   builder: (context, remainingMs, isActive) {
     final s = remainingMs ~/ 1000;
@@ -1331,7 +1335,7 @@ for (int i = 0; i < timing.playerTimes!.length; i++)
     playerIndex: i,
     isPaused: ref.watch(isOfflineProvider),
     builder: (context, remainingMs, isActive) =>
-        ChessClockCell(ms: remainingMs, active: isActive, isMe: i == myPlayerIndex),
+        ChessClockCell(ms: remainingMs, active: isActive, isMe: i == mySeatIndex),
   )
 ```
 
@@ -1868,20 +1872,19 @@ computeObservation = passthroughObservation<State, Action, Config>;
 computeObservation(
   args: ComputeObservationArgs<State, Action, Config>,
 ): ObservationSlice {
-  if (args.isReplay) {
-    // Finished game: reveal everything for review. Also the only path where
-    // args.playerIndex may be null (a non-participant replay viewer), so don't
-    // index state by it.
+  const { playerIndex } = args;
+  // Reveal everything for review on any replay, and for a viewer (playerIndex
+  // null, which only happens in replay). Folding the null check in here also
+  // narrows playerIndex to a real seat in the live branch below.
+  if (args.isReplay || playerIndex === null) {
     return { data: args.state, pending_players: args.pending };
   }
-  // Live: strip every seat's private info except this seat's. `playerIndex` is
-  // only ever null in the replay branch above (a viewer), so live play always
-  // has a real seat.
-  const seat = args.playerIndex!;
+  // Live: strip every seat's private info except this seat's, and embed this
+  // seat's view of what just happened (the animation cue).
   return {
     data: {
-      ...stripOpponentHands(args.state, seat),
-      lastMove: cueFor(args.cause, seat),
+      ...stripOpponentHands(args.state, playerIndex),
+      lastMove: cueFor(args.cause, playerIndex),
     },
     pending_players: args.pending,
   };
@@ -2493,18 +2496,21 @@ rejection branch of your tap handler — infra decides the haptic:
 
 ```dart
 onCellTap: (position) {
-  final action = ActionData(position: position);
-  final legal = rules.isValidAction(
-    obs: observation,
-    pending: pendingPlayers,
-    data: action,
-    playerIndex: myPlayerIndex,
-    config: config,
-  );
-  if (legal) {
-    onAction(rules.serializeAction(action));
-  } else {
-    onInvalidAction(); // do not call HapticFeedback directly
+  // The board is only enabled on your own turn, so a seat is always present.
+  if (content.mySeat case Seated(:final index)) {
+    final action = ActionData(position: position);
+    final legal = rules.isValidAction(
+      obs: observation,
+      pending: pendingPlayers,
+      data: action,
+      playerIndex: index,
+      config: config,
+    );
+    if (legal) {
+      onAction(rules.serializeAction(action));
+    } else {
+      onInvalidAction(); // do not call HapticFeedback directly
+    }
   }
 },
 ```

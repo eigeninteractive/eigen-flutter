@@ -51,11 +51,11 @@ class _ActiveGameContent extends ConsumerWidget {
     // A non-participant has no observation rows and no per-seat frame stream,
     // so the live board can never render for them — it would spin forever.
     // Offer the replay (finished) or a wait message (active) instead.
-    if (gamePlayers.mySeat case Viewer()) {
+    final mySeat = gamePlayers.mySeat;
+    if (mySeat is! Seated) {
       return _NonParticipantContent(game: game);
     }
-    // Past the viewer guard the current user holds a seat.
-    final mySeatIndex = (gamePlayers.mySeat as Seated).index;
+    final mySeatIndex = mySeat.index;
 
     final frame = ref.watch(gameFrameProvider(gameId: game.id));
     if (frame == null || frame.observation == null) {

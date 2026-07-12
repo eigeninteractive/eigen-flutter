@@ -701,7 +701,7 @@ subscription — no extra queries needed:
 ```dart
 // Live remaining budget for the active player (budget mode only):
 final elapsed = DateTime.now().difference(obs.turnStartedAt!).inMilliseconds;
-final remaining = obs.playerTimes![myPlayerIndex] - elapsed;
+final remaining = obs.playerTimes![mySeatIndex] - elapsed;
 ```
 
 > **Known limitation — device clock skew.** All countdowns compare server
@@ -2358,18 +2358,21 @@ haptic.
 
 ```dart
 onCellTap: (position) {
-  final action = ActionData(position: position);
-  final legal = rules.isValidAction(
-    obs: observation,
-    pending: pendingPlayers,
-    data: action,
-    playerIndex: myPlayerIndex,
-    config: config,
-  );
-  if (legal) {
-    onAction(rules.serializeAction(action));
-  } else {
-    onInvalidAction(); // infra fires selectionClick
+  // The board is only enabled on your own turn, so a seat is always present.
+  if (content.mySeat case Seated(:final index)) {
+    final action = ActionData(position: position);
+    final legal = rules.isValidAction(
+      obs: observation,
+      pending: pendingPlayers,
+      data: action,
+      playerIndex: index,
+      config: config,
+    );
+    if (legal) {
+      onAction(rules.serializeAction(action));
+    } else {
+      onInvalidAction(); // infra fires selectionClick
+    }
   }
 },
 ```
