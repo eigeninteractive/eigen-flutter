@@ -771,6 +771,12 @@ syntax; `src/index.ts` is the canonical worker-exports-DO-class shape (the fact 
 currently-blessed `vitest-pool-workers` wiring, the most version-pinned piece in the
 stack. Where C3's output differs from this doc's snippets, C3 is right.
 
+C3 runs an install inside the new directory, leaving a nested `pnpm-lock.yaml` +
+`node_modules` there. Delete both and run `pnpm install` from the root: the workspace
+keeps **one lockfile at the root** (pnpm's default — single resolution universe, required
+for `workspace:*` links; per-package lockfiles are only for independently-installed
+deploy units, which `wrangler deploy` bundling never needs).
+
 Then edit the generated `wrangler.jsonc` **toward this target shape** (diff, don't
 replace):
 
