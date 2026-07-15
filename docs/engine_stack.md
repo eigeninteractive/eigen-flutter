@@ -3,8 +3,9 @@
 > **Decision (2026-07-14, design locked 2026-07-15).** The engine runs **Cloudflare-only**:
 > Workers at the edge, one **Durable Object per game** owning that game's state — live
 > *and finished*: the DO's SQLite **is** the game's history (§4.6) — **D1** for global
-> data, **Firebase Auth** for identity. **R2** is opt-in/later (avatar uploads, history
-> cold tier — §5.4). No Postgres. No Supabase.
+> data, **Firebase Auth** for identity. **R2** is opt-in (avatar uploads — v1 code,
+> simulated free in local dev) or later (history cold tier) — §5.4. No Postgres. No
+> Supabase.
 >
 > **Two sets of keys: a Cloudflare account and a Firebase project.** Nothing else.
 >
@@ -40,7 +41,7 @@ policy · §9 client · §10 cost · §11 CI & testkit · §12 non-negotiables �
 | Edge | **Cloudflare Workers** (hono) | Stateless: verify token (**jose**), serve D1 reads, mint commands, route to DOs |
 | Game session + history | **One Durable Object per game** | SQLite-backed; owns state, roster, sockets, the alarm — and is retained after finish as the game's history (§4.6) |
 | Global store | **D1** | Identity, social, bots, ratings, game summaries — a **read-model + registry, never an arbiter** |
-| Blobs (opt-in / later) | **R2** (§5.4) | `AVATARS`: opt-in profile-photo uploads · `GAME_HISTORY`: future cold tier for old finished games. Not day 0 — R2 requires a payment method even for free-tier use |
+| Blobs (opt-in / later) | **R2** (§5.4) | `AVATARS`: profile-photo uploads — v1 code, opt-in per app · `GAME_HISTORY`: future cold tier for old finished games. Local dev simulates R2 free; a *real* bucket (deploy) requires a payment method |
 | Push | **FCM**, sent from the Worker/DO | Service-account JWT minted with WebCrypto — ported as-is from `_engine/fcm.ts` |
 | Scheduled work | **DO alarms** (turn deadlines — *only*) · **Cron Triggers** (guest purge) | No alarm multiplexer — see §8 |
 | Rules | **Pure TypeScript `GameRules`**, unchanged contract | One unit per `schema_version`; optional Dart twin for preview / local bots |
@@ -600,12 +601,15 @@ first game ships.
 ### 5.4 R2 — opt-in and later; the engine core needs no payment method
 
 R2 is the one primitive we'd use that **requires a payment method on file even for
-free-tier use**, so it is out of the engine's day-0 path entirely: an implementor runs
-games, replays, and profiles with no card, ever. Two *additive* features pull R2 in:
+free-tier use** — for *real* buckets. Local dev is exempt: `wrangler dev` and
+vitest-pool-workers simulate R2 inside `.wrangler/state` with no card, no real bucket,
+and no account call, so R2-backed features are built and tested for free. The engine's
+*required* path never touches R2 either way — an implementor runs games, replays, and
+profiles with no card, ever. Two features pull real R2 in:
 
 | Bucket (dev names) | Binding | When | Contents | Access |
 | --- | --- | --- | --- | --- |
-| `eigen-avatars-dev` | `AVATARS` | **Opt-in**: the implementor enables profile-photo uploads via an `avatars` config block on `createEngine` (absent → the upload route isn't mounted, no binding needed) | User avatar images | World-readable — the highest-frequency blob read in the app |
+| `eigen-avatars-dev` | `AVATARS` | **V1 code, opt-in per app**: the implementor enables profile-photo uploads via an `avatars` config block on `createEngine` (absent → the upload route isn't mounted, no binding needed). Built and tested under local simulation from day 0; the card enters only when deploying with uploads enabled | User avatar images | World-readable — the highest-frequency blob read in the app |
 | `eigen-game-history-dev` | `GAME_HISTORY` | **Later**: the §4.6 cold-tier sweep, once on the paid plan (a card exists by then anyway); v1 ships only the single-implementation `HistoryStore` read seam — no sweep, no branching | One frozen raw-history object per old finished game | **Private forever** — raw state carries hidden info (non-negotiable 9); the replay endpoint is the only reader and projects before returning |
 
 **The default avatar costs zero storage anywhere**: `avatar_url` carries the Firebase
@@ -702,7 +706,9 @@ and local bots.
 **We launch on the Workers free plan — with no payment method on file.** Every primitive
 the day-0 design uses is on it: SQLite-backed DOs (the only kind we allow), alarms,
 WebSocket hibernation, D1, and cron triggers (we use 1 of 5). R2 — the one primitive
-that demands a card even for free use — is opt-in/later (§5.4). Zero design or code
+that demands a card even for free use — is opt-in (avatars) or later (cold tier), and
+its card requirement bites only on real buckets at deploy; local dev simulates R2 free
+(§5.4). Zero design or code
 differences vs paid — the free tier's
 impact is purely operational: **daily hard caps that fail with errors** (reset 00:00 UTC)
 instead of pay-as-you-go overage, and a 10 ms Worker CPU budget per invocation (DOs get
@@ -758,7 +764,8 @@ free duration budget).
   `vitest-pool-workers` against local DO + D1: create, join (incl. last-seat race), leave,
   cancel, start, act, **simultaneous act** (the same-view accept case *and* the
   perturbed-view reject case), timeout, disconnect/resync, forfeit, finish, rate, replay
-  (participant, viewer, hidden-info reveal), guest purge.
+  (participant, viewer, hidden-info reveal), guest purge, avatar upload (opt-in route,
+  against locally-simulated R2).
 - **Hibernation assertion** — the DO holds no non-hibernatable state while idle (no
   `setTimeout`, no un-awaited fetches). The one bug that is expensive rather than wrong.
 - **The leak test** — no response body ever carries an unprojected state field.
@@ -804,7 +811,7 @@ free duration budget).
 | --- | --- | --- |
 | **0. Spike** (~1 wk) | Hibernating-socket echo game + deadline alarm + finish apply to D1, deployed for real + under vitest-pool-workers | Duration billing confirms hibernation; finish sequence survives forced eviction |
 | **1. Kernel** | `@eigen/rules` + `@eigen/kernel`: port pipeline/observation/ratings/timing; same-view rule; grace constant; twin-fixture port | Kernel passes fixtures + timing/grace/same-view unit suites, zero infrastructure |
-| **2. Runtime** | `@eigen/server` (do + routes + d1): commands, waiting room, sockets, reads, social, cron, admin endpoints | RPS playable end-to-end under `wrangler dev` |
+| **2. Runtime** | `@eigen/server` (do + routes + d1): commands, waiting room, sockets, reads, social, avatars (opt-in upload, local R2), cron, admin endpoints | RPS playable end-to-end under `wrangler dev` |
 | **3. Conformance** | Full §11 suite | CI green on every non-negotiable |
 | **4. Client** | `eigen_client` (generated API + frame stream) + `firebase_auth` swap + transport rewrite in `eigen_flutter`; RPS Flutter app against a deployed env | Full game on a phone against production CF |
 | **5. Cutover** | Bravado starts on `@eigen/*`; delete `supabase/`; archive the Supabase project | Bravado development proceeds on CF only |
@@ -896,8 +903,12 @@ replace):
   // Renaming MyDurableObject → GameDO in place is fine while nothing is deployed:
   "exports": { "GameDO": { "type": "durable-object", "storage": "sqlite" } },
   "d1_databases": [ /* paste the block `d1 create` prints (step 3) */ ],
-  // No R2 day 0 (§5.4): AVATARS is opt-in (photo uploads), GAME_HISTORY cold tier
-  // comes with the paid plan. R2 would demand a payment method even for free use.
+  // R2 (§5.4): AVATARS ships in v1 as opt-in and the example exercises it. The binding
+  // works fully under local simulation (wrangler dev / tests) with no card and no real
+  // bucket; creating the real bucket for a deploy with uploads enabled is the moment a
+  // payment method enters — comment this out to deploy card-free. GAME_HISTORY (cold
+  // tier) comes later, with paid.
+  "r2_buckets": [{ "binding": "AVATARS", "bucket_name": "eigen-avatars-dev" }],
   "triggers": { "crons": ["0 3 * * *"] },   // guest purge
   // §2.4 — static assets unmetered; only these paths invoke the worker:
   "assets": {
@@ -918,13 +929,14 @@ pnpm wrangler login && pnpm wrangler whoami
 pnpm wrangler d1 create eigen-dev     # prints the d1_databases binding block — paste it
 ```
 
-No R2 buckets day 0 (§5.4) — creating one would demand a payment method; avatars are
-opt-in and the history cold tier comes with the paid plan.
+No `r2 bucket create` day 0 (§5.4) — real buckets demand a payment method. The AVATARS
+binding still works under `wrangler dev` and in tests (local simulation); the bucket is
+created only when deploying with uploads enabled.
 
 ### Step 4 — First contact with the dev loop
 
 ```bash
-cd examples/rps && pnpm wrangler dev   # one process: worker + DO + D1
+cd examples/rps && pnpm wrangler dev   # one process: worker + DO + D1 + simulated R2
 ```
 
 Curl the hello-world route, then skim `.wrangler/state/` — that's where local D1/DO
