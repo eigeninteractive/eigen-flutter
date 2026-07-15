@@ -1,16 +1,17 @@
 # Eigen Engine — Architecture of Record (Cloudflare-native)
 
 > **Decision (2026-07-14, design locked 2026-07-15).** The engine runs **Cloudflare-only**:
-> Workers at the edge, one **Durable Object per game** owning that game's state in its own
-> SQLite, **D1** for global data, **R2** for blobs (game history, avatars), **Firebase
-> Auth** for identity.
-> No Postgres. No Supabase.
+> Workers at the edge, one **Durable Object per game** owning that game's state — live
+> *and finished*: the DO's SQLite **is** the game's history (§4.6) — **D1** for global
+> data, **Firebase Auth** for identity. **R2** is opt-in/later (avatar uploads, history
+> cold tier — §5.4). No Postgres. No Supabase.
 >
 > **Two sets of keys: a Cloudflare account and a Firebase project.** Nothing else.
 >
 > **The constraints that drove it:** fast time-to-first-game, **scale to zero** when idle,
 > **~$10/month** at real traffic. We start on the **Workers free plan** — everything the
-> design needs (SQLite-backed DOs, alarms, hibernation, R2, D1, cron) is on it — and
+> design needs (SQLite-backed DOs, alarms, hibernation, D1, cron) is on it, **with no
+> payment method on file** (which R2 would require even for free use — §5.4) — and
 > upgrade to paid ($5/mo) at the traffic trigger defined in §10. The upgrade is one click,
 > zero code change.
 >
@@ -36,10 +37,10 @@ policy · §9 client · §10 cost · §11 CI & testkit · §12 non-negotiables �
 | --- | --- | --- |
 | Client | **Flutter** — opinionated, the only client | `firebase_auth`, FCM, Analytics, Crashlytics |
 | Identity | **Firebase Auth** | Google · Apple · **Anonymous**, `linkWithCredential` guest→permanent upgrade |
-| Edge | **Cloudflare Workers** (hono) | Stateless: verify token (**jose**), serve D1/R2 reads, mint commands, route to DOs |
-| Game session | **One Durable Object per game** | SQLite-backed; owns state, roster, sockets, the alarm |
+| Edge | **Cloudflare Workers** (hono) | Stateless: verify token (**jose**), serve D1 reads, mint commands, route to DOs |
+| Game session + history | **One Durable Object per game** | SQLite-backed; owns state, roster, sockets, the alarm — and is retained after finish as the game's history (§4.6) |
 | Global store | **D1** | Identity, social, bots, ratings, game summaries — a **read-model + registry, never an arbiter** |
-| Blobs | **R2** — two buckets (§5.4) | `GAME_HISTORY`: one raw-history JSON object per finished game, private, replay source · `AVATARS`: world-readable images |
+| Blobs (opt-in / later) | **R2** (§5.4) | `AVATARS`: opt-in profile-photo uploads · `GAME_HISTORY`: future cold tier for old finished games. Not day 0 — R2 requires a payment method even for free-tier use |
 | Push | **FCM**, sent from the Worker/DO | Service-account JWT minted with WebCrypto — ported as-is from `_engine/fcm.ts` |
 | Scheduled work | **DO alarms** (turn deadlines — *only*) · **Cron Triggers** (guest purge) | No alarm multiplexer — see §8 |
 | Rules | **Pure TypeScript `GameRules`**, unchanged contract | One unit per `schema_version`; optional Dart twin for preview / local bots |
@@ -59,7 +60,7 @@ eigen-server/
   packages/
     rules/      @eigen/rules      the implementor contract (types only)
     kernel/     @eigen/kernel     pure commit() → CommitPlan. No I/O, no platform.
-    server/     @eigen/server     everything that deploys: DO + routes + D1 + R2
+    server/     @eigen/server     everything that deploys: DO + routes + D1 (+ opt-in R2)
     testkit/    @eigen/testkit    twin-fixture runner + runtime scenarios + leak/hibernation tests
   examples/
     rps/                          first implementor (simultaneous-move — hardest case first)
@@ -99,14 +100,16 @@ today), `ratings.ts` (OpenSkill, multi-seat bot collapse, `RatingDelta[]`), `gua
   `durable-sqlite` migrator during lazy init), the gated `handle()` loop
   (§3.4), waiting-room command handlers (§4.2), lazy init from D1 via
   `blockConcurrencyWhile`, hibernating WebSocket accept + version-ordered fan-out + range
-  fetch, the deadline alarm, the finish sequence (§4.5), the history write to R2 behind a
-  ~20-line `HistoryStore` interface.
+  fetch, the deadline alarm, the finish sequence (§4.5: compaction + D1 apply — finished
+  games stay in the DO, §4.6; the later cold-tier sweep will live here too, but ships no
+  v1 code).
 - `src/routes` — `createEngine(config)`, the hono app factory an implementor exports.
   `auth/firebase.ts` (jose `createRemoteJWKSet` against Google's securetoken JWKS + claim
   checks: `iss`/`aud` = project, `sub` non-empty, `exp`, `sign_in_provider === 'anonymous'`
   for guest gating; provisions the D1 user row on first sight of a token). Routes: commands
   (mint `Command`, route to DO), reads (lobby, friends lobby, history, `players?ids=`,
-  search, bots catalog, replay), social writes, avatar upload, device installations,
+  search, bots catalog, replay), social writes, avatar upload (opt-in — §5.4), device
+  installations,
   account-deletion orchestration, cron handlers (in-band — no HTTP self-auth),
   `bot/action` (HMAC), the gated `admin/games/:id/history`, and the link group (§2.4:
   `.well-known` for both platforms + `/j/:shortCode` landing, driven by `deepLink`
@@ -376,7 +379,7 @@ relocated:
 | --- | --- | --- |
 | `join` | guest-vs-rated gate; friends-access (D1 relationships); schema gate vs `client_schema_version`; by-code resolves `short_code` in D1 | status `waiting`/`ready`; seat free; not already seated; assign `player_index`; `ready` at `min_players` |
 | `leave` | — | non-creator; lobby statuses only; compact `player_index`es; demote below `min_players` |
-| `cancel` | — | creator-only; lobby statuses only; status → `aborted`; **no history object** (no transitions — the D1 row alone serves history lists); drop DO storage |
+| `cancel` | — | creator-only; lobby statuses only; status → `aborted`; drop DO storage (nothing worth retaining — the D1 row alone serves history lists) |
 | `add-bot` | guest rejection; `botSeatable`; schema / `rated_eligible` / server-only / timed invariants | creator-only; seat cap; seat the bot |
 | `start` | — | creator-only; `ready`; kernel `initialState` → v0; arm alarm; status `active` |
 
@@ -429,17 +432,21 @@ finish Postgres gave us is not recoverable. What replaces it, **simplified by de
 single attempt with a safety net**:
 
 1. **The DO's finish is atomic and authoritative.** One DO SQLite transaction: final
-   transition, `status = 'finished'`, per-seat outcomes, computed rating deltas, and an
-   outbox row with a `finish_id`. The instant it commits, the game *is* finished.
+   transition, `status = 'finished'`, per-seat outcomes, computed rating deltas, an
+   outbox row with a `finish_id`, and **compaction** — delete the per-seat `frames[]`
+   (live-only: fan-out and the same-view compare; replay re-projects from raw state) and
+   the command-dedupe rows. The instant it commits, the game *is* finished.
 2. **The player never sees "pending."** The deltas ship in the final frame over the socket
    the DO already holds. D1 is not in the user's critical path.
-3. **Then, in order:** write the R2 history object (§4.6) → apply the outbox to D1 (one `batch()`:
-   summary status + outcomes JSON, `rating_history` inserts, `player_ratings` CAS) → **only
-   then drop DO storage**.
+3. **Then:** apply the outbox to D1 (one `batch()`: summary status + outcomes JSON,
+   `rating_history` inserts, `player_ratings` CAS) → **only then clear the outbox row**.
+   Nothing is copied anywhere: DO storage is **retained** — it *is* the game's history
+   (§4.6).
 4. **Single attempt, log on failure.** No retry alarm, no reconciliation cron. On any
-   failure the DO logs and **keeps its storage** (outbox row included). The failure mode is
-   "game missing from history/leaderboard until re-poked", not data loss; a gated admin
-   re-poke re-runs step 3, safe because of `finish_id`. (The alarm remains deadline-only.)
+   failure the DO logs and **keeps the outbox row**. The failure mode is
+   "game missing from history lists/leaderboard until re-poked", not data loss; a gated
+   admin re-poke re-runs step 3, safe because of `finish_id`. (The alarm remains
+   deadline-only.)
 5. **The rating write is a CAS.** Read `(mu, sigma, version)`, compute in TS,
    `UPDATE … WHERE version = ?`, recompute on conflict. This *fixes* the documented
    concurrent-rated-finish lost-update bug in the legacy stack (`engine_architecture.md`
@@ -448,10 +455,40 @@ single attempt with a safety net**:
 The observable seam (a CAS conflict can revise a delta already displayed) requires two of
 one player's rated games finishing within milliseconds and self-heals via D1 reads.
 
-### 4.6 Game history & replay — raw history in R2, projected on read
+### 4.6 Game history & replay — retained in the DO, projected on read
 
-At finish the DO writes **one JSON object** to the `GAME_HISTORY` bucket (§5.4, behind
-the `HistoryStore` interface):
+**Finished games stay where they were played.** The DO's SQLite — meta, roster, the full
+transitions chain, outcomes, rating deltas — is retained after finish (compacted, §4.5)
+and *is* the game's history. Nothing is copied out; the finish sequence has no blob write
+and no second failure branch. On Cloudflare this is a first-class pattern, not a
+workaround: a DO is an addressable SQLite database that costs nothing while idle except
+storage, and "one DO per entity as its permanent database" is platform-endorsed.
+
+**Replay is the live range-fetch path, pointed at a finished game.** The worker owns the
+rules module, so the replay endpoint projects on read — `computeObservation(…, isReplay:
+true)` per version, with the caller's seat, or `player_index = null` for a
+non-participant viewing a public game. Exactly today's EF replay semantics: post-game
+hidden-info reveal and viewer replay work *by construction*, and raw state remains
+server-only — the single replay endpoint is the only reader, and it gates (finished +
+participant-or-public) then projects before returning. It takes a **version range** (the
+client pages through, same as live gap recovery), which keeps a single invocation's
+projection work comfortably inside even the free plan's 10 ms CPU budget regardless of
+game length or rules weight. This widens the §5.2 never-wake-a-DO exception list by one
+entry: replay is a deliberate single-game deep read — the same species as live gap
+recovery — not the list traffic the rule protects.
+
+**What retention trades away — and the cold tier that buys it back.** Keeping the record
+inside a live class costs four system-of-record properties: DOs are **not enumerable**
+(an iterate-all-histories job is a D1-driven fan-out, not a bucket `list`); the DO
+schema **never freezes** (every migration must stay valid for the oldest finished game,
+since the durable-sqlite migrator runs on wake); the record is **mutable by
+construction** (a bad deploy *can* touch it — softened by DO point-in-time recovery's
+30-day window); and DO storage is ~13× R2's price per GB. All four are fleet-scale
+concerns, so the remedy is deferred, not deleted: once on the paid plan (a payment
+method exists — the same thing that unlocks R2, §5.4), an age-based **cold-tier sweep**
+writes each old finished game as one frozen JSON object to the `GAME_HISTORY` bucket
+and drops the DO's storage; replay reads DO-if-present, else R2. The blob is the §5.1
+data verbatim:
 
 ```jsonc
 {
@@ -463,21 +500,33 @@ the `HistoryStore` interface):
 }
 ```
 
-**Raw history, no frames.** The worker owns the rules module, so the replay endpoint
-projects on read — `computeObservation(…, isReplay: true)` per version, with the caller's
-seat, or `player_index = null` for a non-participant viewing a public game. Exactly today's
-EF replay semantics: post-game hidden-info reveal and viewer replay work *by construction*,
-the blob is smaller than N per-seat frame tracks, and raw state remains server-only — the
-single replay endpoint is the only reader, and it gates (finished + participant-or-public)
-then projects before returning. The replay endpoint takes a **version range** (the client
-pages through, same as live gap recovery), which keeps a single invocation's projection
-work comfortably inside even the free plan's 10 ms CPU budget regardless of game length
-or rules weight.
+**Raw history, no frames** — same as what compaction leaves in the DO, so the
+reveal/viewer projection logic is identical against either store. Why the cold tier is
+R2 and not a D1 blob column: D1 has a **hard 10 GB/database ceiling** (≈ one month of
+history objects at target scale) and a 2 MB row cap; R2 is unbounded at ~$0.015/GB-month
+with zero egress. History *lists*/lobby/leaderboard never read the DO or the blob — they
+read D1 summaries. (KV was considered as a card-free blob store and rejected —
+appendix.)
 
-Why R2, not a D1 blob column: D1 has a **hard 10 GB/database ceiling** (≈ one month of
-history objects at target scale) and a 2 MB row cap; R2 is unbounded at ~$0.015/GB-month with zero
-egress. History/lobby/leaderboard never read the blob — they read D1 — so R2 costs exactly
-one `put` and one `get` in the whole codebase.
+**V1 ships the hot path only (decided 2026-07-16).** No sweep and no DO-vs-R2 read
+branching — replay reads the DO, full stop. What makes the cold tier a drop-in later is
+four seams v1 *does* build:
+
+1. **The replay contract is store-agnostic.** The client asks the worker for a version
+   range and gets projected frames; nothing in the API says where history lives. The
+   source can change without a client release.
+2. **The read seam is a named interface.** The replay route fetches raw transitions
+   through the ~20-line `HistoryStore` interface, which v1 ships with exactly **one**
+   implementation (the DO range fetch) and no dispatch logic. The cold tier later adds
+   the R2 implementation and a DO-if-present-else-R2 composition behind the same
+   interface — the route never changes.
+3. **Compaction leaves exactly the blob.** The post-finish DO rows are field-for-field
+   the cold-tier object above, so the sweep is a straight serialization — no transform,
+   no schema reconciliation at archive time.
+4. **The discriminator ships in the schema from day 0.** The D1 games row carries a
+   nullable `archived_at` (§5.2) — `NULL` means the history lives in the game's DO,
+   which is every row until the sweep exists. V1 never writes or reads it; the sweep
+   just starts stamping it. Being data rather than code, it costs nothing to carry.
 
 ### 4.7 Account deletion & guest purge
 
@@ -498,12 +547,13 @@ Cron Trigger running the same path in-band — no HTTP hop, no shared secret.
 | --- | --- |
 | `meta` | The game row snapshot (from lazy init) + status + `rng_seed` |
 | `roster` | Seats: `player_index`, identity ref (user/bot), type |
-| `transitions` | **One row per version**: `{state, frames[], action, pending, deadline, player_times, turn_started_at}` — serves live gap recovery, the same-view compare, and the history object |
-| `commands` | `commandId → response` dedupe (§3.6) |
-| `outbox` | The finish payload + `finish_id` (§4.5) |
+| `transitions` | **One row per version**: `{state, frames[], action, pending, deadline, player_times, turn_started_at}` — serves live gap recovery, the same-view compare, and (post-finish) replay. `frames[]` is deleted at finish (§4.5 compaction) |
+| `commands` | `commandId → response` dedupe (§3.6) — deleted at finish |
+| `outbox` | The finish payload + `finish_id` (§4.5) — cleared once the D1 apply succeeds |
 
-Dropped at finish — **only after** the history write + D1 apply succeed — or at
-cancel/abort (immediately; no history object to write).
+**Retained at finish** — the compacted database *is* the game's history (§4.6), until
+the later cold-tier sweep moves it to R2. Dropped at cancel/abort (immediately; the D1
+row alone serves history lists).
 
 **Schema is drizzle, same as D1** — defined in `src/do/schema.ts`, applied with
 `migrate()` from `drizzle-orm/durable-sqlite/migrator` inside the existing
@@ -520,7 +570,7 @@ noise against the ~70-row §10 budget.
 | Table | Notes |
 | --- | --- |
 | `users` | **Merged** `users` + `user_profiles` (the split served RLS separation that no longer exists): uid (Firebase), username, email?, display_name, avatar_url, is_anonymous, timestamps |
-| `games` | The summary/read-model row: status, access, `schema_version`, config, rated/pool, `short_code` (UNIQUE), min/max players, `participants` **JSON**, `pending_players` + `turn_deadline` (dashboard), `outcomes` **JSON** (at finish), `finish_id`, timestamps |
+| `games` | The summary/read-model row: status, access, `schema_version`, config, rated/pool, `short_code` (UNIQUE), min/max players, `participants` **JSON**, `pending_players` + `turn_deadline` (dashboard), `outcomes` **JSON** (at finish), `finish_id`, `archived_at` (nullable; `NULL` = history lives in the DO — stays `NULL` until the §4.6 cold-tier sweep exists), timestamps |
 | `relationships` | Friends — canonical pair order + UNIQUE, as today |
 | `bots` | Registry, unchanged columns (`is_local`, `webhook_url`, `schema_version`, `rated_eligible`, `config`) |
 | `player_ratings` | Per identity per pool: mu, sigma, display, **`version` (CAS counter)** |
@@ -534,9 +584,10 @@ Deliberate simplifications: `game_outcomes` is **JSON on the games row** (histor
 makes identity lookups cache-warm; user search is `LIKE` (D1 supports FTS5 if it ever
 matters); `private.app_config` and Vault become `wrangler.jsonc` vars and secrets.
 
-> **Rule: never wake a Durable Object to serve a read.** Lobby, history, profiles, search,
-> players, bot catalog: Worker → D1. Finished-game replay: Worker → R2. Only commands, the
-> WebSocket, live-game range fetch, and the local-bot observation touch the DO.
+> **Rule: never wake a Durable Object to serve a read.** Lobby, history lists, profiles,
+> search, players, bot catalog: Worker → D1. Only commands, the WebSocket, range fetches
+> (live gap recovery *and* finished-game replay — §4.6), and the local-bot observation
+> touch the DO.
 
 ### 5.3 RLS is gone; the kernel is the guarantee
 
@@ -546,24 +597,27 @@ This is a real reduction in safety margin, paid for in tests: the **leak test** 
 asserts no response body ever carries an unprojected state field, and it exists before the
 first game ships.
 
-### 5.4 R2 — two buckets, split by access policy
+### 5.4 R2 — opt-in and later; the engine core needs no payment method
 
-| Bucket (dev names) | Binding | Contents | Access |
-| --- | --- | --- | --- |
-| `eigen-game-history-dev` | `GAME_HISTORY` | One raw-history object per finished game (§4.6) | **Private forever** — raw state carries hidden info (non-negotiable 9); the replay endpoint is the only reader and projects before returning |
-| `eigen-avatars-dev` | `AVATARS` | User avatar images | World-readable — the highest-frequency blob read in the app |
+R2 is the one primitive we'd use that **requires a payment method on file even for
+free-tier use**, so it is out of the engine's day-0 path entirely: an implementor runs
+games, replays, and profiles with no card, ever. Two *additive* features pull R2 in:
 
-The split is forced, not stylistic: **public access in R2 is a bucket-level switch**
-(r2.dev or a bucket custom domain — no per-prefix policy), and these two datasets sit at
-opposite ends of it. They also differ in lifecycle (history is write-once immutable;
-avatars are overwritten in place) and growth curve. Splitting costs nothing: buckets are
-free, and the R2 free tier meters per *account*, not per bucket.
+| Bucket (dev names) | Binding | When | Contents | Access |
+| --- | --- | --- | --- | --- |
+| `eigen-avatars-dev` | `AVATARS` | **Opt-in**: the implementor enables profile-photo uploads via an `avatars` config block on `createEngine` (absent → the upload route isn't mounted, no binding needed) | User avatar images | World-readable — the highest-frequency blob read in the app |
+| `eigen-game-history-dev` | `GAME_HISTORY` | **Later**: the §4.6 cold-tier sweep, once on the paid plan (a card exists by then anyway); v1 ships only the single-implementation `HistoryStore` read seam — no sweep, no branching | One frozen raw-history object per old finished game | **Private forever** — raw state carries hidden info (non-negotiable 9); the replay endpoint is the only reader and projects before returning |
 
-Not "archive" (the earlier working name): the history object is read-serving data —
-replays, post-game hidden-info reveal — not cold storage. Only the *write* is archival,
-from the DO's perspective (write, then drop DO storage; R2 becomes the sole copy).
-Disambiguation: a user's game-history **list** is D1 summary rows (§5.2); the R2 object is
-the full raw history of **one** game, read only by replay.
+**The default avatar costs zero storage anywhere**: `avatar_url` carries the Firebase
+provider photo (Google supplies one; Apple doesn't; guests have none — the client
+renders initials for those). Photo uploads are a product decision, not an engine
+requirement.
+
+If both buckets exist, two-not-one stays forced: **public access in R2 is a bucket-level
+switch** (r2.dev or a bucket custom domain — no per-prefix policy), and these datasets
+sit at opposite ends of it. Disambiguation: a user's game-history **list** is D1 summary
+rows (§5.2); a game's full raw history lives in its DO (§4.6) until the sweep freezes it
+into R2, read only by replay either way.
 
 **Avatar serving** (deferred to the client phase): a bucket custom domain requires a CF
 zone, which free-`workers.dev` implementors don't have, and the r2.dev URL is
@@ -622,7 +676,7 @@ By decision, there is **no retry machinery** in v1:
 | --- | --- | --- |
 | Bot wake | 1 attempt, log | Turn deadline → timeout resolves the seat |
 | D1 summary upsert | fire-and-forget (`waitUntil`), log | Re-derivable from the DO at any time |
-| Finish: R2 history write + D1 apply | 1 attempt, log | **DO storage is kept on failure**; gated admin re-poke re-runs the apply, idempotent via `finish_id` |
+| Finish: D1 apply | 1 attempt, log | **The outbox row is kept on failure** (DO storage is retained regardless — §4.6); gated admin re-poke re-runs the apply, idempotent via `finish_id` |
 | FCM push | 1 attempt, log | Push is best-effort by nature |
 
 The alarm is **deadline-only**: no multiplexer, no timers table, and *nothing else may call
@@ -645,16 +699,19 @@ and local bots.
 
 ## 10. Cost — free tier from day 0
 
-**We launch on the Workers free plan.** Every primitive the design uses is on it:
-SQLite-backed DOs (the only kind we allow), alarms, WebSocket hibernation, R2, D1, and
-cron triggers (we use 1 of 5). Zero design or code differences vs paid — the free tier's
+**We launch on the Workers free plan — with no payment method on file.** Every primitive
+the day-0 design uses is on it: SQLite-backed DOs (the only kind we allow), alarms,
+WebSocket hibernation, D1, and cron triggers (we use 1 of 5). R2 — the one primitive
+that demands a card even for free use — is opt-in/later (§5.4). Zero design or code
+differences vs paid — the free tier's
 impact is purely operational: **daily hard caps that fail with errors** (reset 00:00 UTC)
 instead of pay-as-you-go overage, and a 10 ms Worker CPU budget per invocation (DOs get
 30 s on both plans; the one worker-side hot path, replay projection, is paginated — §4.6).
 
 Assumes 2 seats, ~30 actions/game, commands over HTTP, frames over a **hibernating**
 WebSocket. Per game: ~45 Worker requests, ~35 DO requests, ~0.2–0.6 GB-s DO duration
-(post-commit effects keep the DO awake briefly), ~40 D1 row-writes, one ~40–60 KB R2 object.
+(post-commit effects keep the DO awake briefly), ~40 D1 row-writes, ~20–40 KB retained
+in the DO after compaction.
 
 | Free limit | Per game | Games/day |
 | --- | --- | --- |
@@ -663,7 +720,7 @@ WebSocket. Per game: ~45 Worker requests, ~35 DO requests, ~0.2–0.6 GB-s DO du
 | DO — 100k requests/day | ~35 | ~2,850 |
 | DO — 13,000 GB-s/day | ~0.2–0.6 *(hibernating)* | ~20k–65k |
 | D1 — 100k rows written/day | ~40 | ~2,500 |
-| R2 — 10 GB storage *(account-wide, both buckets)* | ~40–60 KB/history object | ~160k finished games of runway |
+| DO SQLite — 5 GB stored *(account-wide)* | ~20–40 KB retained/finished game | ~125k–250k finished games before the cold-tier sweep is needed |
 
 | | Free | Paid ($5 base) |
 | --- | --- | --- |
@@ -673,9 +730,9 @@ WebSocket. Per game: ~45 Worker requests, ~35 DO requests, ~0.2–0.6 GB-s DO du
 
 **What breaks at the cap, and why it's safe.** A spike that exhausts the DO row-write
 budget makes commits fail loudly mid-game — ugly, but never corrupting: the kernel rejects,
-nothing partial lands. A finish whose history-write/D1 apply fails on a cap leaves fully
-recoverable DO state by design (§8: storage dropped only after history write + apply
-succeed) and
+nothing partial lands. A finish whose D1 apply fails on a cap leaves fully recoverable
+state by design (§8: the outbox row survives until the apply succeeds, and DO storage is
+retained regardless) and
 the gated re-poke replays it idempotently after reset. The failure policy absorbs the
 free-tier failure mode with no extra machinery.
 
@@ -717,11 +774,12 @@ free duration budget).
 4. **One transition = one DO SQLite row.**
 5. **The kernel stays pure** — no I/O, no platform imports, injected clock, forever.
 6. **Commands are values**, pre-authorized, carrying a `commandId`.
-7. **Every finish is idempotent**, keyed by `finish_id`; **DO storage is dropped only after
-   the history write + D1 apply succeed.**
+7. **Every finish is idempotent**, keyed by `finish_id`; **the outbox row is cleared only
+   after the D1 apply succeeds** — and DO storage is retained: it *is* the history (§4.6).
 8. **Only the deadline path calls `setAlarm`.**
-9. **Raw state never leaves the server** — replay projects on read; the `GAME_HISTORY`
-   bucket is server-only, never public (§5.4).
+9. **Raw state never leaves the server** — replay projects on read; the retained DO
+   history and the future `GAME_HISTORY` cold-tier bucket are server-only, never
+   public (§5.4).
 10. **The gated admin history/re-poke endpoint ships with the first game.**
 
 ---
@@ -744,7 +802,7 @@ free duration budget).
 
 | Phase | What | Exit criterion |
 | --- | --- | --- |
-| **0. Spike** (~1 wk) | Hibernating-socket echo game + deadline alarm + finish write to D1/R2, deployed for real + under vitest-pool-workers | Duration billing confirms hibernation; finish sequence survives forced eviction |
+| **0. Spike** (~1 wk) | Hibernating-socket echo game + deadline alarm + finish apply to D1, deployed for real + under vitest-pool-workers | Duration billing confirms hibernation; finish sequence survives forced eviction |
 | **1. Kernel** | `@eigen/rules` + `@eigen/kernel`: port pipeline/observation/ratings/timing; same-view rule; grace constant; twin-fixture port | Kernel passes fixtures + timing/grace/same-view unit suites, zero infrastructure |
 | **2. Runtime** | `@eigen/server` (do + routes + d1): commands, waiting room, sockets, reads, social, cron, admin endpoints | RPS playable end-to-end under `wrangler dev` |
 | **3. Conformance** | Full §11 suite | CI green on every non-negotiable |
@@ -838,11 +896,8 @@ replace):
   // Renaming MyDurableObject → GameDO in place is fine while nothing is deployed:
   "exports": { "GameDO": { "type": "durable-object", "storage": "sqlite" } },
   "d1_databases": [ /* paste the block `d1 create` prints (step 3) */ ],
-  // §5.4 — two buckets, split by access policy (history private, avatars public-able):
-  "r2_buckets": [
-    { "binding": "GAME_HISTORY", "bucket_name": "eigen-game-history-dev" },
-    { "binding": "AVATARS", "bucket_name": "eigen-avatars-dev" }
-  ],
+  // No R2 day 0 (§5.4): AVATARS is opt-in (photo uploads), GAME_HISTORY cold tier
+  // comes with the paid plan. R2 would demand a payment method even for free use.
   "triggers": { "crons": ["0 3 * * *"] },   // guest purge
   // §2.4 — static assets unmetered; only these paths invoke the worker:
   "assets": {
@@ -861,14 +916,15 @@ grants the worker `env` access; `exports` governs the class's lifecycle.
 ```bash
 pnpm wrangler login && pnpm wrangler whoami
 pnpm wrangler d1 create eigen-dev     # prints the d1_databases binding block — paste it
-pnpm wrangler r2 bucket create eigen-game-history-dev
-pnpm wrangler r2 bucket create eigen-avatars-dev
 ```
+
+No R2 buckets day 0 (§5.4) — creating one would demand a payment method; avatars are
+opt-in and the history cold tier comes with the paid plan.
 
 ### Step 4 — First contact with the dev loop
 
 ```bash
-cd examples/rps && pnpm wrangler dev   # one process: worker + DO + D1 + R2
+cd examples/rps && pnpm wrangler dev   # one process: worker + DO + D1
 ```
 
 Curl the hello-world route, then skim `.wrangler/state/` — that's where local D1/DO
@@ -969,23 +1025,32 @@ itself accrue only to a durable per-entity store — i.e., to Durable Objects.
   authoritative, and everything staleness-tolerant we have is already covered: config is
   wrangler vars/secrets, small registries are cheap D1 reads, JWKS is cached in-isolate by
   `jose` (Cache API if it ever matters). No niche left between DO (strong consistency),
-  D1 (global reads), and R2 (blobs).
+  D1 (global reads), and R2 (blobs). Reconsidered 2026-07-16 as a card-free game-history
+  store (R2 demands a payment method even for free use): rejected again — KV's design
+  center is edge-cached *hot* reads, the opposite of cold write-once replay blobs (no
+  cache benefit on cold keys, ~60 s visibility gap after finish, 1k writes/day would
+  become the finished-game binder, 1 GB storage). Retaining history in the DO (§4.6) is
+  both simpler and stronger.
 - **Queues / Workflows** (both free-plan-available) — every async spot is already covered:
   effects are declaredly best-effort (§8), and the one must-not-lose job (finish apply) is
   durable via DO storage retention + `finish_id` re-poke — a one-slot queue colocated with
   its state. Adding Queues re-adds the deleted retry machinery and, on free, its 10k ops/day
-  would become the capacity binder. Queueing the finish (ratings/history write) specifically was
+  would become the capacity binder. Queueing the finish (the ratings/D1 apply) specifically was
   considered and rejected: the enqueue itself can fail (so retained-storage survives, just
-  rescoped), the 128 KB message cap forces the R2 put to stay in the DO anyway, and free-tier
+  rescoped), and free-tier
   24 h retention (DLQ included) would silently expire the one must-never-lose job that today
   is loudly recoverable forever. *Flips if* partially-deleted accounts appear (→ wrap
   account deletion, the system's only multi-step saga, in a Workflow), FCM batching is
   needed at scale, or — on paid, with its 14-day retention — finish-apply re-pokes become
-  recurring toil (→ queue the small D1-apply step only, with a DLQ alert; the history put
-  stays DO→R2 direct).
+  recurring toil (→ queue the small D1-apply step only, with a DLQ alert).
 - **D1 as the game-history store** — hard 10 GB/database ceiling (~1 month of history
-  objects at target scale) and 2 MB row cap; R2 is unbounded and read by exactly one
-  endpoint.
+  objects at target scale) and 2 MB row cap; the history lives in each game's DO (§4.6),
+  cold-tiered to unbounded R2 later.
+- **R2 history write at finish** (the original design) — architecturally sound (inert,
+  enumerable, frozen system-of-record blob) but demoted to the *cold tier* (§4.6):
+  R2 requires a payment method even for free-tier use, breaking the no-card day-0 story,
+  and retention-in-the-DO deletes the copy step plus its whole failure branch. The blob
+  design returns verbatim as the age-based sweep once on paid.
 - **Convex** — genuine ACID + TS-native reactivity, but no first-class Dart client and an
   awkward fit for per-seat hidden-info fan-out. Recorded because it's the strongest
   outside candidate.
