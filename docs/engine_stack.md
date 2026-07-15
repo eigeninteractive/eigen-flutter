@@ -685,9 +685,16 @@ free duration budget).
 
 ---
 
-## 15. Repo setup instructions (manual, one-time)
+## 15. Repo setup instructions (CLI-first, one-time)
 
-### Prerequisites
+**The split**: CLI-generate anything that encodes *platform* knowledge (versions, config
+formats, compatibility dates) — that's where written-down snippets go stale. Hand-write
+anything that encodes *our* architecture (package boundaries, schemas, exports) — no
+scaffolder knows it. **When a snippet in this section disagrees with what a CLI emits,
+the CLI wins and this doc gets updated.** `pnpm wrangler --help` and the `create-cloudflare`
+prompts are ground truth for anything post-snippet.
+
+### Step 0 — Prerequisites
 
 ```bash
 node --version        # Node 22 LTS (nvm/mise/asdf)
@@ -698,19 +705,83 @@ corepack enable && pnpm --version   # pnpm 10.x, via corepack — no global inst
 Wrangler is a repo devDependency run via `pnpm wrangler` — never installed globally, so the
 version is pinned per project.
 
-### Skeleton
+### Step 1 — Root workspace (hand-written; no CLI owns this shape)
 
 ```bash
 mkdir eigen-server && cd eigen-server && git init
-mkdir -p packages/{rules,kernel,server,testkit} examples/rps
 ```
 
-Root files: `package.json` (`"private": true`, `"packageManager": "pnpm@10.x"`, `pnpm -r`
-fan-out scripts) · `pnpm-workspace.yaml` (`packages/*`, `examples/*`) · `tsconfig.base.json`
-(strict, `target es2022`, `moduleResolution bundler`) · `.gitignore` (`node_modules`,
-`dist`, `.wrangler`, `.dev.vars`) · `.nvmrc`.
+Root files: `package.json` (`pnpm init`, then edit: `"private": true`,
+`"packageManager": "pnpm@10.x"`, `pnpm -r` fan-out scripts) · `pnpm-workspace.yaml`
+(`packages/*`, `examples/*`) · `tsconfig.base.json` (strict, `target es2022`,
+`moduleResolution bundler`) · `.gitignore` (`node_modules`, `dist`, `.wrangler`,
+`.dev.vars`) · `.nvmrc`. These formats are stable and boring; nothing to learn from a
+generator.
 
-### Dependencies
+### Step 2 — `examples/rps` via create-cloudflare (the learning centerpiece)
+
+```bash
+pnpm create cloudflare@latest examples/rps
+# prompts: Hello World → Worker + Durable Object → TypeScript → no git → no deploy
+```
+
+Read every file it emits before touching anything: `wrangler.jsonc` is the current config
+format with a current `compatibility_date` and today's DO-binding + `new_sqlite_classes`
+syntax; `src/index.ts` is the canonical worker-exports-DO-class shape (the fact that made
+`server` one package). If the template ships a test setup, **keep it** — that's the
+currently-blessed `vitest-pool-workers` wiring, the most version-pinned piece in the
+stack. Where C3's output differs from this doc's snippets, C3 is right.
+
+Then edit the generated `wrangler.jsonc` **toward this target shape** (diff, don't
+replace):
+
+```jsonc
+{
+  "name": "eigen-rps",
+  "main": "src/index.ts",
+  "compatibility_date": "<keep C3's>",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": { "bindings": [{ "name": "GAME_DO", "class_name": "GameDO" }] },
+  // REQUIRED — makes the DO SQLite-backed (free-tier-compatible class, one-row transitions).
+  // C3's DO template may already emit this; verify rather than add blindly:
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameDO"] }],
+  "d1_databases": [ /* paste the block `d1 create` prints (step 3) */ ],
+  "r2_buckets": [{ "binding": "ARCHIVE", "bucket_name": "eigen-archives-dev" }],
+  "triggers": { "crons": ["0 3 * * *"] }    // guest purge
+}
+```
+
+The `new_sqlite_classes` line is easy to miss and load-bearing.
+
+### Step 3 — Cloudflare resources (CLI by definition)
+
+```bash
+pnpm wrangler login && pnpm wrangler whoami
+pnpm wrangler d1 create eigen-dev     # prints the d1_databases binding block — paste it
+pnpm wrangler r2 bucket create eigen-archives-dev
+```
+
+### Step 4 — First contact with the dev loop
+
+```bash
+cd examples/rps && pnpm wrangler dev   # one process: worker + DO + D1 + R2
+```
+
+Curl the hello-world route, then skim `.wrangler/state/` — that's where local D1/DO
+state lives, and deleting it is what "reset local state" means in the dev-phase
+edit-migrations-in-place convention. (`wrangler dev` replaces the whole Supabase Docker
+stack.)
+
+### Step 5 — Package stubs (hand-written; pure our-architecture)
+
+```bash
+mkdir -p packages/{rules,kernel,server,testkit}
+```
+
+Each gets `pnpm init`, then edit: `"name": "@eigen/<pkg>"`, `"type": "module"`,
+`exports` → `dist/`; internal deps use `"workspace:*"`.
+
+### Step 6 — Dependencies
 
 ```bash
 pnpm add -Dw typescript wrangler @cloudflare/workers-types \
@@ -722,52 +793,26 @@ pnpm --filter @eigen/server  add hono @hono/zod-openapi zod jose drizzle-orm
 pnpm --filter @eigen/server  add -D drizzle-kit
 ```
 
-(Each package needs a stub `package.json` first: `"name": "@eigen/<pkg>"`,
-`"type": "module"`, `exports` → `dist/`; internal deps use `"workspace:*"`.)
-
-`@eigen/server` carries **two drizzle-kit configs**: one for D1 (`dialect: 'sqlite'`,
-`out: './migrations'` — generate only, applied by `wrangler d1 migrations apply`, works
-identically against local and remote) and one for the DO (`dialect: 'sqlite'`,
-`driver: 'durable-sqlite'`, out under `src/do/` — emits a `migrations.js` bundle the
-worker imports; §5.1).
-
-⚠️ `@cloudflare/vitest-pool-workers` pins a narrow vitest version range — match vitest to
-its documented supported version, don't take latest blindly.
+⚠️ `@cloudflare/vitest-pool-workers` pins a narrow vitest version range — if C3's
+template shipped tests, match its versions; otherwise check the pool-workers docs, don't
+take latest blindly.
 
 | Tool | Role |
 | --- | --- |
-| `wrangler` | Local dev (`wrangler dev` = workerd with emulated DO/D1/R2 — replaces the whole Supabase Docker stack), migrations, secrets, deploys |
+| `wrangler` | Local dev, migrations, secrets, deploys |
 | `vitest-pool-workers` | Tests run *inside* workerd against real DO + local D1 |
 | `tsup` | Builds `dist/` (ESM + d.ts) for private npm publishing |
-| `changesets` | `@eigen/*` versioning (init now, use when Bravado consumes) |
+| `changesets` | `@eigen/*` versioning (use when Bravado consumes) |
 | `biome` | Lint + format |
 
-### Cloudflare resources
+### Step 7 — Tool configs (own `init` where one exists)
 
-```bash
-pnpm wrangler login && pnpm wrangler whoami
-pnpm wrangler d1 create eigen-dev            # note the database_id
-pnpm wrangler r2 bucket create eigen-archives-dev
-```
-
-### `examples/rps/wrangler.jsonc`
-
-```jsonc
-{
-  "name": "eigen-rps",
-  "main": "src/index.ts",
-  "compatibility_date": "2026-07-01",
-  "compatibility_flags": ["nodejs_compat"],
-  "durable_objects": { "bindings": [{ "name": "GAME_DO", "class_name": "GameDO" }] },
-  // REQUIRED — makes the DO SQLite-backed (free-tier-compatible class, one-row transitions):
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameDO"] }],
-  "d1_databases": [{ "binding": "DB", "database_name": "eigen-dev", "database_id": "<from create>" }],
-  "r2_buckets": [{ "binding": "ARCHIVE", "bucket_name": "eigen-archives-dev" }],
-  "triggers": { "crons": ["0 3 * * *"] }    // guest purge
-}
-```
-
-The `new_sqlite_classes` line is easy to miss and load-bearing.
+`pnpm biome init` (emits current-format `biome.json`). Drizzle-kit has **no** init:
+`@eigen/server`'s **two drizzle-kit configs** are hand-written (~8 lines each) — one for
+D1 (`dialect: 'sqlite'`, `out: './migrations'` — generate only, applied by `wrangler d1
+migrations apply`, identical against local and remote) and one for the DO
+(`dialect: 'sqlite'`, `driver: 'durable-sqlite'`, out under `src/do/` — emits a
+`migrations.js` bundle the worker imports; §5.1). They must not share an `out` directory.
 
 ### Secrets
 
@@ -778,13 +823,13 @@ Local: `examples/rps/.dev.vars` (gitignored) — `FIREBASE_PROJECT_ID` (token ve
 ### Verify
 
 ```bash
-cd examples/rps && pnpm wrangler dev    # one process: worker + DO + D1 + R2
-pnpm vitest                              # once the pool-workers config exists
+cd examples/rps && pnpm wrangler dev    # hello-world serves
+pnpm vitest                              # if the C3 template shipped tests
 ```
 
 Deferred until needed: GitHub Packages `.npmrc` + publish workflow (when Bravado consumes
-`@eigen/*`), `changeset init`, CI workflow (written alongside the first tests), Firebase
-console provider enablement (client phase).
+`@eigen/*`), `pnpm changeset init`, CI workflow (written alongside the first tests),
+Firebase console provider enablement (client phase).
 
 ---
 
