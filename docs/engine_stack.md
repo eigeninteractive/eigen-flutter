@@ -783,6 +783,11 @@ itself accrue only to a durable per-entity store — i.e., to Durable Objects.
   needing per-action freshness.
 - **`firebase-auth-cloudflare-workers`** — unofficial, low adoption; `jose` + our claim
   checks instead.
+- **Workers KV** — eventually consistent (~60 s propagation), so wrong for anything
+  authoritative, and everything staleness-tolerant we have is already covered: config is
+  wrangler vars/secrets, small registries are cheap D1 reads, JWKS is cached in-isolate by
+  `jose` (Cache API if it ever matters). No niche left between DO (strong consistency),
+  D1 (global reads), and R2 (blobs).
 - **Queues / Workflows** (both free-plan-available) — every async spot is already covered:
   effects are declaredly best-effort (§8), and the one must-not-lose job (finish apply) is
   durable via DO storage retention + `finish_id` re-poke — a one-slot queue colocated with
