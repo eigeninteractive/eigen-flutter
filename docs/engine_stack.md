@@ -737,7 +737,7 @@ prompts are ground truth for anything post-snippet.
 
 ```bash
 node --version        # Node 24 (current LTS; anything ≥ the active LTS is fine)
-corepack enable && pnpm --version   # pnpm 10.x, via corepack — no global install
+pnpm --version        # pnpm 11.x — pinned by devEngines in root package.json
 # Cloudflare account at dash.cloudflare.com (free plan — upgrade per §10 trigger)
 ```
 
@@ -750,12 +750,15 @@ version is pinned per project.
 mkdir eigen-server && cd eigen-server && git init
 ```
 
-Root files: `package.json` (`pnpm init`, then edit: `"private": true`,
-`"packageManager": "pnpm@10.x"`, `pnpm -r` fan-out scripts) · `pnpm-workspace.yaml`
-(`packages/*`, `examples/*`) · `tsconfig.base.json` (strict, `target es2022`,
-`moduleResolution bundler`) · `.gitignore` (`node_modules`, `dist`, `.wrangler`,
-`.dev.vars`) · `.nvmrc`. These formats are stable and boring; nothing to learn from a
-generator.
+Root files: `package.json` (`pnpm init`, then edit: `"private": true`, `"type":
+"module"`, `devEngines.packageManager` pinning pnpm 11.x with `"onFail": "download"` —
+the modern replacement for the corepack `packageManager` field — and `pnpm -r` fan-out
+scripts) · `pnpm-workspace.yaml` (`packages/*`, `examples/*`, plus `allowBuilds` for
+`esbuild`/`workerd`/`sharp` — pnpm 11 blocks postinstall build scripts by default and
+workerd's binary needs one) · `tsconfig.base.json` (strict, `target ES2024`,
+`moduleResolution Bundler`, `declaration` + `declarationMap` for the library packages) ·
+`.gitignore` (`node_modules`, `dist`, `.wrangler`, `.dev.vars`) · `.nvmrc` (`24`). These
+formats are stable and boring; nothing to learn from a generator.
 
 ### Step 2 — `examples/rps` via create-cloudflare (the learning centerpiece)
 
@@ -765,11 +768,21 @@ pnpm create cloudflare@latest examples/rps
 ```
 
 Read every file it emits before touching anything: `wrangler.jsonc` is the current config
-format with a current `compatibility_date` and today's DO-binding + `new_sqlite_classes`
+format with a current `compatibility_date` and today's DO-binding + class-lifecycle
 syntax; `src/index.ts` is the canonical worker-exports-DO-class shape (the fact that made
-`server` one package). If the template ships a test setup, **keep it** — that's the
-currently-blessed `vitest-pool-workers` wiring, the most version-pinned piece in the
-stack. Where C3's output differs from this doc's snippets, C3 is right.
+`server` one package). Where C3's output differs from this doc's snippets, C3 is right —
+with one known exception: the template still emits the **legacy `migrations` array** for
+the DO class, which CF has replaced with the declarative **`exports` field** (see the
+target shape below). Both work, but a worker uses one or the other and can't move from
+`exports` back to `migrations` — adopt `exports` before first deploy.
+
+As built (2026-07-16), the template also emitted, all keepers: `$schema` pointing at
+wrangler's config schema, `observability: { enabled: true }`, `upload_source_maps: true`,
+and a `cf-typegen` script (`wrangler types` → `worker-configuration.d.ts`, referenced
+from the app tsconfig's `types` — this replaces the legacy `@cloudflare/workers-types`
+package). It shipped **no test setup**, so the `vitest-pool-workers` wiring is hand-added
+from its current docs (step 6). It also shipped a `.prettierrc` — delete it when biome
+lands (step 7).
 
 C3 runs an install inside the new directory, leaving a nested `pnpm-lock.yaml` +
 `node_modules` there. Delete both and run `pnpm install` from the root: the workspace
@@ -782,14 +795,19 @@ replace):
 
 ```jsonc
 {
-  "name": "eigen-rps",
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rps",
   "main": "src/index.ts",
   "compatibility_date": "<keep C3's>",
   "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "upload_source_maps": true,
   "durable_objects": { "bindings": [{ "name": "GAME_DO", "class_name": "GameDO" }] },
-  // REQUIRED — makes the DO SQLite-backed (free-tier-compatible class, one-row transitions).
-  // C3's DO template may already emit this; verify rather than add blindly:
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameDO"] }],
+  // Class lifecycle — replaces the legacy migrations array C3 still emits. Declarative:
+  // this states what the class IS (SQLite-backed — free-tier-compatible, one-row
+  // transitions), not a history of steps. Renames later: state: "renamed" + renamed_to.
+  // Renaming MyDurableObject → GameDO in place is fine while nothing is deployed:
+  "exports": { "GameDO": { "type": "durable-object", "storage": "sqlite" } },
   "d1_databases": [ /* paste the block `d1 create` prints (step 3) */ ],
   "r2_buckets": [{ "binding": "ARCHIVE", "bucket_name": "eigen-archives-dev" }],
   "triggers": { "crons": ["0 3 * * *"] },   // guest purge
@@ -801,7 +819,9 @@ replace):
 }
 ```
 
-The `new_sqlite_classes` line is easy to miss and load-bearing.
+The `"storage": "sqlite"` declaration is load-bearing (though now also mandatory for new
+classes — legacy KV storage is closed to new namespaces). The `bindings` entry stays: it
+grants the worker `env` access; `exports` governs the class's lifecycle.
 
 ### Step 3 — Cloudflare resources (CLI by definition)
 
@@ -834,7 +854,7 @@ Each gets `pnpm init`, then edit: `"name": "@eigen/<pkg>"`, `"type": "module"`,
 ### Step 6 — Dependencies
 
 ```bash
-pnpm add -Dw typescript wrangler @cloudflare/workers-types \
+pnpm add -Dw typescript wrangler \
   vitest @cloudflare/vitest-pool-workers tsup @changesets/cli @biomejs/biome
 
 pnpm --filter @eigen/rules   add @standard-schema/spec
@@ -843,9 +863,15 @@ pnpm --filter @eigen/server  add hono @hono/zod-openapi zod jose drizzle-orm
 pnpm --filter @eigen/server  add -D drizzle-kit
 ```
 
-⚠️ `@cloudflare/vitest-pool-workers` pins a narrow vitest version range — if C3's
-template shipped tests, match its versions; otherwise check the pool-workers docs, don't
-take latest blindly.
+No `@cloudflare/workers-types` — legacy; runtime types come from `wrangler types`
+(the `cf-typegen` script → `worker-configuration.d.ts`). How `@eigen/server` (a library
+with no worker of its own) gets its types is a Phase 2 decision: a minimal types-only
+wrangler config run through `wrangler types`, or referencing the example's generated
+file in dev.
+
+⚠️ `@cloudflare/vitest-pool-workers` pins a narrow vitest version range, and the C3
+template shipped no tests to copy from — wire it from its current docs, don't take
+latest vitest blindly.
 
 | Tool | Role |
 | --- | --- |
@@ -857,7 +883,8 @@ take latest blindly.
 
 ### Step 7 — Tool configs (own `init` where one exists)
 
-`pnpm biome init` (emits current-format `biome.json`). Drizzle-kit has **no** init:
+`pnpm biome init` (emits current-format `biome.json`; delete C3's `.prettierrc` from
+`examples/rps` at the same time — one formatter). Drizzle-kit has **no** init:
 `@eigen/server`'s **two drizzle-kit configs** are hand-written (~8 lines each) — one for
 D1 (`dialect: 'sqlite'`, `out: './migrations'` — generate only, applied by `wrangler d1
 migrations apply`, identical against local and remote) and one for the DO
