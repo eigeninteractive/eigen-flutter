@@ -697,7 +697,7 @@ prompts are ground truth for anything post-snippet.
 ### Step 0 — Prerequisites
 
 ```bash
-node --version        # Node 22 LTS (nvm/mise/asdf)
+node --version        # Node 24 (current LTS; anything ≥ the active LTS is fine)
 corepack enable && pnpm --version   # pnpm 10.x, via corepack — no global install
 # Cloudflare account at dash.cloudflare.com (free plan — upgrade per §10 trigger)
 ```
