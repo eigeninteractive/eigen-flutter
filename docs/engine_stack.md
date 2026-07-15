@@ -8,8 +8,10 @@
 > **Two sets of keys: a Cloudflare account and a Firebase project.** Nothing else.
 >
 > **The constraints that drove it:** fast time-to-first-game, **scale to zero** when idle,
-> **~$10/month** at real traffic. The Workers **paid plan ($5/mo) is assumed from day one**
-> (the free plan's 10 ms CPU budget is too tight for replay projection).
+> **~$10/month** at real traffic. We start on the **Workers free plan** — everything the
+> design needs (SQLite-backed DOs, alarms, hibernation, R2, D1, cron) is on it — and
+> upgrade to paid ($5/mo) at the traffic trigger defined in §10. The upgrade is one click,
+> zero code change.
 >
 > **Cutover is big-bang.** The Supabase stack (documented in `engine_architecture.md`, now
 > the *legacy* reference) is frozen bugfix-only; `supabase/` is deleted from this repo at
@@ -415,8 +417,10 @@ seat, or `player_index = null` for a non-participant viewing a public game. Exac
 EF replay semantics: post-game hidden-info reveal and viewer replay work *by construction*,
 the blob is smaller than N per-seat frame tracks, and raw state remains server-only — the
 single replay endpoint is the only reader, and it gates (finished + participant-or-public)
-then projects before returning. ~30 sub-millisecond projections per request: trivial on the
-paid plan.
+then projects before returning. The replay endpoint takes a **version range** (the client
+pages through, same as live gap recovery), which keeps a single invocation's projection
+work comfortably inside even the free plan's 10 ms CPU budget regardless of game length
+or rules weight.
 
 Why R2, not a D1 blob column: D1 has a **hard 10 GB/database ceiling** (≈ one month of
 archives at target scale) and a 2 MB row cap; R2 is unbounded at ~$0.015/GB-month with zero
@@ -551,7 +555,14 @@ and local bots.
 
 ---
 
-## 10. Cost
+## 10. Cost — free tier from day 0
+
+**We launch on the Workers free plan.** Every primitive the design uses is on it:
+SQLite-backed DOs (the only kind we allow), alarms, WebSocket hibernation, R2, D1, and
+cron triggers (we use 1 of 5). Zero design or code differences vs paid — the free tier's
+impact is purely operational: **daily hard caps that fail with errors** (reset 00:00 UTC)
+instead of pay-as-you-go overage, and a 10 ms Worker CPU budget per invocation (DOs get
+30 s on both plans; the one worker-side hot path, replay projection, is paginated — §4.6).
 
 Assumes 2 seats, ~30 actions/game, commands over HTTP, frames over a **hibernating**
 WebSocket. Per game: ~45 Worker requests, ~35 DO requests, ~0.2–0.6 GB-s DO duration
@@ -559,23 +570,37 @@ WebSocket. Per game: ~45 Worker requests, ~35 DO requests, ~0.2–0.6 GB-s DO du
 
 | Free limit | Per game | Games/day |
 | --- | --- | --- |
-| Workers — 100k requests/day | ~45 | **~2,200** ⟵ binds |
+| DO — 100k rows written/day | ~70 *(one transition row + one command-dedupe row per action)* | **~1,400** ⟵ binds |
+| Workers — 100k requests/day | ~45 | ~2,200 |
 | DO — 100k requests/day | ~35 | ~2,850 |
-| DO — 100k rows written/day | ~35 *(one transition row)* | ~2,850 |
 | DO — 13,000 GB-s/day | ~0.2–0.6 *(hibernating)* | ~20k–65k |
 | D1 — 100k rows written/day | ~40 | ~2,500 |
+| R2 — 10 GB storage | ~40–60 KB/archive | ~160k finished games of runway |
 
 | | Free | Paid ($5 base) |
 | --- | --- | --- |
-| Capacity | ~2,200 games/day | **~15,000 games/day for ~$10/mo** |
+| Capacity | ~1,400 games/day | **~15,000 games/day for ~$10/mo** |
 | Idle cost | $0 | $5 |
+| At the cap | operations **fail with errors** until 00:00 UTC | metered overage, no failures |
 
-For a whitelabel fleet this is per-app: N idle apps cost $0–5N/month, vs N × $25/month on
-the legacy stack. Verified against Cloudflare pricing docs 2026-07 (including the Jan 2026
-SQLite-storage billing change). Two hard prerequisites, not optimizations: **WebSocket
-Hibernation API from the first commit** (a non-hibernating DO burns ~77 GB-s per 10-minute
-game — a 13× cost penalty), and the **paid plan from day one** (10 ms free-tier CPU is too
-tight for replay projection).
+**What breaks at the cap, and why it's safe.** A spike that exhausts the DO row-write
+budget makes commits fail loudly mid-game — ugly, but never corrupting: the kernel rejects,
+nothing partial lands. A finish whose archive/D1 apply fails on a cap leaves fully
+recoverable DO state by design (§8: storage dropped only after archive + apply succeed) and
+the gated re-poke replays it idempotently after reset. The failure policy absorbs the
+free-tier failure mode with no extra machinery.
+
+**Upgrade trigger (ops rule, decided now):** move to paid at sustained **~900 games/day**
+(≈ 60 % of the binding cap) **or on the first observed cap error** (Workers Error 1027 or
+a DO/D1 storage-write failure) — whichever comes first. The dashboard's daily
+rows-written/requests graphs are the meter; no in-app metering in v1.
+
+For a whitelabel fleet this is per-app: N idle apps cost $0/month on free ($5N once
+upgraded), vs N × $25/month on the legacy stack. Verified against Cloudflare pricing docs
+2026-07 (including the Jan 2026 SQLite-storage billing change). One hard prerequisite, not
+an optimization: **WebSocket Hibernation API from the first commit** (a non-hibernating DO
+burns ~77 GB-s per 10-minute game — a 13× cost penalty, and ~6 games would exhaust the
+free duration budget).
 
 ---
 
@@ -646,7 +671,7 @@ tight for replay projection).
 ```bash
 node --version        # Node 22 LTS (nvm/mise/asdf)
 corepack enable && pnpm --version   # pnpm 10.x, via corepack — no global install
-# Cloudflare account at dash.cloudflare.com (paid Workers plan, $5/mo)
+# Cloudflare account at dash.cloudflare.com (free plan — upgrade per §10 trigger)
 ```
 
 Wrangler is a repo devDependency run via `pnpm wrangler` — never installed globally, so the
@@ -758,6 +783,19 @@ itself accrue only to a durable per-entity store — i.e., to Durable Objects.
   needing per-action freshness.
 - **`firebase-auth-cloudflare-workers`** — unofficial, low adoption; `jose` + our claim
   checks instead.
+- **Queues / Workflows** (both free-plan-available) — every async spot is already covered:
+  effects are declaredly best-effort (§8), and the one must-not-lose job (finish apply) is
+  durable via DO storage retention + `finish_id` re-poke — a one-slot queue colocated with
+  its state. Adding Queues re-adds the deleted retry machinery and, on free, its 10k ops/day
+  would become the capacity binder. Queueing the finish (ratings/archive) specifically was
+  considered and rejected: the enqueue itself can fail (so retained-storage survives, just
+  rescoped), the 128 KB message cap forces the R2 put to stay in the DO anyway, and free-tier
+  24 h retention (DLQ included) would silently expire the one must-never-lose job that today
+  is loudly recoverable forever. *Flips if* partially-deleted accounts appear (→ wrap
+  account deletion, the system's only multi-step saga, in a Workflow), FCM batching is
+  needed at scale, or — on paid, with its 14-day retention — finish-apply re-pokes become
+  recurring toil (→ queue the small D1-apply step only, with a DLQ alert; archive stays
+  DO→R2 direct).
 - **D1 as archive store** — hard 10 GB/database ceiling (~1 month of archives at target
   scale) and 2 MB row cap; R2 is unbounded and read by exactly one endpoint.
 - **Convex** — genuine ACID + TS-native reactivity, but no first-class Dart client and an
