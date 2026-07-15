@@ -2,7 +2,8 @@
 
 > **Decision (2026-07-14, design locked 2026-07-15).** The engine runs **Cloudflare-only**:
 > Workers at the edge, one **Durable Object per game** owning that game's state in its own
-> SQLite, **D1** for global data, **R2** for archives, **Firebase Auth** for identity.
+> SQLite, **D1** for global data, **R2** for blobs (game history, avatars), **Firebase
+> Auth** for identity.
 > No Postgres. No Supabase.
 >
 > **Two sets of keys: a Cloudflare account and a Firebase project.** Nothing else.
@@ -38,7 +39,7 @@ policy · §9 client · §10 cost · §11 CI & testkit · §12 non-negotiables �
 | Edge | **Cloudflare Workers** (hono) | Stateless: verify token (**jose**), serve D1/R2 reads, mint commands, route to DOs |
 | Game session | **One Durable Object per game** | SQLite-backed; owns state, roster, sockets, the alarm |
 | Global store | **D1** | Identity, social, bots, ratings, game summaries — a **read-model + registry, never an arbiter** |
-| Archive / blobs | **R2** | One raw-history JSON object per finished game (replay); avatars |
+| Blobs | **R2** — two buckets (§5.4) | `GAME_HISTORY`: one raw-history JSON object per finished game, private, replay source · `AVATARS`: world-readable images |
 | Push | **FCM**, sent from the Worker/DO | Service-account JWT minted with WebCrypto — ported as-is from `_engine/fcm.ts` |
 | Scheduled work | **DO alarms** (turn deadlines — *only*) · **Cron Triggers** (guest purge) | No alarm multiplexer — see §8 |
 | Rules | **Pure TypeScript `GameRules`**, unchanged contract | One unit per `schema_version`; optional Dart twin for preview / local bots |
@@ -98,8 +99,8 @@ today), `ratings.ts` (OpenSkill, multi-seat bot collapse, `RatingDelta[]`), `gua
   `durable-sqlite` migrator during lazy init), the gated `handle()` loop
   (§3.4), waiting-room command handlers (§4.2), lazy init from D1 via
   `blockConcurrencyWhile`, hibernating WebSocket accept + version-ordered fan-out + range
-  fetch, the deadline alarm, the finish sequence (§4.5), archive to R2 behind a ~20-line
-  `ArchiveStore` interface.
+  fetch, the deadline alarm, the finish sequence (§4.5), the history write to R2 behind a
+  ~20-line `HistoryStore` interface.
 - `src/routes` — `createEngine(config)`, the hono app factory an implementor exports.
   `auth/firebase.ts` (jose `createRemoteJWKSet` against Google's securetoken JWKS + claim
   checks: `iss`/`aud` = project, `sub` non-empty, `exp`, `sign_in_provider === 'anonymous'`
@@ -375,7 +376,7 @@ relocated:
 | --- | --- | --- |
 | `join` | guest-vs-rated gate; friends-access (D1 relationships); schema gate vs `client_schema_version`; by-code resolves `short_code` in D1 | status `waiting`/`ready`; seat free; not already seated; assign `player_index`; `ready` at `min_players` |
 | `leave` | — | non-creator; lobby statuses only; compact `player_index`es; demote below `min_players` |
-| `cancel` | — | creator-only; lobby statuses only; status → `aborted`; **no archive** (no transitions — the D1 row alone serves history); drop DO storage |
+| `cancel` | — | creator-only; lobby statuses only; status → `aborted`; **no history object** (no transitions — the D1 row alone serves history lists); drop DO storage |
 | `add-bot` | guest rejection; `botSeatable`; schema / `rated_eligible` / server-only / timed invariants | creator-only; seat cap; seat the bot |
 | `start` | — | creator-only; `ready`; kernel `initialState` → v0; arm alarm; status `active` |
 
@@ -432,7 +433,7 @@ single attempt with a safety net**:
    outbox row with a `finish_id`. The instant it commits, the game *is* finished.
 2. **The player never sees "pending."** The deltas ship in the final frame over the socket
    the DO already holds. D1 is not in the user's critical path.
-3. **Then, in order:** write the R2 archive (§4.6) → apply the outbox to D1 (one `batch()`:
+3. **Then, in order:** write the R2 history object (§4.6) → apply the outbox to D1 (one `batch()`:
    summary status + outcomes JSON, `rating_history` inserts, `player_ratings` CAS) → **only
    then drop DO storage**.
 4. **Single attempt, log on failure.** No retry alarm, no reconciliation cron. On any
@@ -447,9 +448,10 @@ single attempt with a safety net**:
 The observable seam (a CAS conflict can revise a delta already displayed) requires two of
 one player's rated games finishing within milliseconds and self-heals via D1 reads.
 
-### 4.6 Archive & replay — raw history in R2, projected on read
+### 4.6 Game history & replay — raw history in R2, projected on read
 
-At finish the DO writes **one JSON object** to R2 (behind the `ArchiveStore` interface):
+At finish the DO writes **one JSON object** to the `GAME_HISTORY` bucket (§5.4, behind
+the `HistoryStore` interface):
 
 ```jsonc
 {
@@ -473,7 +475,7 @@ work comfortably inside even the free plan's 10 ms CPU budget regardless of game
 or rules weight.
 
 Why R2, not a D1 blob column: D1 has a **hard 10 GB/database ceiling** (≈ one month of
-archives at target scale) and a 2 MB row cap; R2 is unbounded at ~$0.015/GB-month with zero
+history objects at target scale) and a 2 MB row cap; R2 is unbounded at ~$0.015/GB-month with zero
 egress. History/lobby/leaderboard never read the blob — they read D1 — so R2 costs exactly
 one `put` and one `get` in the whole codebase.
 
@@ -496,12 +498,12 @@ Cron Trigger running the same path in-band — no HTTP hop, no shared secret.
 | --- | --- |
 | `meta` | The game row snapshot (from lazy init) + status + `rng_seed` |
 | `roster` | Seats: `player_index`, identity ref (user/bot), type |
-| `transitions` | **One row per version**: `{state, frames[], action, pending, deadline, player_times, turn_started_at}` — serves live gap recovery, the same-view compare, and the archive |
+| `transitions` | **One row per version**: `{state, frames[], action, pending, deadline, player_times, turn_started_at}` — serves live gap recovery, the same-view compare, and the history object |
 | `commands` | `commandId → response` dedupe (§3.6) |
 | `outbox` | The finish payload + `finish_id` (§4.5) |
 
-Dropped at finish — **only after** archive + D1 apply succeed — or at cancel/abort
-(immediately; nothing to archive).
+Dropped at finish — **only after** the history write + D1 apply succeed — or at
+cancel/abort (immediately; no history object to write).
 
 **Schema is drizzle, same as D1** — defined in `src/do/schema.ts`, applied with
 `migrate()` from `drizzle-orm/durable-sqlite/migrator` inside the existing
@@ -543,6 +545,32 @@ kernel: it projects per-seat frames, and **no route exposes raw state** — none
 This is a real reduction in safety margin, paid for in tests: the **leak test** (§11)
 asserts no response body ever carries an unprojected state field, and it exists before the
 first game ships.
+
+### 5.4 R2 — two buckets, split by access policy
+
+| Bucket (dev names) | Binding | Contents | Access |
+| --- | --- | --- | --- |
+| `eigen-game-history-dev` | `GAME_HISTORY` | One raw-history object per finished game (§4.6) | **Private forever** — raw state carries hidden info (non-negotiable 9); the replay endpoint is the only reader and projects before returning |
+| `eigen-avatars-dev` | `AVATARS` | User avatar images | World-readable — the highest-frequency blob read in the app |
+
+The split is forced, not stylistic: **public access in R2 is a bucket-level switch**
+(r2.dev or a bucket custom domain — no per-prefix policy), and these two datasets sit at
+opposite ends of it. They also differ in lifecycle (history is write-once immutable;
+avatars are overwritten in place) and growth curve. Splitting costs nothing: buckets are
+free, and the R2 free tier meters per *account*, not per bucket.
+
+Not "archive" (the earlier working name): the history object is read-serving data —
+replays, post-game hidden-info reveal — not cold storage. Only the *write* is archival,
+from the DO's perspective (write, then drop DO storage; R2 becomes the sole copy).
+Disambiguation: a user's game-history **list** is D1 summary rows (§5.2); the R2 object is
+the full raw history of **one** game, read only by replay.
+
+**Avatar serving** (deferred to the client phase): a bucket custom domain requires a CF
+zone, which free-`workers.dev` implementors don't have, and the r2.dev URL is
+rate-limited / non-production. So v1 serves avatars through a worker route with strong
+`Cache-Control`; public-bucket-on-custom-domain is the later optimization for hosts with
+a zone. The private/public *split* is decided now precisely so that flip stays a
+config change.
 
 ---
 
@@ -594,7 +622,7 @@ By decision, there is **no retry machinery** in v1:
 | --- | --- | --- |
 | Bot wake | 1 attempt, log | Turn deadline → timeout resolves the seat |
 | D1 summary upsert | fire-and-forget (`waitUntil`), log | Re-derivable from the DO at any time |
-| Finish: R2 archive + D1 apply | 1 attempt, log | **DO storage is kept on failure**; gated admin re-poke re-runs the apply, idempotent via `finish_id` |
+| Finish: R2 history write + D1 apply | 1 attempt, log | **DO storage is kept on failure**; gated admin re-poke re-runs the apply, idempotent via `finish_id` |
 | FCM push | 1 attempt, log | Push is best-effort by nature |
 
 The alarm is **deadline-only**: no multiplexer, no timers table, and *nothing else may call
@@ -635,7 +663,7 @@ WebSocket. Per game: ~45 Worker requests, ~35 DO requests, ~0.2–0.6 GB-s DO du
 | DO — 100k requests/day | ~35 | ~2,850 |
 | DO — 13,000 GB-s/day | ~0.2–0.6 *(hibernating)* | ~20k–65k |
 | D1 — 100k rows written/day | ~40 | ~2,500 |
-| R2 — 10 GB storage | ~40–60 KB/archive | ~160k finished games of runway |
+| R2 — 10 GB storage *(account-wide, both buckets)* | ~40–60 KB/history object | ~160k finished games of runway |
 
 | | Free | Paid ($5 base) |
 | --- | --- | --- |
@@ -645,8 +673,9 @@ WebSocket. Per game: ~45 Worker requests, ~35 DO requests, ~0.2–0.6 GB-s DO du
 
 **What breaks at the cap, and why it's safe.** A spike that exhausts the DO row-write
 budget makes commits fail loudly mid-game — ugly, but never corrupting: the kernel rejects,
-nothing partial lands. A finish whose archive/D1 apply fails on a cap leaves fully
-recoverable DO state by design (§8: storage dropped only after archive + apply succeed) and
+nothing partial lands. A finish whose history-write/D1 apply fails on a cap leaves fully
+recoverable DO state by design (§8: storage dropped only after history write + apply
+succeed) and
 the gated re-poke replays it idempotently after reset. The failure policy absorbs the
 free-tier failure mode with no extra machinery.
 
@@ -689,10 +718,10 @@ free duration budget).
 5. **The kernel stays pure** — no I/O, no platform imports, injected clock, forever.
 6. **Commands are values**, pre-authorized, carrying a `commandId`.
 7. **Every finish is idempotent**, keyed by `finish_id`; **DO storage is dropped only after
-   archive + D1 apply succeed.**
+   the history write + D1 apply succeed.**
 8. **Only the deadline path calls `setAlarm`.**
-9. **Raw state never leaves the server** — replay projects on read; the archive is
-   server-only.
+9. **Raw state never leaves the server** — replay projects on read; the `GAME_HISTORY`
+   bucket is server-only, never public (§5.4).
 10. **The gated admin history/re-poke endpoint ships with the first game.**
 
 ---
@@ -809,7 +838,11 @@ replace):
   // Renaming MyDurableObject → GameDO in place is fine while nothing is deployed:
   "exports": { "GameDO": { "type": "durable-object", "storage": "sqlite" } },
   "d1_databases": [ /* paste the block `d1 create` prints (step 3) */ ],
-  "r2_buckets": [{ "binding": "ARCHIVE", "bucket_name": "eigen-archives-dev" }],
+  // §5.4 — two buckets, split by access policy (history private, avatars public-able):
+  "r2_buckets": [
+    { "binding": "GAME_HISTORY", "bucket_name": "eigen-game-history-dev" },
+    { "binding": "AVATARS", "bucket_name": "eigen-avatars-dev" }
+  ],
   "triggers": { "crons": ["0 3 * * *"] },   // guest purge
   // §2.4 — static assets unmetered; only these paths invoke the worker:
   "assets": {
@@ -828,7 +861,8 @@ grants the worker `env` access; `exports` governs the class's lifecycle.
 ```bash
 pnpm wrangler login && pnpm wrangler whoami
 pnpm wrangler d1 create eigen-dev     # prints the d1_databases binding block — paste it
-pnpm wrangler r2 bucket create eigen-archives-dev
+pnpm wrangler r2 bucket create eigen-game-history-dev
+pnpm wrangler r2 bucket create eigen-avatars-dev
 ```
 
 ### Step 4 — First contact with the dev loop
@@ -940,17 +974,18 @@ itself accrue only to a durable per-entity store — i.e., to Durable Objects.
   effects are declaredly best-effort (§8), and the one must-not-lose job (finish apply) is
   durable via DO storage retention + `finish_id` re-poke — a one-slot queue colocated with
   its state. Adding Queues re-adds the deleted retry machinery and, on free, its 10k ops/day
-  would become the capacity binder. Queueing the finish (ratings/archive) specifically was
+  would become the capacity binder. Queueing the finish (ratings/history write) specifically was
   considered and rejected: the enqueue itself can fail (so retained-storage survives, just
   rescoped), the 128 KB message cap forces the R2 put to stay in the DO anyway, and free-tier
   24 h retention (DLQ included) would silently expire the one must-never-lose job that today
   is loudly recoverable forever. *Flips if* partially-deleted accounts appear (→ wrap
   account deletion, the system's only multi-step saga, in a Workflow), FCM batching is
   needed at scale, or — on paid, with its 14-day retention — finish-apply re-pokes become
-  recurring toil (→ queue the small D1-apply step only, with a DLQ alert; archive stays
-  DO→R2 direct).
-- **D1 as archive store** — hard 10 GB/database ceiling (~1 month of archives at target
-  scale) and 2 MB row cap; R2 is unbounded and read by exactly one endpoint.
+  recurring toil (→ queue the small D1-apply step only, with a DLQ alert; the history put
+  stays DO→R2 direct).
+- **D1 as the game-history store** — hard 10 GB/database ceiling (~1 month of history
+  objects at target scale) and 2 MB row cap; R2 is unbounded and read by exactly one
+  endpoint.
 - **Convex** — genuine ACID + TS-native reactivity, but no first-class Dart client and an
   awkward fit for per-seat hidden-info fan-out. Recorded because it's the strongest
   outside candidate.
