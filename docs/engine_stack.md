@@ -94,7 +94,8 @@ today), `ratings.ts` (OpenSkill, multi-seat bot collapse, `RatingDelta[]`), `gua
 
 **`@eigen/server`** — the deployable, in three folders:
 
-- `src/do` — the `GameDO` class: its SQLite schema (§5.1), the gated `handle()` loop
+- `src/do` — the `GameDO` class: its drizzle SQLite schema (§5.1, applied via the
+  `durable-sqlite` migrator during lazy init), the gated `handle()` loop
   (§3.4), waiting-room command handlers (§4.2), lazy init from D1 via
   `blockConcurrencyWhile`, hibernating WebSocket accept + version-ordered fan-out + range
   fetch, the deadline alarm, the finish sequence (§4.5), archive to R2 behind a ~20-line
@@ -463,6 +464,16 @@ Cron Trigger running the same path in-band — no HTTP hop, no shared secret.
 Dropped at finish — **only after** archive + D1 apply succeed — or at cancel/abort
 (immediately; nothing to archive).
 
+**Schema is drizzle, same as D1** — defined in `src/do/schema.ts`, applied with
+`migrate()` from `drizzle-orm/durable-sqlite/migrator` inside the existing
+`blockConcurrencyWhile` lazy init. A second drizzle-kit config (`driver:
+'durable-sqlite'`) generates a `migrations.js` bundle that compiles into the worker —
+no filesystem, no deploy step; each DO migrates itself on first activation. This buys
+typed queries in DO code, one ORM across both stores, and automatic migration of any
+live game that survives a deploy which changes the DO schema (raw DDL would have relied
+on "games are short-lived"). Cost: drizzle's journal table adds a few rows per game —
+noise against the ~70-row §10 budget.
+
 ### 5.2 D1 — the global store, and it is small
 
 | Table | Notes |
@@ -713,6 +724,12 @@ pnpm --filter @eigen/server  add -D drizzle-kit
 
 (Each package needs a stub `package.json` first: `"name": "@eigen/<pkg>"`,
 `"type": "module"`, `exports` → `dist/`; internal deps use `"workspace:*"`.)
+
+`@eigen/server` carries **two drizzle-kit configs**: one for D1 (`dialect: 'sqlite'`,
+`out: './migrations'` — generate only, applied by `wrangler d1 migrations apply`, works
+identically against local and remote) and one for the DO (`dialect: 'sqlite'`,
+`driver: 'durable-sqlite'`, out under `src/do/` — emits a `migrations.js` bundle the
+worker imports; §5.1).
 
 ⚠️ `@cloudflare/vitest-pool-workers` pins a narrow vitest version range — match vitest to
 its documented supported version, don't take latest blindly.
