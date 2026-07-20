@@ -1,6 +1,6 @@
 import 'package:checks/checks.dart';
-import 'package:eigen_engine/features/auth/data/models/auth_user.dart';
-import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
+import 'package:eigen_flutter/features/auth/data/models/auth_user.dart';
+import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/container.dart';

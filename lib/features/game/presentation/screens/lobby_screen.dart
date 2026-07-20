@@ -2,18 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
-import 'package:eigen_engine/core/errors/error_messages.dart';
-import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
-import 'package:eigen_engine/features/game/data/game_repository.dart';
-import 'package:eigen_engine/core/game/participant_type.dart';
-import 'package:eigen_engine/features/game/data/models/game.dart';
-import 'package:eigen_engine/features/game/data/models/participant.dart';
-import 'package:eigen_engine/features/game/providers/game_providers.dart';
-import 'package:eigen_engine/features/game/utils/game_timing.dart';
-import 'package:eigen_engine/features/game/presentation/widgets/new_game_dialog.dart';
-import 'package:eigen_engine/shared/providers/player_providers.dart';
-import 'package:eigen_engine/shared/widgets/empty_state_view.dart';
-import 'package:eigen_engine/shared/widgets/overlapping_avatars.dart';
+import 'package:eigen_flutter/core/errors/error_messages.dart';
+import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
+import 'package:eigen_flutter/features/game/data/game_repository.dart';
+import 'package:eigen_flutter/core/game/participant_type.dart';
+import 'package:eigen_flutter/features/game/data/models/game.dart';
+import 'package:eigen_flutter/features/game/data/models/participant.dart';
+import 'package:eigen_flutter/features/game/providers/game_providers.dart';
+import 'package:eigen_flutter/features/game/utils/game_timing.dart';
+import 'package:eigen_flutter/features/game/presentation/widgets/new_game_dialog.dart';
+import 'package:eigen_flutter/shared/providers/player_providers.dart';
+import 'package:eigen_flutter/shared/widgets/empty_state_view.dart';
+import 'package:eigen_flutter/shared/widgets/overlapping_avatars.dart';
 
 /// Screen for browsing and joining public games.
 class LobbyScreen extends ConsumerStatefulWidget {

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:eigen_engine/core/config/app_config.dart';
-import 'package:eigen_engine/core/errors/error_messages.dart';
-import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
+import 'package:eigen_flutter/core/config/app_config.dart';
+import 'package:eigen_flutter/core/errors/error_messages.dart';
+import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
 
 /// Login screen with Google Sign-In
 class LoginScreen extends ConsumerWidget {

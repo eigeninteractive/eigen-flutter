@@ -1,6 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:eigen_engine/features/rating/data/models/player_rating.dart';
-import 'package:eigen_engine/shared/data/db_guard.dart';
+import 'package:eigen_flutter/features/rating/data/models/player_rating.dart';
+import 'package:eigen_flutter/shared/data/db_guard.dart';
 
 /// Repository for player rating data.
 ///

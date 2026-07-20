@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:eigen_engine/core/game/game_module.dart';
+import 'package:eigen_flutter/core/game/game_module.dart';
 
 /// A local bot: a pure function that computes a bot seat's move, client-side.
 ///

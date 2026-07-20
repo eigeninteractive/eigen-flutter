@@ -1,9 +1,9 @@
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:go_router/go_router.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:eigen_engine/core/navigation/router/app_router.dart';
-import 'package:eigen_engine/core/navigation/utils/stream_listenable.dart';
-import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
+import 'package:eigen_flutter/core/navigation/router/app_router.dart';
+import 'package:eigen_flutter/core/navigation/utils/stream_listenable.dart';
+import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
 
 part 'navigation_providers.g.dart';
 

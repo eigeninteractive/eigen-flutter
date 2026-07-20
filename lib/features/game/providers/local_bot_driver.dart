@@ -3,9 +3,9 @@ import 'dart:isolate';
 
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-import 'package:eigen_engine/core/game/participant_type.dart';
-import 'package:eigen_engine/features/game/providers/game_frame_provider.dart';
-import 'package:eigen_engine/features/game/providers/game_providers.dart';
+import 'package:eigen_flutter/core/game/participant_type.dart';
+import 'package:eigen_flutter/features/game/providers/game_frame_provider.dart';
+import 'package:eigen_flutter/features/game/providers/game_providers.dart';
 
 part 'local_bot_driver.g.dart';
 

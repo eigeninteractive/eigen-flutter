@@ -1,4 +1,4 @@
-import 'package:eigen_engine/core/errors/engine_exception.dart';
+import 'package:eigen_flutter/core/errors/engine_exception.dart';
 
 /// Converts a raw exception into a human-readable message suitable for display
 /// in snackbars.

@@ -1,5 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:eigen_engine/core/errors/engine_exception.dart';
+import 'package:eigen_flutter/core/errors/engine_exception.dart';
 
 /// Runs a PostgREST call, rethrowing [PostgrestException] as the domain
 /// [EngineException] so nothing above the data layer handles Supabase types.

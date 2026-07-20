@@ -3,7 +3,7 @@ import 'dart:developer' as developer;
 
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthUser;
-import 'package:eigen_engine/features/auth/data/models/auth_user.dart';
+import 'package:eigen_flutter/features/auth/data/models/auth_user.dart';
 
 /// Authentication service that handles Google Sign-In with Supabase.
 ///

@@ -2,16 +2,16 @@ import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:eigen_engine/core/errors/engine_exception.dart';
-import 'package:eigen_engine/core/game/game_outcome.dart';
-import 'package:eigen_engine/core/game/participant_type.dart';
-import 'package:eigen_engine/features/game/data/models/bot_info.dart';
-import 'package:eigen_engine/features/game/data/models/game.dart';
-import 'package:eigen_engine/features/game/data/models/observation.dart';
-import 'package:eigen_engine/features/game/data/models/participant.dart';
-import 'package:eigen_engine/features/game/data/models/replay_frame.dart';
-import 'package:eigen_engine/features/rating/data/models/rating_change.dart';
-import 'package:eigen_engine/shared/data/db_guard.dart';
+import 'package:eigen_flutter/core/errors/engine_exception.dart';
+import 'package:eigen_flutter/core/game/game_outcome.dart';
+import 'package:eigen_flutter/core/game/participant_type.dart';
+import 'package:eigen_flutter/features/game/data/models/bot_info.dart';
+import 'package:eigen_flutter/features/game/data/models/game.dart';
+import 'package:eigen_flutter/features/game/data/models/observation.dart';
+import 'package:eigen_flutter/features/game/data/models/participant.dart';
+import 'package:eigen_flutter/features/game/data/models/replay_frame.dart';
+import 'package:eigen_flutter/features/rating/data/models/rating_change.dart';
+import 'package:eigen_flutter/shared/data/db_guard.dart';
 
 /// Number of games fetched per lobby page.
 const lobbyPageSize = 50;

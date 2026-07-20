@@ -1,5 +1,5 @@
 import 'package:checks/checks.dart';
-import 'package:eigen_engine/features/profile/data/models/user_profile.dart';
+import 'package:eigen_flutter/features/profile/data/models/user_profile.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

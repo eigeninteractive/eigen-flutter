@@ -1,6 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:eigen_engine/features/profile/data/models/user_profile.dart';
-import 'package:eigen_engine/shared/data/db_guard.dart';
+import 'package:eigen_flutter/features/profile/data/models/user_profile.dart';
+import 'package:eigen_flutter/shared/data/db_guard.dart';
 
 /// Repository for user profile data operations.
 ///

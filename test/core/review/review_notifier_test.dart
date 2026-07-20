@@ -1,5 +1,5 @@
 import 'package:checks/checks.dart';
-import 'package:eigen_engine/core/review/review_notifier.dart';
+import 'package:eigen_flutter/core/review/review_notifier.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:eigen_engine/features/profile/data/models/user_profile.dart';
-import 'package:eigen_engine/features/profile/providers/profile_providers.dart';
-import 'package:eigen_engine/features/rating/presentation/widgets/player_ratings.dart';
+import 'package:eigen_flutter/features/profile/data/models/user_profile.dart';
+import 'package:eigen_flutter/features/profile/providers/profile_providers.dart';
+import 'package:eigen_flutter/features/rating/presentation/widgets/player_ratings.dart';
 
 /// Profile screen: cinematic hero, per-pool rating cards, link to history.
 ///

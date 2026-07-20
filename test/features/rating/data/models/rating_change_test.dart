@@ -1,5 +1,5 @@
 import 'package:checks/checks.dart';
-import 'package:eigen_engine/features/rating/data/models/rating_change.dart';
+import 'package:eigen_flutter/features/rating/data/models/rating_change.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

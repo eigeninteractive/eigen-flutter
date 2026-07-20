@@ -3,15 +3,15 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:eigen_engine/core/config/app_config.dart';
-import 'package:eigen_engine/core/errors/error_messages.dart';
-import 'package:eigen_engine/core/notifications/notification_provider.dart';
-import 'package:eigen_engine/core/theme/theme_provider.dart';
-import 'package:eigen_engine/core/utils/deep_links.dart';
-import 'package:eigen_engine/core/utils/package_info_provider.dart';
-import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
-import 'package:eigen_engine/shared/providers/player_providers.dart';
-import 'package:eigen_engine/shared/widgets/player_avatar.dart';
+import 'package:eigen_flutter/core/config/app_config.dart';
+import 'package:eigen_flutter/core/errors/error_messages.dart';
+import 'package:eigen_flutter/core/notifications/notification_provider.dart';
+import 'package:eigen_flutter/core/theme/theme_provider.dart';
+import 'package:eigen_flutter/core/utils/deep_links.dart';
+import 'package:eigen_flutter/core/utils/package_info_provider.dart';
+import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
+import 'package:eigen_flutter/shared/providers/player_providers.dart';
+import 'package:eigen_flutter/shared/widgets/player_avatar.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Settings screen with navigation to profile and app settings.

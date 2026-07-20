@@ -1,6 +1,6 @@
 import 'package:checks/checks.dart';
-import 'package:eigen_engine/core/errors/engine_exception.dart';
-import 'package:eigen_engine/core/errors/error_messages.dart';
+import 'package:eigen_flutter/core/errors/engine_exception.dart';
+import 'package:eigen_flutter/core/errors/error_messages.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

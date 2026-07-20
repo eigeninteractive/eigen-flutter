@@ -1,5 +1,5 @@
-import 'package:eigen_engine/shared/data/models/player_info.dart';
-import 'package:eigen_engine/core/game/participant_type.dart';
+import 'package:eigen_flutter/shared/data/models/player_info.dart';
+import 'package:eigen_flutter/core/game/participant_type.dart';
 
 /// Unified game-level player concept.
 ///

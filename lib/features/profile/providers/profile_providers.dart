@@ -4,13 +4,13 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/experimental/persist.dart';
 import 'package:riverpod_annotation/experimental/json_persist.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:eigen_engine/core/storage/storage_provider.dart';
-import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
-import 'package:eigen_engine/features/profile/data/avatar_storage_service.dart';
-import 'package:eigen_engine/features/profile/data/models/user_profile.dart';
-import 'package:eigen_engine/features/profile/data/profile_repository.dart';
-import 'package:eigen_engine/shared/providers/player_providers.dart';
-import 'package:eigen_engine/shared/providers/supabase_client_provider.dart';
+import 'package:eigen_flutter/core/storage/storage_provider.dart';
+import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
+import 'package:eigen_flutter/features/profile/data/avatar_storage_service.dart';
+import 'package:eigen_flutter/features/profile/data/models/user_profile.dart';
+import 'package:eigen_flutter/features/profile/data/profile_repository.dart';
+import 'package:eigen_flutter/shared/providers/player_providers.dart';
+import 'package:eigen_flutter/shared/providers/supabase_client_provider.dart';
 
 part 'profile_providers.g.dart';
 

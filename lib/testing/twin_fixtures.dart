@@ -40,8 +40,8 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:eigen_engine/core/game/game_module.dart';
-import 'package:eigen_engine/features/game/data/models/game.dart'
+import 'package:eigen_flutter/core/game/game_module.dart';
+import 'package:eigen_flutter/features/game/data/models/game.dart'
     show GameAccess;
 
 /// One fixture file's cases, all targeting one `schema_version` unit.

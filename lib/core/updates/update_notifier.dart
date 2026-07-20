@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:in_app_update/in_app_update.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:eigen_engine/core/navigation/providers/navigation_providers.dart';
+import 'package:eigen_flutter/core/navigation/providers/navigation_providers.dart';
 
 part 'update_notifier.g.dart';
 

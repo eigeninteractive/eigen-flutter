@@ -1,6 +1,6 @@
 import 'package:checks/checks.dart';
-import 'package:eigen_engine/core/errors/engine_exception.dart';
-import 'package:eigen_engine/shared/data/db_guard.dart';
+import 'package:eigen_flutter/core/errors/engine_exception.dart';
+import 'package:eigen_flutter/shared/data/db_guard.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 

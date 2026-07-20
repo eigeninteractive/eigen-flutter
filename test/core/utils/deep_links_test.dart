@@ -1,5 +1,5 @@
 import 'package:checks/checks.dart';
-import 'package:eigen_engine/core/utils/deep_links.dart';
+import 'package:eigen_flutter/core/utils/deep_links.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:eigen_engine/shared/data/models/player_info.dart';
-import 'package:eigen_engine/shared/widgets/player_avatar.dart';
+import 'package:eigen_flutter/shared/data/models/player_info.dart';
+import 'package:eigen_flutter/shared/widgets/player_avatar.dart';
 
 /// An avatar to render: a player's identity plus whether it's a bot.
 typedef AvatarEntry = ({PlayerInfo info, bool isBot});

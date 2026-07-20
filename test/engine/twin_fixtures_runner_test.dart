@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:checks/checks.dart';
-import 'package:eigen_engine/testing/twin_fixtures.dart';
+import 'package:eigen_flutter/testing/twin_fixtures.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/fakes.dart';

@@ -1,5 +1,5 @@
 import 'package:checks/checks.dart';
-import 'package:eigen_engine/shared/data/models/player_info.dart';
+import 'package:eigen_flutter/shared/data/models/player_info.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

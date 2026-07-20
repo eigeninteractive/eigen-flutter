@@ -2,22 +2,22 @@ import 'package:flutter_riverpod/experimental/persist.dart';
 import 'package:riverpod_annotation/experimental/json_persist.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-import 'package:eigen_engine/core/game/game_creation_spec.dart';
-import 'package:eigen_engine/core/game/game_module.dart';
-import 'package:eigen_engine/core/game/game_player.dart';
-import 'package:eigen_engine/core/game/game_outcome.dart';
-import 'package:eigen_engine/core/game/my_seat.dart';
-import 'package:eigen_engine/core/game/participant_type.dart';
-import 'package:eigen_engine/core/game/players_context.dart';
-import 'package:eigen_engine/core/storage/storage_provider.dart';
-import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
-import 'package:eigen_engine/features/game/data/game_repository.dart';
-import 'package:eigen_engine/features/game/data/models/bot_info.dart';
-import 'package:eigen_engine/features/game/data/models/game.dart';
-import 'package:eigen_engine/features/game/data/models/observation.dart';
-import 'package:eigen_engine/shared/data/models/player_info.dart';
-import 'package:eigen_engine/shared/providers/player_providers.dart';
-import 'package:eigen_engine/shared/providers/supabase_client_provider.dart';
+import 'package:eigen_flutter/core/game/game_creation_spec.dart';
+import 'package:eigen_flutter/core/game/game_module.dart';
+import 'package:eigen_flutter/core/game/game_player.dart';
+import 'package:eigen_flutter/core/game/game_outcome.dart';
+import 'package:eigen_flutter/core/game/my_seat.dart';
+import 'package:eigen_flutter/core/game/participant_type.dart';
+import 'package:eigen_flutter/core/game/players_context.dart';
+import 'package:eigen_flutter/core/storage/storage_provider.dart';
+import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
+import 'package:eigen_flutter/features/game/data/game_repository.dart';
+import 'package:eigen_flutter/features/game/data/models/bot_info.dart';
+import 'package:eigen_flutter/features/game/data/models/game.dart';
+import 'package:eigen_flutter/features/game/data/models/observation.dart';
+import 'package:eigen_flutter/shared/data/models/player_info.dart';
+import 'package:eigen_flutter/shared/providers/player_providers.dart';
+import 'package:eigen_flutter/shared/providers/supabase_client_provider.dart';
 
 part 'game_providers.g.dart';
 

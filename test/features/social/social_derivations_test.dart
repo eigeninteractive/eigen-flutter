@@ -1,7 +1,7 @@
 import 'package:checks/checks.dart';
-import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
-import 'package:eigen_engine/features/social/data/models/friendship.dart';
-import 'package:eigen_engine/features/social/providers/social_providers.dart';
+import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
+import 'package:eigen_flutter/features/social/data/models/friendship.dart';
+import 'package:eigen_flutter/features/social/providers/social_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 

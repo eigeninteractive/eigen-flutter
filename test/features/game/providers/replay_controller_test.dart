@@ -1,7 +1,7 @@
 import 'package:checks/checks.dart';
-import 'package:eigen_engine/features/game/data/models/replay_frame.dart';
-import 'package:eigen_engine/features/game/providers/game_frame_provider.dart';
-import 'package:eigen_engine/features/game/providers/replay_controller.dart';
+import 'package:eigen_flutter/features/game/data/models/replay_frame.dart';
+import 'package:eigen_flutter/features/game/providers/game_frame_provider.dart';
+import 'package:eigen_flutter/features/game/providers/replay_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../helpers/container.dart';

@@ -6,7 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:eigen_engine/shared/data/device_installation_repository.dart';
+import 'package:eigen_flutter/shared/data/device_installation_repository.dart';
 
 // ── Android notification channels ────────────────────────────────────────────
 // Each channel appears as an independent toggle in Android system settings,

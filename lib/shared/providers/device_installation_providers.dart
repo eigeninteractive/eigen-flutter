@@ -1,6 +1,6 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:eigen_engine/shared/data/device_installation_repository.dart';
-import 'package:eigen_engine/shared/providers/supabase_client_provider.dart';
+import 'package:eigen_flutter/shared/data/device_installation_repository.dart';
+import 'package:eigen_flutter/shared/providers/supabase_client_provider.dart';
 
 part 'device_installation_providers.g.dart';
 
