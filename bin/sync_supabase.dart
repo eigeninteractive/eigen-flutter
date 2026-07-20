@@ -25,9 +25,9 @@
 /// `[functions.engine]` block — base it on the engine's reference config),
 /// `signing_keys.json`, `functions/.env.local`.
 ///
-/// Run from the app directory (the app must depend on `eigen_engine`):
+/// Run from the app directory (the app must depend on `eigen_flutter`):
 /// ```sh
-/// dart run eigen_engine:sync_supabase [--out supabase]
+/// dart run eigen_flutter:sync_supabase [--out supabase]
 /// ```
 ///
 /// Idempotent and a true **mirror within each engine dir**: files removed
@@ -40,7 +40,7 @@ library;
 import 'dart:io';
 import 'dart:isolate';
 
-const _enginePackage = 'eigen_engine';
+const _enginePackage = 'eigen_flutter';
 
 /// The app-owned game dir inside `functions/`. The engine ships an example
 /// `_lib/game.ts`; on first sync it is scaffolded into the app, then the app
@@ -171,7 +171,7 @@ bool _scaffoldAppLib(Directory src, Directory dst) {
   return true;
 }
 
-/// Resolves `eigen_engine/supabase/` via the engine's `package:` URI.
+/// Resolves `eigen_flutter/supabase/` via the engine's `package:` URI.
 Future<Uri> _engineSupabaseDir() async {
   final libUri = await Isolate.resolvePackageUri(
     Uri.parse('package:$_enginePackage/'),
@@ -228,6 +228,6 @@ Never _fail(String message) {
 
 void _printUsage(IOSink sink) {
   sink.writeln(
-    'Usage: dart run eigen_engine:sync_supabase [--out <supabase-dir>]',
+    'Usage: dart run eigen_flutter:sync_supabase [--out <supabase-dir>]',
   );
 }

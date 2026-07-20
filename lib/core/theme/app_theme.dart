@@ -15,7 +15,7 @@ abstract final class AppTheme {
   /// Fonts declared in a package's `pubspec.yaml` are registered under the
   /// `packages/<package>/<family>` namespace, so this prefix is required even
   /// from within the engine itself.
-  static const String _fontFamily = 'packages/eigen_engine/Inter';
+  static const String _fontFamily = 'packages/eigen_flutter/Inter';
 
   static const SnackBarThemeData _snackBarTheme = SnackBarThemeData(
     behavior: SnackBarBehavior.floating,
