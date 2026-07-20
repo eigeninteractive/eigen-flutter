@@ -1,15 +1,20 @@
 name: eigen_flutter
 description: "Eigen Engine — whitelabel Flutter + Supabase engine for turn-based multiplayer games."
-publish_to: 'none'
+publish_to: none
 version: 0.1.0
 
 environment:
   sdk: ^3.9.2
   flutter: ">=3.0.0"
 
+workspace:
+  - packages/eigen_sdk
+
 dependencies:
   flutter:
     sdk: flutter
+  eigen_sdk:
+    path: packages/eigen_sdk
 
   cupertino_icons: ^1.0.8
   supabase_flutter: ^2.0.0
