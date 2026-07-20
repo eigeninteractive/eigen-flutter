@@ -1,9 +1,9 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:eigen_engine/core/game/game_frame.dart';
-import 'package:eigen_engine/core/game/timing_context.dart';
-import 'package:eigen_engine/features/game/data/models/replay_frame.dart';
-import 'package:eigen_engine/features/game/providers/game_providers.dart';
-import 'package:eigen_engine/features/game/providers/game_frame_provider.dart';
+import 'package:eigen_flutter/core/game/game_frame.dart';
+import 'package:eigen_flutter/core/game/timing_context.dart';
+import 'package:eigen_flutter/features/game/data/models/replay_frame.dart';
+import 'package:eigen_flutter/features/game/providers/game_providers.dart';
+import 'package:eigen_flutter/features/game/providers/game_frame_provider.dart';
 
 part 'replay_controller.g.dart';
 

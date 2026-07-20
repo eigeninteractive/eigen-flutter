@@ -1,15 +1,15 @@
 import 'dart:async';
 
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:eigen_engine/core/analytics/analytics_provider.dart';
-import 'package:eigen_engine/core/config/app_config.dart';
-import 'package:eigen_engine/core/notifications/notification_provider.dart';
-import 'package:eigen_engine/core/storage/storage_provider.dart';
-import 'package:eigen_engine/features/auth/data/auth_service.dart';
-import 'package:eigen_engine/features/auth/data/models/auth_user.dart';
-import 'package:eigen_engine/features/profile/providers/profile_providers.dart';
-import 'package:eigen_engine/shared/providers/player_providers.dart';
-import 'package:eigen_engine/shared/providers/supabase_client_provider.dart';
+import 'package:eigen_flutter/core/analytics/analytics_provider.dart';
+import 'package:eigen_flutter/core/config/app_config.dart';
+import 'package:eigen_flutter/core/notifications/notification_provider.dart';
+import 'package:eigen_flutter/core/storage/storage_provider.dart';
+import 'package:eigen_flutter/features/auth/data/auth_service.dart';
+import 'package:eigen_flutter/features/auth/data/models/auth_user.dart';
+import 'package:eigen_flutter/features/profile/providers/profile_providers.dart';
+import 'package:eigen_flutter/shared/providers/player_providers.dart';
+import 'package:eigen_flutter/shared/providers/supabase_client_provider.dart';
 
 part 'auth_providers.g.dart';
 

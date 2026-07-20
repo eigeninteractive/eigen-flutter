@@ -1,10 +1,10 @@
 import 'package:checks/checks.dart';
-import 'package:eigen_engine/core/game/game_outcome.dart';
-import 'package:eigen_engine/core/game/game_status.dart';
-import 'package:eigen_engine/core/game/participant_type.dart';
-import 'package:eigen_engine/features/game/data/models/game.dart';
-import 'package:eigen_engine/features/game/data/models/participant.dart';
-import 'package:eigen_engine/features/social/data/models/friendship.dart';
+import 'package:eigen_flutter/core/game/game_outcome.dart';
+import 'package:eigen_flutter/core/game/game_status.dart';
+import 'package:eigen_flutter/core/game/participant_type.dart';
+import 'package:eigen_flutter/features/game/data/models/game.dart';
+import 'package:eigen_flutter/features/game/data/models/participant.dart';
+import 'package:eigen_flutter/features/social/data/models/friendship.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Forward-compatibility: a build must tolerate JSON from a newer backend —

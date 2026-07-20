@@ -1,7 +1,7 @@
 import 'package:checks/checks.dart';
-import 'package:eigen_engine/features/game/data/models/game.dart';
-import 'package:eigen_engine/core/game/game_status.dart';
-import 'package:eigen_engine/features/game/utils/game_timing.dart';
+import 'package:eigen_flutter/features/game/data/models/game.dart';
+import 'package:eigen_flutter/core/game/game_status.dart';
+import 'package:eigen_flutter/features/game/utils/game_timing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

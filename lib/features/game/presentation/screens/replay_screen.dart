@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:eigen_engine/core/errors/error_messages.dart';
-import 'package:eigen_engine/core/game/game_module.dart';
-import 'package:eigen_engine/core/game/game_outcome.dart';
-import 'package:eigen_engine/core/game/game_status.dart';
-import 'package:eigen_engine/features/game/data/models/replay_frame.dart';
-import 'package:eigen_engine/features/game/providers/game_frame_provider.dart';
-import 'package:eigen_engine/features/game/providers/game_providers.dart';
-import 'package:eigen_engine/features/game/providers/replay_controller.dart';
+import 'package:eigen_flutter/core/errors/error_messages.dart';
+import 'package:eigen_flutter/core/game/game_module.dart';
+import 'package:eigen_flutter/core/game/game_outcome.dart';
+import 'package:eigen_flutter/core/game/game_status.dart';
+import 'package:eigen_flutter/features/game/data/models/replay_frame.dart';
+import 'package:eigen_flutter/features/game/providers/game_frame_provider.dart';
+import 'package:eigen_flutter/features/game/providers/game_providers.dart';
+import 'package:eigen_flutter/features/game/providers/replay_controller.dart';
 
 /// Steps through a finished game's frame history, one observation at a time.
 ///

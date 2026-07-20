@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:eigen_engine/core/config/app_config.dart';
-import 'package:eigen_engine/core/connectivity/connectivity_provider.dart';
-import 'package:eigen_engine/shared/widgets/status_banner.dart';
-import 'package:eigen_engine/core/updates/update_notifier.dart';
-import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
-import 'package:eigen_engine/features/game/presentation/widgets/new_game_dialog.dart';
-import 'package:eigen_engine/features/game/presentation/widgets/play_vs_bot_dialog.dart';
-import 'package:eigen_engine/features/game/providers/game_providers.dart';
-import 'package:eigen_engine/features/social/providers/social_providers.dart';
+import 'package:eigen_flutter/core/config/app_config.dart';
+import 'package:eigen_flutter/core/connectivity/connectivity_provider.dart';
+import 'package:eigen_flutter/shared/widgets/status_banner.dart';
+import 'package:eigen_flutter/core/updates/update_notifier.dart';
+import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
+import 'package:eigen_flutter/features/game/presentation/widgets/new_game_dialog.dart';
+import 'package:eigen_flutter/features/game/presentation/widgets/play_vs_bot_dialog.dart';
+import 'package:eigen_flutter/features/game/providers/game_providers.dart';
+import 'package:eigen_flutter/features/social/providers/social_providers.dart';
 
 enum _ShellBranch {
   home(''),

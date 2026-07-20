@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:eigen_engine/core/errors/error_messages.dart';
-import 'package:eigen_engine/features/rating/data/models/player_rating.dart';
-import 'package:eigen_engine/features/rating/presentation/extensions/rating_ui.dart';
-import 'package:eigen_engine/features/rating/providers/rating_providers.dart';
+import 'package:eigen_flutter/core/errors/error_messages.dart';
+import 'package:eigen_flutter/features/rating/data/models/player_rating.dart';
+import 'package:eigen_flutter/features/rating/presentation/extensions/rating_ui.dart';
+import 'package:eigen_flutter/features/rating/providers/rating_providers.dart';
 
 /// How [PlayerRatings] renders each pool.
 enum RatingsLayout {

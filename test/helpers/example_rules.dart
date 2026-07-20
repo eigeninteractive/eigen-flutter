@@ -9,7 +9,7 @@
 library;
 
 import 'package:flutter/widgets.dart';
-import 'package:eigen_engine/core/game/game_module.dart';
+import 'package:eigen_flutter/core/game/game_module.dart';
 
 /// The example game's whole observation: how many moves have been made.
 class ExampleObservation {

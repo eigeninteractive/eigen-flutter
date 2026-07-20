@@ -2,16 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:eigen_engine/core/errors/error_messages.dart';
-import 'package:eigen_engine/core/game/participant_type.dart';
-import 'package:eigen_engine/features/social/presentation/widgets/friend_actions.dart';
-import 'package:eigen_engine/features/social/presentation/widgets/friend_buttons.dart';
-import 'package:eigen_engine/features/social/presentation/widgets/player_profile_sheet.dart';
-import 'package:eigen_engine/features/social/providers/social_providers.dart';
-import 'package:eigen_engine/shared/data/models/player_info.dart';
-import 'package:eigen_engine/shared/providers/player_providers.dart';
-import 'package:eigen_engine/shared/widgets/empty_state_view.dart';
-import 'package:eigen_engine/shared/widgets/player_avatar.dart';
+import 'package:eigen_flutter/core/errors/error_messages.dart';
+import 'package:eigen_flutter/core/game/participant_type.dart';
+import 'package:eigen_flutter/features/social/presentation/widgets/friend_actions.dart';
+import 'package:eigen_flutter/features/social/presentation/widgets/friend_buttons.dart';
+import 'package:eigen_flutter/features/social/presentation/widgets/player_profile_sheet.dart';
+import 'package:eigen_flutter/features/social/providers/social_providers.dart';
+import 'package:eigen_flutter/shared/data/models/player_info.dart';
+import 'package:eigen_flutter/shared/providers/player_providers.dart';
+import 'package:eigen_flutter/shared/widgets/empty_state_view.dart';
+import 'package:eigen_flutter/shared/widgets/player_avatar.dart';
 
 class SocialScreen extends ConsumerStatefulWidget {
   const SocialScreen({super.key});

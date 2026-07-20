@@ -1,5 +1,5 @@
 import 'package:firebase_analytics/firebase_analytics.dart';
-import 'package:eigen_engine/core/analytics/analytics_service.dart';
+import 'package:eigen_flutter/core/analytics/analytics_service.dart';
 
 /// Firebase Analytics implementation of [AnalyticsService].
 class FirebaseAnalyticsService implements AnalyticsService {

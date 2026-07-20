@@ -1,5 +1,5 @@
 import 'package:checks/checks.dart';
-import 'package:eigen_engine/core/theme/theme_provider.dart';
+import 'package:eigen_flutter/core/theme/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';

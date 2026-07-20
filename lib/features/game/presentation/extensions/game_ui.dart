@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:eigen_engine/core/game/game_outcome.dart';
-import 'package:eigen_engine/core/game/game_status.dart';
+import 'package:eigen_flutter/core/game/game_outcome.dart';
+import 'package:eigen_flutter/core/game/game_status.dart';
 
 /// UI helpers for [GameStatus] — color and icon mappings.
 extension GameStatusUI on GameStatus {

@@ -1,4 +1,4 @@
-import 'package:eigen_engine/features/rating/data/models/player_rating.dart';
+import 'package:eigen_flutter/features/rating/data/models/player_rating.dart';
 
 /// Display helpers for [PlayerRating].
 extension PlayerRatingUi on PlayerRating {

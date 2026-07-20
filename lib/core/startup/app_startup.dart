@@ -5,15 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:eigen_engine/core/analytics/analytics_provider.dart';
-import 'package:eigen_engine/core/navigation/router/app_router.dart';
-import 'package:eigen_engine/core/notifications/notification_provider.dart';
-import 'package:eigen_engine/core/updates/update_notifier.dart';
-import 'package:eigen_engine/features/auth/data/models/auth_user.dart';
-import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
-import 'package:eigen_engine/features/game/providers/game_providers.dart';
-import 'package:eigen_engine/features/profile/providers/profile_providers.dart';
-import 'package:eigen_engine/features/social/providers/social_providers.dart';
+import 'package:eigen_flutter/core/analytics/analytics_provider.dart';
+import 'package:eigen_flutter/core/navigation/router/app_router.dart';
+import 'package:eigen_flutter/core/notifications/notification_provider.dart';
+import 'package:eigen_flutter/core/updates/update_notifier.dart';
+import 'package:eigen_flutter/features/auth/data/models/auth_user.dart';
+import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
+import 'package:eigen_flutter/features/game/providers/game_providers.dart';
+import 'package:eigen_flutter/features/profile/providers/profile_providers.dart';
+import 'package:eigen_flutter/features/social/providers/social_providers.dart';
 
 /// Keeps the native splash screen visible until the auth state is known,
 /// then hands control to [child] (which GoRouter routes normally).

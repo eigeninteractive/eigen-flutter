@@ -1,6 +1,6 @@
 import 'package:checks/checks.dart';
-import 'package:eigen_engine/core/game/game_module.dart';
-import 'package:eigen_engine/testing/twin_fixtures.dart';
+import 'package:eigen_flutter/core/game/game_module.dart';
+import 'package:eigen_flutter/testing/twin_fixtures.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/example_rules.dart';

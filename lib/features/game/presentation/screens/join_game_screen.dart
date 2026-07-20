@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:eigen_engine/core/analytics/analytics_provider.dart';
-import 'package:eigen_engine/core/errors/error_messages.dart';
-import 'package:eigen_engine/features/game/providers/game_providers.dart';
+import 'package:eigen_flutter/core/analytics/analytics_provider.dart';
+import 'package:eigen_flutter/core/errors/error_messages.dart';
+import 'package:eigen_flutter/features/game/providers/game_providers.dart';
 
 /// Splash screen shown when the user arrives via a `/join/:code` deep link.
 ///

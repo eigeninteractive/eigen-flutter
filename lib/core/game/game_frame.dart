@@ -1,4 +1,4 @@
-import 'package:eigen_engine/core/game/timing_context.dart';
+import 'package:eigen_flutter/core/game/timing_context.dart';
 
 /// A single observation snapshot of an active or finished game.
 ///

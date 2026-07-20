@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:eigen_engine/core/game/local_bot.dart';
-import 'package:eigen_engine/core/game/game_creation_spec.dart';
-import 'package:eigen_engine/core/game/game_frame.dart';
-import 'package:eigen_engine/core/game/game_outcome.dart';
-import 'package:eigen_engine/core/game/game_status.dart';
-import 'package:eigen_engine/core/game/my_seat.dart';
-import 'package:eigen_engine/core/game/players_context.dart';
-import 'package:eigen_engine/core/game/timing_context.dart';
-import 'package:eigen_engine/features/game/data/models/game.dart'
+import 'package:eigen_flutter/core/game/local_bot.dart';
+import 'package:eigen_flutter/core/game/game_creation_spec.dart';
+import 'package:eigen_flutter/core/game/game_frame.dart';
+import 'package:eigen_flutter/core/game/game_outcome.dart';
+import 'package:eigen_flutter/core/game/game_status.dart';
+import 'package:eigen_flutter/core/game/my_seat.dart';
+import 'package:eigen_flutter/core/game/players_context.dart';
+import 'package:eigen_flutter/core/game/timing_context.dart';
+import 'package:eigen_flutter/features/game/data/models/game.dart'
     show GameAccess;
 
 /// How a submitted action resolved, reported to the game through the future

@@ -4,14 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shimmer/shimmer.dart';
-import 'package:eigen_engine/core/game/participant_type.dart';
-import 'package:eigen_engine/features/game/data/models/game.dart';
-import 'package:eigen_engine/features/game/presentation/extensions/game_ui.dart';
-import 'package:eigen_engine/features/game/presentation/widgets/turn_countdown.dart';
-import 'package:eigen_engine/features/game/providers/game_providers.dart';
-import 'package:eigen_engine/features/game/utils/game_timing.dart';
-import 'package:eigen_engine/features/profile/providers/profile_providers.dart';
-import 'package:eigen_engine/shared/widgets/overlapping_avatars.dart';
+import 'package:eigen_flutter/core/game/participant_type.dart';
+import 'package:eigen_flutter/features/game/data/models/game.dart';
+import 'package:eigen_flutter/features/game/presentation/extensions/game_ui.dart';
+import 'package:eigen_flutter/features/game/presentation/widgets/turn_countdown.dart';
+import 'package:eigen_flutter/features/game/providers/game_providers.dart';
+import 'package:eigen_flutter/features/game/utils/game_timing.dart';
+import 'package:eigen_flutter/features/profile/providers/profile_providers.dart';
+import 'package:eigen_flutter/shared/widgets/overlapping_avatars.dart';
 
 /// Home screen showing active games dashboard.
 class HomeScreen extends ConsumerStatefulWidget {

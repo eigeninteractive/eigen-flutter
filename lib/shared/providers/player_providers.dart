@@ -1,10 +1,10 @@
 import 'package:flutter_riverpod/experimental/persist.dart';
 import 'package:riverpod_annotation/experimental/json_persist.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:eigen_engine/core/storage/storage_provider.dart';
-import 'package:eigen_engine/shared/data/models/player_info.dart';
-import 'package:eigen_engine/shared/data/player_repository.dart';
-import 'package:eigen_engine/shared/providers/supabase_client_provider.dart';
+import 'package:eigen_flutter/core/storage/storage_provider.dart';
+import 'package:eigen_flutter/shared/data/models/player_info.dart';
+import 'package:eigen_flutter/shared/data/player_repository.dart';
+import 'package:eigen_flutter/shared/providers/supabase_client_provider.dart';
 
 part 'player_providers.g.dart';
 

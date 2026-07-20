@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:eigen_engine/core/connectivity/connectivity_provider.dart';
-import 'package:eigen_engine/core/game/timing_constants.dart';
-import 'package:eigen_engine/features/game/presentation/widgets/timer_builders.dart';
+import 'package:eigen_flutter/core/connectivity/connectivity_provider.dart';
+import 'package:eigen_flutter/core/game/timing_constants.dart';
+import 'package:eigen_flutter/features/game/presentation/widgets/timer_builders.dart';
 
 /// Shows all players' remaining time banks side by side for budget
 /// (accumulated clock) games.

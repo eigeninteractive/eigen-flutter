@@ -2,17 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:eigen_engine/core/game/game_outcome.dart';
-import 'package:eigen_engine/core/game/participant_type.dart';
-import 'package:eigen_engine/features/game/data/models/game.dart';
-import 'package:eigen_engine/features/game/presentation/extensions/game_ui.dart';
-import 'package:eigen_engine/features/game/providers/game_providers.dart';
-import 'package:eigen_engine/features/rating/presentation/widgets/player_ratings.dart';
-import 'package:eigen_engine/features/social/presentation/widgets/friend_actions.dart';
-import 'package:eigen_engine/shared/data/models/player_info.dart';
-import 'package:eigen_engine/shared/providers/player_providers.dart';
-import 'package:eigen_engine/shared/widgets/player_avatar.dart';
-import 'package:eigen_engine/shared/widgets/player_tags.dart';
+import 'package:eigen_flutter/core/game/game_outcome.dart';
+import 'package:eigen_flutter/core/game/participant_type.dart';
+import 'package:eigen_flutter/features/game/data/models/game.dart';
+import 'package:eigen_flutter/features/game/presentation/extensions/game_ui.dart';
+import 'package:eigen_flutter/features/game/providers/game_providers.dart';
+import 'package:eigen_flutter/features/rating/presentation/widgets/player_ratings.dart';
+import 'package:eigen_flutter/features/social/presentation/widgets/friend_actions.dart';
+import 'package:eigen_flutter/shared/data/models/player_info.dart';
+import 'package:eigen_flutter/shared/providers/player_providers.dart';
+import 'package:eigen_flutter/shared/widgets/player_avatar.dart';
+import 'package:eigen_flutter/shared/widgets/player_tags.dart';
 
 /// Modal bottom sheet showing a player's public profile.
 ///

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
-import 'package:eigen_engine/features/social/presentation/widgets/friend_buttons.dart';
-import 'package:eigen_engine/features/social/providers/social_providers.dart';
+import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
+import 'package:eigen_flutter/features/social/presentation/widgets/friend_buttons.dart';
+import 'package:eigen_flutter/features/social/providers/social_providers.dart';
 
 /// Derives the current friendship status between the signed-in user and
 /// [playerId] and renders the appropriate action button(s).

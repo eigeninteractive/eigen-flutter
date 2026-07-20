@@ -1,9 +1,9 @@
 import 'package:checks/checks.dart';
-import 'package:eigen_engine/core/game/game_player.dart';
-import 'package:eigen_engine/core/game/my_seat.dart';
-import 'package:eigen_engine/core/game/participant_type.dart';
-import 'package:eigen_engine/core/game/players_context.dart';
-import 'package:eigen_engine/shared/data/models/player_info.dart';
+import 'package:eigen_flutter/core/game/game_player.dart';
+import 'package:eigen_flutter/core/game/my_seat.dart';
+import 'package:eigen_flutter/core/game/participant_type.dart';
+import 'package:eigen_flutter/core/game/players_context.dart';
+import 'package:eigen_flutter/shared/data/models/player_info.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _alice = GamePlayer(

@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:eigen_engine/core/analytics/analytics_provider.dart';
-import 'package:eigen_engine/core/errors/error_messages.dart';
-import 'package:eigen_engine/core/game/game_creation_spec.dart';
-import 'package:eigen_engine/core/game/game_module.dart';
-import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
-import 'package:eigen_engine/features/game/data/models/game.dart';
-import 'package:eigen_engine/features/game/presentation/widgets/timing_selector.dart';
-import 'package:eigen_engine/features/game/providers/game_providers.dart';
+import 'package:eigen_flutter/core/analytics/analytics_provider.dart';
+import 'package:eigen_flutter/core/errors/error_messages.dart';
+import 'package:eigen_flutter/core/game/game_creation_spec.dart';
+import 'package:eigen_flutter/core/game/game_module.dart';
+import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
+import 'package:eigen_flutter/features/game/data/models/game.dart';
+import 'package:eigen_flutter/features/game/presentation/widgets/timing_selector.dart';
+import 'package:eigen_flutter/features/game/providers/game_providers.dart';
 
 /// Dialog for creating a new game.
 ///

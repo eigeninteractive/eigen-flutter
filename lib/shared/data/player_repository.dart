@@ -1,6 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:eigen_engine/shared/data/db_guard.dart';
-import 'package:eigen_engine/shared/data/models/player_info.dart';
+import 'package:eigen_flutter/shared/data/db_guard.dart';
+import 'package:eigen_flutter/shared/data/models/player_info.dart';
 
 /// Thrown when a player lookup matches no row.
 ///

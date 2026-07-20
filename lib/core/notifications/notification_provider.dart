@@ -2,11 +2,11 @@ import 'package:firebase_app_installations/firebase_app_installations.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:eigen_engine/core/config/app_config.dart';
-import 'package:eigen_engine/core/navigation/providers/navigation_providers.dart';
-import 'package:eigen_engine/core/notifications/firebase_notification_service.dart';
-import 'package:eigen_engine/features/auth/providers/auth_providers.dart';
-import 'package:eigen_engine/shared/providers/device_installation_providers.dart';
+import 'package:eigen_flutter/core/config/app_config.dart';
+import 'package:eigen_flutter/core/navigation/providers/navigation_providers.dart';
+import 'package:eigen_flutter/core/notifications/firebase_notification_service.dart';
+import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
+import 'package:eigen_flutter/shared/providers/device_installation_providers.dart';
 
 part 'notification_provider.g.dart';
 

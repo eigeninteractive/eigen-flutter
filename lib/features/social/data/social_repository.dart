@@ -1,8 +1,8 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:eigen_engine/core/errors/engine_exception.dart';
-import 'package:eigen_engine/features/social/data/models/friendship.dart';
-import 'package:eigen_engine/shared/data/db_guard.dart';
-import 'package:eigen_engine/shared/data/models/player_info.dart';
+import 'package:eigen_flutter/core/errors/engine_exception.dart';
+import 'package:eigen_flutter/features/social/data/models/friendship.dart';
+import 'package:eigen_flutter/shared/data/db_guard.dart';
+import 'package:eigen_flutter/shared/data/models/player_info.dart';
 
 class SocialRepository {
   SocialRepository(this._client);

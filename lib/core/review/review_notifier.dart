@@ -2,7 +2,7 @@ import 'dart:developer' as developer;
 
 import 'package:in_app_review/in_app_review.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:eigen_engine/core/storage/shared_preferences_provider.dart';
+import 'package:eigen_flutter/core/storage/shared_preferences_provider.dart';
 
 part 'review_notifier.g.dart';
 

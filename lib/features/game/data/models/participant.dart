@@ -1,5 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:eigen_engine/core/game/participant_type.dart';
+import 'package:eigen_flutter/core/game/participant_type.dart';
 
 part 'participant.freezed.dart';
 part 'participant.g.dart';

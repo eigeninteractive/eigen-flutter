@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:eigen_engine/features/game/data/models/game.dart';
+import 'package:eigen_flutter/features/game/data/models/game.dart';
 
 /// Returns the icon that best represents a game's timing mode.
 IconData gameTimingIcon(Game game) {

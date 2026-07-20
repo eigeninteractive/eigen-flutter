@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:eigen_engine/core/navigation/widgets/shell_scaffold.dart';
-import 'package:eigen_engine/features/about/presentation/screens/about_screen.dart';
-import 'package:eigen_engine/features/auth/presentation/screens/login_screen.dart';
-import 'package:eigen_engine/features/game/presentation/screens/game_screen.dart';
-import 'package:eigen_engine/features/game/presentation/screens/history_screen.dart';
-import 'package:eigen_engine/features/game/presentation/screens/join_game_screen.dart';
-import 'package:eigen_engine/features/game/presentation/screens/lobby_screen.dart';
-import 'package:eigen_engine/features/game/presentation/screens/replay_screen.dart';
-import 'package:eigen_engine/features/game/providers/game_providers.dart';
-import 'package:eigen_engine/features/home/presentation/screens/home_screen.dart';
-import 'package:eigen_engine/features/profile/presentation/screens/profile_screen.dart';
-import 'package:eigen_engine/features/settings/presentation/screens/settings_screen.dart';
-import 'package:eigen_engine/features/social/presentation/social_screen.dart';
+import 'package:eigen_flutter/core/navigation/widgets/shell_scaffold.dart';
+import 'package:eigen_flutter/features/about/presentation/screens/about_screen.dart';
+import 'package:eigen_flutter/features/auth/presentation/screens/login_screen.dart';
+import 'package:eigen_flutter/features/game/presentation/screens/game_screen.dart';
+import 'package:eigen_flutter/features/game/presentation/screens/history_screen.dart';
+import 'package:eigen_flutter/features/game/presentation/screens/join_game_screen.dart';
+import 'package:eigen_flutter/features/game/presentation/screens/lobby_screen.dart';
+import 'package:eigen_flutter/features/game/presentation/screens/replay_screen.dart';
+import 'package:eigen_flutter/features/game/providers/game_providers.dart';
+import 'package:eigen_flutter/features/home/presentation/screens/home_screen.dart';
+import 'package:eigen_flutter/features/profile/presentation/screens/profile_screen.dart';
+import 'package:eigen_flutter/features/settings/presentation/screens/settings_screen.dart';
+import 'package:eigen_flutter/features/social/presentation/social_screen.dart';
 
 /// Global navigator key for top-level navigation (e.g., login screen).
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>(
