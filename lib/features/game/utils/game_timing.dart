@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:eigen_flutter/features/game/data/models/game.dart';
+import 'package:eigen_api/eigen_api.dart';
+
 
 /// Returns the icon that best represents a game's timing mode.
-IconData gameTimingIcon(Game game) {
+IconData gameTimingIcon(GameSummary game) {
   if (game.budgetSeconds != null) return Icons.av_timer;
   final t = game.turnSeconds;
   if (t == null) return Icons.all_inclusive;
@@ -14,7 +15,7 @@ IconData gameTimingIcon(Game game) {
 /// Returns a human-readable timing label for a game.
 ///
 /// Examples: "untimed", "30s/turn", "5m/turn", "3m+2s", "10m+5s".
-String gameTimingLabel(Game game) {
+String gameTimingLabel(GameSummary game) {
   if (game.budgetSeconds != null) {
     final budget = _formatSeconds(game.budgetSeconds!);
     final inc = game.incrementSeconds;
@@ -36,9 +37,13 @@ String _formatSeconds(int seconds) {
 
 /// Returns a compact label for how long a game has been waiting.
 ///
+/// [createdAt] is epoch milliseconds, as every timestamp on the wire is.
+///
 /// Examples: "just now", "5m waiting", "2h waiting".
-String formatWaitDuration(DateTime createdAt) {
-  final elapsed = DateTime.now().difference(createdAt);
+String formatWaitDuration(int createdAt) {
+  final elapsed = DateTime.now().difference(
+    DateTime.fromMillisecondsSinceEpoch(createdAt),
+  );
   if (elapsed.inSeconds < 60) return 'just now';
   if (elapsed.inMinutes < 60) return '${elapsed.inMinutes}m waiting';
   return '${elapsed.inHours}h waiting';

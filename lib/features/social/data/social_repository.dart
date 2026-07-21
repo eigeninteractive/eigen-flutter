@@ -28,8 +28,13 @@ class SocialRepository {
   }
 
   /// Joinable games created by the caller's friends.
-  Future<List<GameSummary>> getFriendsGames({int? limit}) async {
-    final response = await engineCall(() => _api.getFriendsGames(limit: limit));
+  ///
+  /// [cursor] is the previous page's last `created_at`; omit for the first
+  /// page.
+  Future<List<GameSummary>> getFriendsGames({int? limit, int? cursor}) async {
+    final response = await engineCall(
+      () => _api.getFriendsGames(limit: limit, cursor: cursor),
+    );
     return response.data?.games ?? const [];
   }
 

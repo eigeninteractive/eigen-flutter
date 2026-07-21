@@ -29,3 +29,4 @@ Future<List<Rating>> myRatings(Ref ref) {
   if (userId == null) return Future.value(const []);
   return ref.watch(ratingRepositoryProvider).getMyRatings();
 }
+

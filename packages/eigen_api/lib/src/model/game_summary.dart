@@ -5,6 +5,7 @@
 // ignore_for_file: unused_element
 import 'package:eigen_api/src/model/seat.dart';
 import 'package:eigen_api/src/model/game_status.dart';
+import 'package:eigen_api/src/model/rating_delta.dart';
 import 'package:eigen_api/src/model/game_access.dart';
 import 'package:eigen_api/src/model/outcome.dart';
 import 'package:copy_with_extension/copy_with_extension.dart';
@@ -57,6 +58,8 @@ class GameSummary {
     required  this.turnDeadline,
 
     required  this.outcomes,
+
+     this.ratings,
 
     required  this.finishedAt,
 
@@ -147,7 +150,7 @@ class GameSummary {
   )
 
 
-  final num? turnSeconds;
+  final int? turnSeconds;
 
 
 
@@ -159,7 +162,7 @@ class GameSummary {
   )
 
 
-  final num? budgetSeconds;
+  final int? budgetSeconds;
 
 
 
@@ -171,7 +174,7 @@ class GameSummary {
   )
 
 
-  final num? incrementSeconds;
+  final int? incrementSeconds;
 
 
 
@@ -255,7 +258,7 @@ class GameSummary {
   )
 
 
-  final num? turnDeadline;
+  final int? turnDeadline;
 
 
 
@@ -273,13 +276,25 @@ class GameSummary {
 
   @JsonKey(
     
+    name: r'ratings',
+    required: false,
+    includeIfNull: false,
+  )
+
+
+  final List<RatingDelta>? ratings;
+
+
+
+  @JsonKey(
+    
     name: r'finished_at',
     required: true,
     includeIfNull: true,
   )
 
 
-  final num? finishedAt;
+  final int? finishedAt;
 
 
 
@@ -291,7 +306,7 @@ class GameSummary {
   )
 
 
-  final num createdAt;
+  final int createdAt;
 
 
 
@@ -303,7 +318,7 @@ class GameSummary {
   )
 
 
-  final num updatedAt;
+  final int updatedAt;
 
 
 
@@ -340,6 +355,7 @@ class GameSummary {
       other.pendingPlayers == pendingPlayers &&
       other.turnDeadline == turnDeadline &&
       other.outcomes == outcomes &&
+      other.ratings == ratings &&
       other.finishedAt == finishedAt &&
       other.createdAt == createdAt &&
       other.updatedAt == updatedAt &&
@@ -364,6 +380,7 @@ class GameSummary {
         (pendingPlayers == null ? 0 : pendingPlayers.hashCode) +
         (turnDeadline == null ? 0 : turnDeadline.hashCode) +
         (outcomes == null ? 0 : outcomes.hashCode) +
+        ratings.hashCode +
         (finishedAt == null ? 0 : finishedAt.hashCode) +
         createdAt.hashCode +
         updatedAt.hashCode +

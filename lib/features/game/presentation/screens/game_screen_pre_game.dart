@@ -15,7 +15,7 @@ class _PreGameContent extends ConsumerWidget {
     required this.onLeaveGame,
   });
 
-  final Game game;
+  final GameSummary game;
   final bool isStartingGame;
   final bool isCancelling;
   final bool isLeaving;
@@ -65,7 +65,7 @@ class _PreGameContent extends ConsumerWidget {
               color: colorScheme.onSurfaceVariant,
             ),
           ),
-          if (game.shortCode != null) ...[
+          ...[
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -79,7 +79,7 @@ class _PreGameContent extends ConsumerWidget {
                   const Icon(Icons.key, size: 20),
                   const SizedBox(width: 8),
                   Text(
-                    game.shortCode!,
+                    game.shortCode,
                     style: textTheme.titleLarge?.copyWith(
                       letterSpacing: 2,
                       fontWeight: FontWeight.bold,
@@ -88,7 +88,7 @@ class _PreGameContent extends ConsumerWidget {
                 ],
               ),
             ),
-            if (gameInviteLink(game.shortCode!, appHost: appHost)
+            if (gameInviteLink(game.shortCode, appHost: appHost)
                 case final link?) ...[
               const SizedBox(height: 16),
               // QR modules must be dark-on-light for scanner compatibility,
@@ -116,7 +116,7 @@ class _PreGameContent extends ConsumerWidget {
               children: [
                 OutlinedButton.icon(
                   onPressed: () {
-                    Clipboard.setData(ClipboardData(text: game.shortCode!));
+                    Clipboard.setData(ClipboardData(text: game.shortCode));
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Code copied')),
                     );
@@ -124,7 +124,7 @@ class _PreGameContent extends ConsumerWidget {
                   icon: const Icon(Icons.copy, size: 18),
                   label: const Text('Copy code'),
                 ),
-                if (gameInviteLink(game.shortCode!, appHost: appHost)
+                if (gameInviteLink(game.shortCode, appHost: appHost)
                     case final link?) ...[
                   const SizedBox(width: 8),
                   FilledButton.icon(
@@ -227,7 +227,8 @@ class _AddBotDialog extends ConsumerStatefulWidget {
 
   final String gameId;
   final bool rated;
-  final Map<String, dynamic> config;
+  /// The game's raw config payload, as it comes off the wire.
+  final Object config;
 
   /// The game's `schema_version` — seating gates run against *this* game's
   /// rules unit, not the latest.
@@ -279,22 +280,21 @@ class _AddBotDialogState extends ConsumerState<_AddBotDialog> {
   /// and accepted by *this game's version* of the botSeatable rule (the Dart
   /// twin of the server's GameRules.botSeatable, which enforces it at
   /// seating). [_selectedBotId] defaults to the first available.
-  Widget _picker(List<BotInfo> bots) {
+  Widget _picker(List<Bot> bots) {
     final rules = ref
         .read(currentGameModuleProvider)
         .versions[widget.schemaVersion];
     final usable = rules == null
-        ? const <BotInfo>[]
+        ? const <Bot>[]
         : bots
               .where(
                 (b) =>
-                    !b.isLocal &&
                     widget.schemaVersion <= b.schemaVersion &&
                     (!widget.rated || b.ratedEligible) &&
                     rules.botSeatable(
                       BotSeatableArgs(
-                        gameConfig: widget.config,
-                        botConfig: b.config,
+                        gameConfig: widget.config as Map<String, dynamic>,
+                        botConfig: b.config as Map<String, dynamic>,
                       ),
                     ),
               )
@@ -327,7 +327,7 @@ class _AddBotDialogState extends ConsumerState<_AddBotDialog> {
     try {
       await ref
           .read(gameRepositoryProvider)
-          .addBotToGame(gameId: widget.gameId, botId: _selectedBotId!);
+          .addBot(widget.gameId, botId: _selectedBotId!);
       if (!mounted) return;
       ref.invalidate(gamePlayersProvider(gameId: widget.gameId));
       Navigator.pop(context);
@@ -341,7 +341,7 @@ class _AddBotDialogState extends ConsumerState<_AddBotDialog> {
   }
 }
 
-/// Participant slots shown in the pre-game waiting room.
+/// Seat slots shown in the pre-game waiting room.
 class _ParticipantList extends StatelessWidget {
   const _ParticipantList({
     required this.playersContext,
@@ -359,7 +359,7 @@ class _ParticipantList extends StatelessWidget {
     return Column(
       children: players.map((gp) {
         final isMe = gp.playerIndex == playersContext.mySeat.indexOrNull;
-        final isBot = gp.type == ParticipantType.bot;
+        final isBot = gp.type == SeatTypeEnum.bot;
 
         return Padding(
           padding: const EdgeInsets.only(bottom: 12),
@@ -367,7 +367,7 @@ class _ParticipantList extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               PlayerAvatar(
-                playerInfo: gp.info,
+                avatarUrl: gp.info.avatarUrl,
                 radius: 20,
                 isBot: isBot,
                 // A deleted seat's info is a synthetic placeholder whose id

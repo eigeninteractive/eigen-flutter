@@ -1,25 +1,32 @@
 import 'package:checks/checks.dart';
-import 'package:eigen_flutter/features/game/data/models/game.dart';
-import 'package:eigen_flutter/core/game/game_status.dart';
+import 'package:eigen_api/eigen_api.dart';
 import 'package:eigen_flutter/features/game/utils/game_timing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Game _game({int? turnSeconds, int? budgetSeconds, int? incrementSeconds}) =>
-    Game(
+GameSummary _game({int? turnSeconds, int? budgetSeconds, int? incrementSeconds}) =>
+    GameSummary(
       id: 'g',
+      createdBy: null,
       status: GameStatus.active,
       access: GameAccess.public,
+      schemaVersion: 1,
+      config: const <String, dynamic>{},
       turnSeconds: turnSeconds,
       budgetSeconds: budgetSeconds,
       incrementSeconds: incrementSeconds,
+      rated: false,
+      ratingPool: null,
       minPlayers: 2,
       maxPlayers: 2,
-      config: const {},
-      schemaVersion: 1,
-      rated: false,
-      createdAt: DateTime.utc(2026),
-      updatedAt: DateTime.utc(2026),
+      shortCode: 'ABC123',
+      pendingPlayers: null,
+      turnDeadline: null,
+      outcomes: null,
+      finishedAt: null,
+      createdAt: 0,
+      updatedAt: 0,
+      participants: const [],
     );
 
 void main() {
@@ -55,13 +62,14 @@ void main() {
 
   group('formatWaitDuration', () {
     test('buckets elapsed time', () {
-      final now = DateTime.now();
+      // Epoch milliseconds, as every timestamp on the wire is.
+      final now = DateTime.now().millisecondsSinceEpoch;
       check(formatWaitDuration(now)).equals('just now');
       check(
-        formatWaitDuration(now.subtract(const Duration(minutes: 5))),
+        formatWaitDuration(now - const Duration(minutes: 5).inMilliseconds),
       ).equals('5m waiting');
       check(
-        formatWaitDuration(now.subtract(const Duration(hours: 2))),
+        formatWaitDuration(now - const Duration(hours: 2).inMilliseconds),
       ).equals('2h waiting');
     });
   });

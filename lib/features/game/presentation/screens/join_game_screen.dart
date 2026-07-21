@@ -21,11 +21,11 @@ class JoinGameScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     ref.listen(joinByCodeProvider(code: code), (_, next) {
       next.whenOrNull(
-        data: (gameId) {
+        data: (joined) {
           unawaited(ref.read(analyticsServiceProvider).joinByCode());
           context.pushReplacementNamed(
             'game',
-            pathParameters: {'gameId': gameId},
+            pathParameters: {'gameId': joined.gameId},
           );
         },
         error: (e, _) {

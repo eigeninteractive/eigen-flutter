@@ -66,19 +66,19 @@
           },
           "turn_seconds": {
             "type": [
-              "number",
+              "integer",
               "null"
             ]
           },
           "budget_seconds": {
             "type": [
-              "number",
+              "integer",
               "null"
             ]
           },
           "increment_seconds": {
             "type": [
-              "number",
+              "integer",
               "null"
             ]
           },
@@ -111,7 +111,7 @@
           },
           "turn_deadline": {
             "type": [
-              "number",
+              "integer",
               "null"
             ]
           },
@@ -124,17 +124,23 @@
               "$ref": "#/components/schemas/Outcome"
             }
           },
+          "ratings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RatingDelta"
+            }
+          },
           "finished_at": {
             "type": [
-              "number",
+              "integer",
               "null"
             ]
           },
           "created_at": {
-            "type": "number"
+            "type": "integer"
           },
           "updated_at": {
-            "type": "number"
+            "type": "integer"
           },
           "participants": {
             "type": "array",
@@ -218,6 +224,70 @@
           "result",
           "placement",
           "team_index"
+        ]
+      },
+      "RatingDelta": {
+        "type": "object",
+        "properties": {
+          "identity": {
+            "$ref": "#/components/schemas/RatingIdentity"
+          },
+          "pool": {
+            "type": "string"
+          },
+          "mu_before": {
+            "type": "number"
+          },
+          "sigma_before": {
+            "type": "number"
+          },
+          "display_before": {
+            "type": "integer"
+          },
+          "mu_after": {
+            "type": "number"
+          },
+          "sigma_after": {
+            "type": "number"
+          },
+          "display_after": {
+            "type": "integer"
+          },
+          "display_change": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "identity",
+          "pool",
+          "mu_before",
+          "sigma_before",
+          "display_before",
+          "mu_after",
+          "sigma_after",
+          "display_after",
+          "display_change"
+        ]
+      },
+      "RatingIdentity": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bot_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "user_id",
+          "bot_id"
         ]
       },
       "Seat": {
@@ -419,7 +489,7 @@
                 ]
               },
               "created_at": {
-                "type": "number"
+                "type": "integer"
               }
             },
             "required": [
@@ -459,7 +529,7 @@
             "type": "integer"
           },
           "updated_at": {
-            "type": "number"
+            "type": "integer"
           }
         },
         "required": [
@@ -517,7 +587,7 @@
             "type": "integer"
           },
           "created_at": {
-            "type": "number"
+            "type": "integer"
           }
         },
         "required": [
@@ -649,7 +719,7 @@
           },
           "deadline": {
             "type": [
-              "number",
+              "integer",
               "null"
             ]
           },
@@ -659,7 +729,7 @@
               "null"
             ],
             "items": {
-              "type": "number"
+              "type": "integer"
             }
           },
           "outcomes": {
@@ -682,70 +752,6 @@
           "pending_players",
           "deadline",
           "player_times"
-        ]
-      },
-      "RatingDelta": {
-        "type": "object",
-        "properties": {
-          "identity": {
-            "$ref": "#/components/schemas/RatingIdentity"
-          },
-          "pool": {
-            "type": "string"
-          },
-          "mu_before": {
-            "type": "number"
-          },
-          "sigma_before": {
-            "type": "number"
-          },
-          "display_before": {
-            "type": "integer"
-          },
-          "mu_after": {
-            "type": "number"
-          },
-          "sigma_after": {
-            "type": "number"
-          },
-          "display_after": {
-            "type": "integer"
-          },
-          "display_change": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "identity",
-          "pool",
-          "mu_before",
-          "sigma_before",
-          "display_before",
-          "mu_after",
-          "sigma_after",
-          "display_after",
-          "display_change"
-        ]
-      },
-      "RatingIdentity": {
-        "type": "object",
-        "properties": {
-          "user_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "bot_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "user_id",
-          "bot_id"
         ]
       },
       "CreateSolo": {
@@ -808,14 +814,18 @@
           "bot_ids"
         ]
       },
-      "LobbyAccepted": {
+      "Joined": {
         "type": "object",
         "properties": {
+          "game_id": {
+            "type": "string"
+          },
           "roster": {
             "$ref": "#/components/schemas/Roster"
           }
         },
         "required": [
+          "game_id",
           "roster"
         ]
       },
@@ -877,6 +887,17 @@
               "short_code"
             ]
           }
+        ]
+      },
+      "LobbyAccepted": {
+        "type": "object",
+        "properties": {
+          "roster": {
+            "$ref": "#/components/schemas/Roster"
+          }
+        },
+        "required": [
+          "roster"
         ]
       },
       "LobbyCommand": {
@@ -1080,7 +1101,7 @@
             "type": "string"
           },
           "since": {
-            "type": "number"
+            "type": "integer"
           }
         },
         "required": [
@@ -1128,7 +1149,7 @@
             "type": "string"
           },
           "since": {
-            "type": "number"
+            "type": "integer"
           },
           "direction": {
             "type": "string",
@@ -1252,6 +1273,17 @@
             "required": false,
             "name": "limit",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
           }
         ],
         "responses": {
@@ -1337,6 +1369,17 @@
             },
             "required": false,
             "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "required": false,
+            "name": "cursor",
             "in": "query"
           }
         ],
@@ -1773,6 +1816,17 @@
             "required": false,
             "name": "limit",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
           }
         ],
         "responses": {
@@ -2190,11 +2244,11 @@
         },
         "responses": {
           "200": {
-            "description": "Seated — the post-join roster",
+            "description": "Seated — the game's id and the post-join roster",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LobbyAccepted"
+                  "$ref": "#/components/schemas/Joined"
                 }
               }
             }
@@ -2280,11 +2334,11 @@
         },
         "responses": {
           "200": {
-            "description": "Seated — the post-join roster",
+            "description": "Seated — the game's id and the post-join roster",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LobbyAccepted"
+                  "$ref": "#/components/schemas/Joined"
                 }
               }
             }
@@ -3465,6 +3519,17 @@
             },
             "required": false,
             "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "required": false,
+            "name": "cursor",
             "in": "query"
           }
         ],

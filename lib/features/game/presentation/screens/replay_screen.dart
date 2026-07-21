@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:eigen_flutter/core/errors/error_messages.dart';
 import 'package:eigen_flutter/core/game/game_module.dart';
-import 'package:eigen_flutter/core/game/game_outcome.dart';
-import 'package:eigen_flutter/core/game/game_status.dart';
-import 'package:eigen_flutter/features/game/data/models/replay_frame.dart';
+
 import 'package:eigen_flutter/features/game/providers/game_frame_provider.dart';
 import 'package:eigen_flutter/features/game/providers/game_providers.dart';
 import 'package:eigen_flutter/features/game/providers/replay_controller.dart';
+import 'package:eigen_api/eigen_api.dart';
 
 /// Steps through a finished game's frame history, one observation at a time.
 ///
@@ -49,7 +48,7 @@ class _ReplayBody extends ConsumerWidget {
   const _ReplayBody({required this.gameId, required this.frames});
 
   final String gameId;
-  final List<ReplayFrame> frames;
+  final List<Frame> frames;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -86,8 +85,8 @@ class _ReplayBody extends ConsumerWidget {
         ? ref
                   .watch(gameOutcomesProvider(gameId: gameId))
                   .whenOrNull(data: (o) => o) ??
-              const <GameOutcome>[]
-        : const <GameOutcome>[];
+              const <Outcome>[]
+        : const <Outcome>[];
 
     return Padding(
       padding: const EdgeInsets.all(16),

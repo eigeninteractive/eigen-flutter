@@ -101,7 +101,7 @@ class Friend {
   )
 
 
-  final num since;
+  final int since;
 
 
 

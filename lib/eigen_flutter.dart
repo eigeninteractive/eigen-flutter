@@ -10,14 +10,11 @@ export 'app_runner.dart' show runEngineApp, MyApp;
 export 'core/config/app_config.dart'
     show AppConfig, Branding, EngineConfig, appConfigProvider;
 export 'core/errors/engine_exception.dart';
-export 'core/game/local_bot.dart';
 export 'core/game/game_creation_spec.dart';
 export 'core/game/game_frame.dart';
 export 'core/game/game_module.dart';
-export 'core/game/game_outcome.dart';
 export 'core/game/game_player.dart';
 export 'core/game/my_seat.dart';
-export 'core/game/game_status.dart';
 export 'core/game/players_context.dart';
 export 'core/game/timing_context.dart';
 export 'features/game/providers/game_providers.dart'

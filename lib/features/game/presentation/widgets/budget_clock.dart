@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:eigen_flutter/core/connectivity/connectivity_provider.dart';
 import 'package:eigen_flutter/core/game/timing_constants.dart';
 import 'package:eigen_flutter/features/game/presentation/widgets/timer_builders.dart';
+import 'package:eigen_flutter/core/api/engine_api_providers.dart';
 
 /// Shows all players' remaining time banks side by side for budget
 /// (accumulated clock) games.
@@ -25,7 +26,7 @@ class BudgetClock extends ConsumerWidget {
   const BudgetClock({
     super.key,
     required this.playerTimes,
-    required this.turnStartedAt,
+    required this.deadline,
     required this.pendingPlayers,
     required this.myPlayerIndex,
   });
@@ -33,9 +34,9 @@ class BudgetClock extends ConsumerWidget {
   /// Remaining time in milliseconds per player, 0-indexed.
   final List<int> playerTimes;
 
-  /// When the current turn began. Used to compute live drain for active
-  /// players. Null before the first turn or in untimed phases.
-  final DateTime? turnStartedAt;
+  /// Absolute server deadline for the acting seat's bank, epoch milliseconds.
+  /// Null in an untimed phase.
+  final int? deadline;
 
   /// Indices of currently active (draining) players.
   final List<int> pendingPlayers;
@@ -55,7 +56,9 @@ class BudgetClock extends ConsumerWidget {
           Expanded(
             child: PlayerTimerBuilder(
               playerTimes: playerTimes,
-              turnStartedAt: turnStartedAt,
+              deadline: deadline == null
+                  ? null
+                  : ref.watch(serverClockProvider).deviceTimeFor(deadline!),
               pendingPlayers: pendingPlayers,
               playerIndex: i,
               isPaused: isOffline,

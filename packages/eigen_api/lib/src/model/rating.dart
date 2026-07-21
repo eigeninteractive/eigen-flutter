@@ -87,7 +87,7 @@ class Rating {
   )
 
 
-  final num updatedAt;
+  final int updatedAt;
 
 
 

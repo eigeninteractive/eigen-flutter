@@ -107,16 +107,21 @@ class _TurnTimerBuilderState extends State<TurnTimerBuilder> {
 /// Headless widget that computes a single player's remaining budget time,
 /// exposing it to a [builder] callback every second.
 ///
-/// The active player's bank drains live using [turnStartedAt]; inactive
-/// players receive their static [playerTimes] value. Use this as the
-/// computation layer beneath any styled clock cell.
+/// The active player's bank drains live toward [deadline]; inactive players
+/// receive their static [playerTimes] value. Use this as the computation layer
+/// beneath any styled clock cell.
+///
+/// Only one bank drains at a time — budget mode permits a single pending seat,
+/// so the turn deadline and the acting seat's remaining bank are the same
+/// quantity. That is why the deadline alone is enough here, with no separate
+/// turn-start to track and drift against.
 ///
 /// Set [isPaused] to freeze the displayed value while offline.
 class PlayerTimerBuilder extends StatefulWidget {
   const PlayerTimerBuilder({
     super.key,
     required this.playerTimes,
-    required this.turnStartedAt,
+    required this.deadline,
     required this.pendingPlayers,
     required this.playerIndex,
     required this.builder,
@@ -126,9 +131,9 @@ class PlayerTimerBuilder extends StatefulWidget {
   /// Remaining time in milliseconds per player, 0-indexed.
   final List<int> playerTimes;
 
-  /// When the current turn began. Used to compute live drain for the active
-  /// player. Null before the first turn or during untimed phases.
-  final DateTime? turnStartedAt;
+  /// When the acting seat's bank runs out, on the device clock. Null in an
+  /// untimed phase.
+  final DateTime? deadline;
 
   /// Indices of currently active (draining) players.
   final List<int> pendingPlayers;
@@ -172,11 +177,12 @@ class _PlayerTimerBuilderState extends State<PlayerTimerBuilder> {
 
   int get _remainingMs {
     final base = widget.playerTimes[widget.playerIndex];
-    if (!_isActive || widget.turnStartedAt == null) return base;
-    final elapsed = DateTime.now()
-        .difference(widget.turnStartedAt!)
-        .inMilliseconds;
-    return max(0, base - elapsed);
+    final deadline = widget.deadline;
+    if (!_isActive || deadline == null) return base;
+    // Clamped to the frame's value as well as to zero: a clock skew correction
+    // landing mid-turn must never make a bank appear to grow.
+    final left = deadline.difference(DateTime.now()).inMilliseconds;
+    return max(0, min(base, left));
   }
 
   @override

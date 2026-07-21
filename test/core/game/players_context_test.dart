@@ -1,35 +1,36 @@
 import 'package:checks/checks.dart';
 import 'package:eigen_flutter/core/game/game_player.dart';
 import 'package:eigen_flutter/core/game/my_seat.dart';
-import 'package:eigen_flutter/core/game/participant_type.dart';
+import 'package:eigen_api/eigen_api.dart';
 import 'package:eigen_flutter/core/game/players_context.dart';
-import 'package:eigen_flutter/shared/data/models/player_info.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-const _alice = GamePlayer(
+final _alice = GamePlayer(
   playerIndex: 0,
-  type: ParticipantType.human,
-  info: PlayerInfo(
+  type: SeatTypeEnum.human,
+  info: Player(
     id: '1',
     username: 'alice',
     displayName: 'Alice',
-    isGuest: false,
+    avatarUrl: null,
+    isAnonymous: false,
   ),
 );
-const _bob = GamePlayer(
+final _bob = GamePlayer(
   playerIndex: 1,
-  type: ParticipantType.bot,
-  info: PlayerInfo(
+  type: SeatTypeEnum.bot,
+  info: Player(
     id: '2',
     username: 'bob',
     displayName: 'Bob',
-    isGuest: false,
+    avatarUrl: null,
+    isAnonymous: false,
   ),
 );
 
 void main() {
   test('operator[] resolves the seated player', () {
-    const ctx = PlayersContext(
+    final ctx = PlayersContext(
       players: {0: _alice, 1: _bob},
       mySeat: Seated(0),
     );
@@ -38,7 +39,7 @@ void main() {
   });
 
   test('me resolves the current user when Seated', () {
-    const ctx = PlayersContext(
+    final ctx = PlayersContext(
       players: {0: _alice, 1: _bob},
       mySeat: Seated(1),
     );
@@ -46,7 +47,7 @@ void main() {
   });
 
   test('me is null for a Viewer (non-participant, no seat)', () {
-    const ctx = PlayersContext(players: {0: _alice}, mySeat: Viewer());
+    final ctx = PlayersContext(players: {0: _alice}, mySeat: Viewer());
     check(ctx.me).isNull();
   });
 

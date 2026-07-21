@@ -101,7 +101,7 @@ void (empty response body)
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **getFriendsGames**
-> FriendsGames getFriendsGames(limit)
+> FriendsGames getFriendsGames(limit, cursor)
 
 
 
@@ -111,9 +111,10 @@ import 'package:eigen_api/api.dart';
 
 final api = EigenApi().getSocialApi();
 final int limit = 56; // int | 
+final int cursor = 56; // int | 
 
 try {
-    final response = api.getFriendsGames(limit);
+    final response = api.getFriendsGames(limit, cursor);
     print(response);
 } catch on DioException (e) {
     print('Exception when calling SocialApi->getFriendsGames: $e\n');
@@ -125,6 +126,7 @@ try {
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
  **limit** | **int**|  | [optional] [default to 20]
+ **cursor** | **int**|  | [optional] 
 
 ### Return type
 

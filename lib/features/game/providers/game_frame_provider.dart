@@ -42,6 +42,23 @@ Future<Object> gameConfig(Ref ref, {required String gameId}) async {
   return rules.parseConfig(summary.config as Map<String, dynamic>) as Object;
 }
 
+/// How long the current turn was when it started, in milliseconds.
+///
+/// In budget mode the window *is* the acting seat's bank, and budget mode
+/// permits only one pending seat, so that is unambiguous. Otherwise it is the
+/// game's configured per-turn length. Null for an untimed game, or when a hook
+/// set a per-action deadline the client cannot see - both cases fall back to a
+/// truthful, unmargined countdown.
+int? _turnWindowMillis(GameSummary? summary, Frame frame) {
+  final banks = frame.playerTimes;
+  if (banks != null && frame.pendingPlayers.length == 1) {
+    final seat = frame.pendingPlayers.first;
+    if (seat < banks.length) return banks[seat];
+  }
+  final turnSeconds = summary?.turnSeconds;
+  return turnSeconds == null ? null : turnSeconds * 1000;
+}
+
 /// Memoizes [GameRules.parseObservation] so it only runs when the raw payload
 /// changes, not on every rebuild of [gameFrame].
 @riverpod
@@ -73,8 +90,12 @@ GameFrame? gameFrame(Ref ref, {required String gameId}) {
     version: frame.version,
     timing: TimingContext(
       clock: ref.watch(serverClockProvider),
-      playerTimes: frame.playerTimes?.map((t) => t.toInt()).toList(),
-      deadline: frame.deadline?.toInt(),
+      playerTimes: frame.playerTimes,
+      deadline: frame.deadline,
+      windowMillis: _turnWindowMillis(
+        ref.watch(gameSummaryProvider(gameId: gameId)).value,
+        frame,
+      ),
     ),
   );
 }

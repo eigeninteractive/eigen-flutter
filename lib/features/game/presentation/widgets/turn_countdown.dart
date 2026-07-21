@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:eigen_flutter/core/api/engine_api_providers.dart';
 import 'package:eigen_flutter/core/connectivity/connectivity_provider.dart';
 import 'package:eigen_flutter/core/game/timing_constants.dart';
 import 'package:eigen_flutter/features/game/presentation/widgets/timer_builders.dart';
@@ -18,23 +19,32 @@ import 'package:eigen_flutter/features/game/presentation/widgets/timer_builders.
 /// Provide [style] to override the default [TextTheme.bodySmall] — useful
 /// when the countdown should be larger (e.g. inside the game screen).
 ///
-/// Provide [turnStartedAt] to enable the soft-deadline margin: the countdown
-/// reaches zero slightly before the true server deadline so an on-time submit
-/// survives network latency. The margin is capped to a fraction of the turn
-/// window (`deadline - turnStartedAt`) so short windows are not swallowed. Omit
-/// it (e.g. on at-a-glance home cards) for a truthful, unmargined countdown.
+/// [deadline] is an absolute server timestamp in epoch milliseconds, converted
+/// here against [ServerClock] — a device with a skewed clock would otherwise
+/// show a countdown that disagrees with when the turn actually expires.
+///
+/// Provide [windowMillis] (how long the turn was when it began) to enable the
+/// soft-deadline margin: the countdown reaches zero slightly before the true
+/// deadline so an on-time submit survives network latency. The margin is capped
+/// to a fraction of the window so a short one — a three-second reaction window —
+/// is not swallowed whole. Omit it (e.g. on at-a-glance home cards) for a
+/// truthful, unmargined countdown.
 ///
 /// Timing state is owned by [TurnTimerBuilder].
 class TurnCountdown extends ConsumerWidget {
   const TurnCountdown({
     super.key,
     required this.deadline,
-    this.turnStartedAt,
+    this.windowMillis,
     this.style,
   });
 
-  final DateTime deadline;
-  final DateTime? turnStartedAt;
+  /// Absolute server deadline, epoch milliseconds.
+  final int deadline;
+
+  /// How long this turn was when it started, in milliseconds.
+  final int? windowMillis;
+
   final TextStyle? style;
 
   @override
@@ -42,12 +52,13 @@ class TurnCountdown extends ConsumerWidget {
     final isOffline = ref.watch(isOfflineProvider);
     final colorScheme = Theme.of(context).colorScheme;
 
-    final softMargin = turnStartedAt == null
+    final window = windowMillis;
+    final softMargin = window == null
         ? Duration.zero
-        : softDeadlineMarginFor(deadline.difference(turnStartedAt!));
+        : softDeadlineMarginFor(Duration(milliseconds: window));
 
     return TurnTimerBuilder(
-      deadline: deadline,
+      deadline: ref.watch(serverClockProvider).deviceTimeFor(deadline),
       softMargin: softMargin,
       isPaused: isOffline,
       builder: (context, remaining) {

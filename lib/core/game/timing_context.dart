@@ -9,7 +9,12 @@ import 'package:eigen_flutter/core/api/server_clock.dart';
 /// Index scheme: all lists are 0-based player indices, consistent with
 /// [GameFrame.pendingPlayers].
 class TimingContext {
-  const TimingContext({required this.clock, this.playerTimes, this.deadline});
+  const TimingContext({
+    required this.clock,
+    this.playerTimes,
+    this.deadline,
+    this.windowMillis,
+  });
 
   /// Server time. Deadlines are absolute server timestamps, so every countdown
   /// measures against this rather than the device clock - a device whose clock
@@ -33,8 +38,24 @@ class TimingContext {
   /// here: the client shows the true deadline and lets the server be lenient.
   final int? deadline;
 
+  /// How long the current turn was when it began, in milliseconds.
+  ///
+  /// Not on the wire - the server sends only the deadline, since that is the
+  /// one value it is authoritative about. Derived instead from the game's
+  /// configured turn length, or in budget mode from the acting seat's bank,
+  /// which *is* the window. Used only to size the soft-deadline margin, so
+  /// being approximate is fine and being absent is safe.
+  final int? windowMillis;
+
   /// Whether this game is timed at all.
   bool get isTimed => deadline != null;
+
+  /// The deadline on the device clock, for widgets that tick against
+  /// `DateTime.now()`. Null when untimed.
+  DateTime? get deviceDeadline {
+    final at = deadline;
+    return at == null ? null : clock.deviceTimeFor(at);
+  }
 
   /// Time left on the current turn, or null when untimed.
   ///

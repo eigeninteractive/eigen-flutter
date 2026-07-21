@@ -14,20 +14,21 @@ Name | Type | Description | Notes
 **access** | [**GameAccess**](GameAccess.md) |  | 
 **schemaVersion** | **int** |  | 
 **config** | **Object** |  | 
-**turnSeconds** | **num** |  | 
-**budgetSeconds** | **num** |  | 
-**incrementSeconds** | **num** |  | 
+**turnSeconds** | **int** |  | 
+**budgetSeconds** | **int** |  | 
+**incrementSeconds** | **int** |  | 
 **rated** | **bool** |  | 
 **ratingPool** | **String** |  | 
 **minPlayers** | **int** |  | 
 **maxPlayers** | **int** |  | 
 **shortCode** | **String** |  | 
 **pendingPlayers** | **List&lt;int&gt;** |  | 
-**turnDeadline** | **num** |  | 
+**turnDeadline** | **int** |  | 
 **outcomes** | [**List&lt;Outcome&gt;**](Outcome.md) |  | 
-**finishedAt** | **num** |  | 
-**createdAt** | **num** |  | 
-**updatedAt** | **num** |  | 
+**ratings** | [**List&lt;RatingDelta&gt;**](RatingDelta.md) |  | [optional] 
+**finishedAt** | **int** |  | 
+**createdAt** | **int** |  | 
+**updatedAt** | **int** |  | 
 **participants** | [**List&lt;Seat&gt;**](Seat.md) |  | 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)

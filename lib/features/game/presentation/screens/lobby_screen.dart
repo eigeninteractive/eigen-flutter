@@ -5,15 +5,16 @@ import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 import 'package:eigen_flutter/core/errors/error_messages.dart';
 import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
 import 'package:eigen_flutter/features/game/data/game_repository.dart';
-import 'package:eigen_flutter/core/game/participant_type.dart';
-import 'package:eigen_flutter/features/game/data/models/game.dart';
-import 'package:eigen_flutter/features/game/data/models/participant.dart';
+
+
 import 'package:eigen_flutter/features/game/providers/game_providers.dart';
 import 'package:eigen_flutter/features/game/utils/game_timing.dart';
 import 'package:eigen_flutter/features/game/presentation/widgets/new_game_dialog.dart';
 import 'package:eigen_flutter/shared/providers/player_providers.dart';
 import 'package:eigen_flutter/shared/widgets/empty_state_view.dart';
 import 'package:eigen_flutter/shared/widgets/overlapping_avatars.dart';
+import 'package:eigen_api/eigen_api.dart';
+import 'package:eigen_flutter/features/social/providers/social_providers.dart';
 
 /// Screen for browsing and joining public games.
 class LobbyScreen extends ConsumerStatefulWidget {
@@ -22,12 +23,6 @@ class LobbyScreen extends ConsumerStatefulWidget {
   @override
   ConsumerState<LobbyScreen> createState() => _LobbyScreenState();
 }
-
-typedef _LobbyEntry = ({
-  Game game,
-  List<Participant> participants,
-  bool isParticipant,
-});
 
 enum _LobbyMode { public, friends }
 
@@ -124,7 +119,7 @@ class _LobbyTabContent extends ConsumerStatefulWidget {
 
 class _LobbyTabContentState extends ConsumerState<_LobbyTabContent>
     with AutomaticKeepAliveClientMixin {
-  late final PagingController<String, _LobbyEntry> _pagingController;
+  late final PagingController<String, GameSummary> _pagingController;
 
   @override
   bool get wantKeepAlive => true;
@@ -132,23 +127,22 @@ class _LobbyTabContentState extends ConsumerState<_LobbyTabContent>
   @override
   void initState() {
     super.initState();
-    _pagingController = PagingController<String, _LobbyEntry>(
+    _pagingController = PagingController<String, GameSummary>(
       getNextPageKey: (state) {
         final pages = state.pages;
         if (pages == null || pages.isEmpty) return '';
         final lastPage = pages.last;
         if (lastPage.length < lobbyPageSize) return null;
-        return lastPage.last.game.createdAt.toIso8601String();
+        return '${lastPage.last.createdAt}';
       },
       fetchPage: (key) {
-        final cursor = key.isEmpty ? null : DateTime.parse(key);
+        final cursor = key.isEmpty ? null : int.parse(key);
         if (widget.mode == _LobbyMode.public) {
-          return ref.read(gameRepositoryProvider).getLobbyGames(cursor: cursor);
-        } else {
-          return ref
-              .read(gameRepositoryProvider)
-              .getFriendsGames(cursor: cursor);
+          return ref.read(gameRepositoryProvider).getLobby(cursor: cursor);
         }
+        return ref
+            .read(socialRepositoryProvider)
+            .getFriendsGames(cursor: cursor);
       },
     );
     _pagingController.addListener(_onPagingError);
@@ -191,18 +185,16 @@ class _LobbyTabContentState extends ConsumerState<_LobbyTabContent>
       child: PagingListener(
         controller: _pagingController,
         builder: (context, state, fetchNextPage) =>
-            PagedListView<String, _LobbyEntry>(
+            PagedListView<String, GameSummary>(
               state: state,
               fetchNextPage: fetchNextPage,
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
-              builderDelegate: PagedChildBuilderDelegate<_LobbyEntry>(
+              builderDelegate: PagedChildBuilderDelegate<GameSummary>(
                 animateTransitions: true,
                 itemBuilder: (context, item, index) => _GameCard(
-                  key: ValueKey(item.game.id),
-                  game: item.game,
-                  participants: item.participants,
-                  isParticipant: item.isParticipant,
+                  key: ValueKey(item.id),
+                  game: item,
                   onCancelled: _pagingController.refresh,
                   onJoined: _pagingController.refresh,
                 ),
@@ -251,15 +243,11 @@ class _GameCard extends ConsumerStatefulWidget {
   const _GameCard({
     super.key,
     required this.game,
-    required this.participants,
-    required this.isParticipant,
     required this.onCancelled,
     required this.onJoined,
   });
 
-  final Game game;
-  final List<Participant> participants;
-  final bool isParticipant;
+  final GameSummary game;
   final VoidCallback onCancelled;
   final VoidCallback onJoined;
 
@@ -274,7 +262,11 @@ class _GameCardState extends ConsumerState<_GameCard> {
   Widget build(BuildContext context) {
     final currentUser = ref.watch(currentUserProvider);
     final isOwner = widget.game.createdBy == currentUser?.id;
-    final canNavigate = isOwner || widget.isParticipant;
+    // Membership comes off the roster the summary already carries.
+    final isParticipant = widget.game.participants.any(
+      (p) => p.userId == ref.watch(currentUserIdProvider),
+    );
+    final canNavigate = isOwner || isParticipant;
     // A game created by a newer build cannot be rendered by this client; refuse
     // to join (and thus seat) it. The server enforces the same check, but
     // disabling the button gives immediate feedback instead of a failed tap.
@@ -288,16 +280,16 @@ class _GameCardState extends ConsumerState<_GameCard> {
         widget.game.rated && ref.watch(isAnonymousProvider);
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
-    final playerCount = widget.participants.length;
+    final playerCount = widget.game.participants.length;
 
-    // Resolve participant PlayerInfo from the cached provider.
+    // Resolve participant Player from the cached provider.
     final avatars = <AvatarEntry>[];
-    for (final p in widget.participants) {
+    for (final p in widget.game.participants) {
       final playerId = p.userId ?? p.botId;
       if (playerId == null) continue;
       final info = ref.watch(playerInfoCacheProvider(id: playerId));
       if (info.value case final value?) {
-        avatars.add((info: value, isBot: p.type == ParticipantType.bot));
+        avatars.add((avatarUrl: value.avatarUrl, isBot: p.type == SeatTypeEnum.bot));
       }
     }
 
@@ -361,7 +353,7 @@ class _GameCardState extends ConsumerState<_GameCard> {
                 ),
                 child: const Text('Cancel'),
               )
-            : widget.isParticipant
+            : isParticipant
             ? OutlinedButton(
                 onPressed: () => context.pushNamed(
                   'game',

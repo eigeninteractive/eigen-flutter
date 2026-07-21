@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:eigen_flutter/core/game/game_outcome.dart';
-import 'package:eigen_flutter/core/game/participant_type.dart';
-import 'package:eigen_flutter/features/game/data/models/game.dart';
+
 import 'package:eigen_flutter/features/game/presentation/extensions/game_ui.dart';
 import 'package:eigen_flutter/features/game/providers/game_providers.dart';
 import 'package:eigen_flutter/features/rating/presentation/widgets/player_ratings.dart';
@@ -35,7 +33,7 @@ class PlayerProfileSheet extends ConsumerWidget {
   final String playerId;
 
   /// Whether this player is a human or bot.
-  final ParticipantType type;
+  final SeatTypeEnum type;
 
   /// Scroll controller from the enclosing [DraggableScrollableSheet].
   final ScrollController scrollController;
@@ -44,7 +42,7 @@ class PlayerProfileSheet extends ConsumerWidget {
   static void show(
     BuildContext context, {
     required String playerId,
-    required ParticipantType type,
+    required SeatTypeEnum type,
   }) {
     showModalBottomSheet<void>(
       context: context,
@@ -103,7 +101,7 @@ class PlayerProfileSheet extends ConsumerWidget {
             // identity is still loading (or failed: deleted account) the
             // section stays hidden rather than flashing an Add Friend button
             // at a player who may turn out to be a guest.
-            if (type == ParticipantType.human &&
+            if (type == SeatTypeEnum.human &&
                 playerAsync.value?.isAnonymous == false)
               SliverToBoxAdapter(child: _SocialSection(playerId: playerId)),
             const SliverToBoxAdapter(child: SizedBox(height: 32)),
@@ -139,7 +137,7 @@ class _Header extends StatelessWidget {
   const _Header({required this.player, required this.type});
 
   final Player player;
-  final ParticipantType type;
+  final SeatTypeEnum type;
 
   @override
   Widget build(BuildContext context) {
@@ -153,7 +151,7 @@ class _Header extends StatelessWidget {
           PlayerAvatar(
             avatarUrl: player.avatarUrl,
             radius: 40,
-            isBot: type == ParticipantType.bot,
+            isBot: type == SeatTypeEnum.bot,
           ),
           const SizedBox(height: 16),
           Text(
@@ -168,7 +166,7 @@ class _Header extends StatelessWidget {
               color: colorScheme.onSurfaceVariant,
             ),
           ),
-          if (type == ParticipantType.bot) ...[
+          if (type == SeatTypeEnum.bot) ...[
             const SizedBox(height: 12),
             const BotTag(),
           ] else if (player.isAnonymous) ...[
@@ -264,12 +262,14 @@ class _RecentGamesSection extends ConsumerWidget {
   const _RecentGamesSection({required this.playerId, required this.type});
 
   final String playerId;
-  final ParticipantType type;
+  final SeatTypeEnum type;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // No `type` needed: the endpoint matches either identity column, so a bot's
+    // history resolves from its id exactly as a human's does.
     final gamesAsync = ref.watch(
-      playerPublicFinishedGamesProvider(playerId: playerId, type: type),
+      playerPublicFinishedGamesProvider(playerId: playerId),
     );
 
     final games = gamesAsync.whenOrNull(data: (g) => g) ?? const [];
@@ -280,26 +280,44 @@ class _RecentGamesSection extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (final entry in games)
-            _RecentGameRow(game: entry.game, result: entry.result),
+          for (final game in games)
+            _RecentGameRow(game: game, result: _resultFor(game, playerId)),
         ],
       ),
     );
   }
 }
 
+/// The viewed player's own result in a finished game.
+///
+/// Read off the summary's outcomes rather than fetched: the list response
+/// already carries every seat's result, so a row needs nothing more.
+OutcomeResultEnum? _resultFor(GameSummary game, String playerId) {
+  final seat = game.participants
+      .where((p) => p.userId == playerId || p.botId == playerId)
+      .map((p) => p.playerIndex)
+      .firstOrNull;
+  if (seat == null) return null;
+  return game.outcomes
+      ?.where((o) => o.playerIndex == seat)
+      .map((o) => o.result)
+      .firstOrNull;
+}
+
 class _RecentGameRow extends StatelessWidget {
   const _RecentGameRow({required this.game, required this.result});
 
-  final Game game;
-  final OutcomeResult? result;
+  final GameSummary game;
+  final OutcomeResultEnum? result;
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
     final locale = Localizations.localeOf(context).toString();
-    final date = game.finishedAt ?? game.updatedAt;
+    final date = DateTime.fromMillisecondsSinceEpoch(
+      game.finishedAt ?? game.updatedAt,
+    );
     final dateLabel = DateFormat.yMMMd(locale).format(date.toLocal());
 
     return ListTile(

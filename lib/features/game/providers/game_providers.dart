@@ -1,10 +1,10 @@
 import 'package:eigen_api/eigen_api.dart';
 import 'package:eigen_flutter/core/api/engine_api_providers.dart';
 import 'package:eigen_flutter/core/api/game_socket.dart';
+import 'package:eigen_flutter/core/game/game_creation_spec.dart';
 import 'package:eigen_flutter/core/game/game_module.dart';
 import 'package:eigen_flutter/core/game/game_player.dart';
 import 'package:eigen_flutter/core/game/my_seat.dart';
-import 'package:eigen_flutter/core/game/participant_type.dart';
 import 'package:eigen_flutter/core/game/players_context.dart';
 import 'package:eigen_flutter/core/storage/storage_provider.dart';
 import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
@@ -78,18 +78,41 @@ Future<Map<String, Bot>> botCatalogById(Ref ref) async {
 
 /// Whether the solo-play entry should be offered for this deployment.
 ///
-/// Solo play means seating a server-side bot, which needs a registered account
-/// and a bot this build's rules can play against. Timing no longer enters into
-/// it: bots run on the server, so every timing mode is available to them.
+/// Three conditions, all enforced server-side too - this only avoids offering
+/// an entry that would fail:
+///
+/// 1. **A registered account.** Guests cannot seat bots in rated games, and
+///    solo games are rated when eligible.
+/// 2. **A bot this build's rules can play.** Solo creation always targets the
+///    latest version, so usability is judged against the latest unit.
+/// 3. **A timed mode.** A *server-seated* bot requires one: dispatch is
+///    single-attempt, so if a bot's turn is never delivered the only thing that
+///    resolves the game is the turn deadline firing the server's alarm. Untimed
+///    means no deadline, no alarm, and a game wedged forever - the server
+///    refuses it on the seating path.
+///
+/// Gating on all three - rather than just "a bot exists" - keeps an untimed-only
+/// deployment from showing a solo entry that opens a dead-end picker.
+///
+/// The timing condition is deliberately tied to *server* seating rather than to
+/// bots in general, because the deferred offline-solo path will not share it: a
+/// client-driven bot has no dispatch to fail, so an on-device game can be
+/// untimed. When that lands, this becomes a choice between two solo modes
+/// (untimed on-device, timed server-seated) rather than a single gate, and the
+/// partition it needs is already the one expressed here.
 @riverpod
 bool soloPlayAvailable(Ref ref) {
   final module = ref.watch(currentGameModuleProvider);
   final bots = ref.watch(availableBotsProvider).value ?? const [];
   if (ref.watch(isAnonymousProvider)) return false;
 
-  // Solo creation always targets the latest version, so bot usability is
-  // evaluated against the latest rules unit.
-  return bots.any((b) => b.schemaVersion <= module.latestSchemaVersion);
+  final hasTimedMode = module.creationSpec.timingConfigs.values.any(
+    (c) => c is! UntimedConfig,
+  );
+  final hasUsableBot = bots.any(
+    (b) => b.schemaVersion <= module.latestSchemaVersion,
+  );
+  return hasTimedMode && hasUsableBot;
 }
 
 /// The caller's games, "your turn" first then most recently updated.
@@ -202,9 +225,6 @@ Future<MapEntry<int, GamePlayer>> _resolveSeat(
   required String gameId,
   required Seat seat,
 }) async {
-  final type = seat.type == SeatTypeEnum.bot
-      ? ParticipantType.bot
-      : ParticipantType.human;
   final id = seat.userId ?? seat.botId;
 
   if (id == null) {
@@ -212,7 +232,7 @@ Future<MapEntry<int, GamePlayer>> _resolveSeat(
       seat.playerIndex,
       GamePlayer(
         playerIndex: seat.playerIndex,
-        type: type,
+        type: seat.type,
         info: _deletedPlayer(gameId, seat.playerIndex),
         isDeleted: true,
       ),
@@ -222,7 +242,7 @@ Future<MapEntry<int, GamePlayer>> _resolveSeat(
   final info = await ref.watch(playerInfoCacheProvider(id: id).future);
   return MapEntry(
     seat.playerIndex,
-    GamePlayer(playerIndex: seat.playerIndex, type: type, info: info),
+    GamePlayer(playerIndex: seat.playerIndex, type: seat.type, info: info),
   );
 }
 
@@ -238,13 +258,13 @@ Player _deletedPlayer(String gameId, int playerIndex) => Player(
   isAnonymous: false,
 );
 
-/// Joins a game by invite code and returns the resulting roster.
+/// Joins a game by invite code, returning the game's id and its roster.
 ///
 /// Auto-disposes once the join screen navigates away. The screen uses
 /// [ref.listen] to react to the result rather than watching the value
 /// directly, so navigation happens exactly once.
 @riverpod
-Future<Roster> joinByCode(Ref ref, {required String code}) => ref
+Future<Joined> joinByCode(Ref ref, {required String code}) => ref
     .read(gameRepositoryProvider)
     .joinGameByCode(
       code,

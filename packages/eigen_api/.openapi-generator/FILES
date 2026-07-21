@@ -34,6 +34,7 @@ doc/GameSummary.md
 doc/GamesApi.md
 doc/Join.md
 doc/JoinByCode.md
+doc/Joined.md
 doc/Lobby.md
 doc/LobbyAccepted.md
 doc/LobbyCommand.md
@@ -101,6 +102,7 @@ lib/src/model/game_status.dart
 lib/src/model/game_summary.dart
 lib/src/model/join.dart
 lib/src/model/join_by_code.dart
+lib/src/model/joined.dart
 lib/src/model/lobby.dart
 lib/src/model/lobby_accepted.dart
 lib/src/model/lobby_command.dart

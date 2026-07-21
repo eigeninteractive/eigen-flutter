@@ -15,7 +15,7 @@ Method | HTTP request | Description
 
 
 # **getPlayerGames**
-> PlayerGames getPlayerGames(playerId, limit)
+> PlayerGames getPlayerGames(playerId, limit, cursor)
 
 
 
@@ -26,9 +26,10 @@ import 'package:eigen_api/api.dart';
 final api = EigenApi().getPlayersApi();
 final String playerId = playerId_example; // String | 
 final int limit = 56; // int | 
+final int cursor = 56; // int | 
 
 try {
-    final response = api.getPlayerGames(playerId, limit);
+    final response = api.getPlayerGames(playerId, limit, cursor);
     print(response);
 } catch on DioException (e) {
     print('Exception when calling PlayersApi->getPlayerGames: $e\n');
@@ -41,6 +42,7 @@ Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
  **playerId** | **String**|  | 
  **limit** | **int**|  | [optional] [default to 20]
+ **cursor** | **int**|  | [optional] 
 
 ### Return type
 

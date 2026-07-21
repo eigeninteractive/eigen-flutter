@@ -45,6 +45,7 @@ export 'package:eigen_api/src/model/game_status.dart';
 export 'package:eigen_api/src/model/game_summary.dart';
 export 'package:eigen_api/src/model/join.dart';
 export 'package:eigen_api/src/model/join_by_code.dart';
+export 'package:eigen_api/src/model/joined.dart';
 export 'package:eigen_api/src/model/lobby.dart';
 export 'package:eigen_api/src/model/lobby_accepted.dart';
 export 'package:eigen_api/src/model/lobby_command.dart';

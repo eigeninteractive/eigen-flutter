@@ -323,7 +323,7 @@ Name | Type | Description  | Notes
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **getLobby**
-> Lobby getLobby(limit)
+> Lobby getLobby(limit, cursor)
 
 
 
@@ -333,9 +333,10 @@ import 'package:eigen_api/api.dart';
 
 final api = EigenApi().getGamesApi();
 final int limit = 56; // int | 
+final int cursor = 56; // int | 
 
 try {
-    final response = api.getLobby(limit);
+    final response = api.getLobby(limit, cursor);
     print(response);
 } catch on DioException (e) {
     print('Exception when calling GamesApi->getLobby: $e\n');
@@ -347,6 +348,7 @@ try {
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
  **limit** | **int**|  | [optional] [default to 20]
+ **cursor** | **int**|  | [optional] 
 
 ### Return type
 
@@ -364,7 +366,7 @@ Name | Type | Description  | Notes
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **getMyGames**
-> MyGames getMyGames(bucket, limit)
+> MyGames getMyGames(bucket, limit, cursor)
 
 
 
@@ -375,9 +377,10 @@ import 'package:eigen_api/api.dart';
 final api = EigenApi().getGamesApi();
 final String bucket = bucket_example; // String | 
 final int limit = 56; // int | 
+final int cursor = 56; // int | 
 
 try {
-    final response = api.getMyGames(bucket, limit);
+    final response = api.getMyGames(bucket, limit, cursor);
     print(response);
 } catch on DioException (e) {
     print('Exception when calling GamesApi->getMyGames: $e\n');
@@ -390,6 +393,7 @@ Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
  **bucket** | **String**|  | [optional] [default to 'active']
  **limit** | **int**|  | [optional] [default to 20]
+ **cursor** | **int**|  | [optional] 
 
 ### Return type
 
@@ -407,7 +411,7 @@ Name | Type | Description  | Notes
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **joinGame**
-> LobbyAccepted joinGame(gameId, join)
+> Joined joinGame(gameId, join)
 
 
 
@@ -436,7 +440,7 @@ Name | Type | Description  | Notes
 
 ### Return type
 
-[**LobbyAccepted**](LobbyAccepted.md)
+[**Joined**](Joined.md)
 
 ### Authorization
 
@@ -450,7 +454,7 @@ Name | Type | Description  | Notes
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **joinGameByCode**
-> LobbyAccepted joinGameByCode(joinByCode)
+> Joined joinGameByCode(joinByCode)
 
 
 
@@ -477,7 +481,7 @@ Name | Type | Description  | Notes
 
 ### Return type
 
-[**LobbyAccepted**](LobbyAccepted.md)
+[**Joined**](Joined.md)
 
 ### Authorization
 

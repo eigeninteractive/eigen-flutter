@@ -12,8 +12,8 @@ Name | Type | Description | Notes
 **version** | **int** |  | 
 **data** | **Object** |  | 
 **pendingPlayers** | **List&lt;int&gt;** |  | 
-**deadline** | **num** |  | 
-**playerTimes** | **List&lt;num&gt;** |  | 
+**deadline** | **int** |  | 
+**playerTimes** | **List&lt;int&gt;** |  | 
 **outcomes** | [**List&lt;Outcome&gt;**](Outcome.md) |  | [optional] 
 **ratings** | [**List&lt;RatingDelta&gt;**](RatingDelta.md) |  | [optional] 
 

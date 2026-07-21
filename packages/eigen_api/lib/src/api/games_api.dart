@@ -21,6 +21,7 @@ import 'package:eigen_api/src/model/frames.dart';
 import 'package:eigen_api/src/model/game_summary.dart';
 import 'package:eigen_api/src/model/join.dart';
 import 'package:eigen_api/src/model/join_by_code.dart';
+import 'package:eigen_api/src/model/joined.dart';
 import 'package:eigen_api/src/model/lobby.dart';
 import 'package:eigen_api/src/model/lobby_accepted.dart';
 import 'package:eigen_api/src/model/lobby_command.dart';
@@ -690,6 +691,7 @@ _responseData = rawData == null ? null : deserialize<GameSummary, GameSummary>(r
   ///
   /// Parameters:
   /// * [limit] 
+  /// * [cursor] 
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -701,6 +703,7 @@ _responseData = rawData == null ? null : deserialize<GameSummary, GameSummary>(r
   /// Throws [DioException] if API call or serialization fails
   Future<Response<Lobby>> getLobby({ 
     int? limit = 20,
+    int? cursor,
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
     Map<String, dynamic>? extra,
@@ -729,6 +732,7 @@ _responseData = rawData == null ? null : deserialize<GameSummary, GameSummary>(r
 
     final _queryParameters = <String, dynamic>{
       if (limit != null) r'limit': limit,
+      r'cursor': cursor,
     };
 
     final _response = await _dio.request<Object>(
@@ -774,6 +778,7 @@ _responseData = rawData == null ? null : deserialize<Lobby, Lobby>(rawData, 'Lob
   /// Parameters:
   /// * [bucket] 
   /// * [limit] 
+  /// * [cursor] 
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -786,6 +791,7 @@ _responseData = rawData == null ? null : deserialize<Lobby, Lobby>(rawData, 'Lob
   Future<Response<MyGames>> getMyGames({ 
     String? bucket = 'active',
     int? limit = 20,
+    int? cursor,
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
     Map<String, dynamic>? extra,
@@ -815,6 +821,7 @@ _responseData = rawData == null ? null : deserialize<Lobby, Lobby>(rawData, 'Lob
     final _queryParameters = <String, dynamic>{
       if (bucket != null) r'bucket': bucket,
       if (limit != null) r'limit': limit,
+      r'cursor': cursor,
     };
 
     final _response = await _dio.request<Object>(
@@ -867,9 +874,9 @@ _responseData = rawData == null ? null : deserialize<MyGames, MyGames>(rawData, 
   /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
   /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
   ///
-  /// Returns a [Future] containing a [Response] with a [LobbyAccepted] as data
+  /// Returns a [Future] containing a [Response] with a [Joined] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<LobbyAccepted>> joinGame({ 
+  Future<Response<Joined>> joinGame({ 
     required String gameId,
     required Join join,
     CancelToken? cancelToken,
@@ -924,11 +931,11 @@ _bodyData=jsonEncode(join);
       onReceiveProgress: onReceiveProgress,
     );
 
-    LobbyAccepted? _responseData;
+    Joined? _responseData;
 
     try {
 final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<LobbyAccepted, LobbyAccepted>(rawData, 'LobbyAccepted', growable: true);
+_responseData = rawData == null ? null : deserialize<Joined, Joined>(rawData, 'Joined', growable: true);
 
     } catch (error, stackTrace) {
       throw DioException(
@@ -940,7 +947,7 @@ _responseData = rawData == null ? null : deserialize<LobbyAccepted, LobbyAccepte
       );
     }
 
-    return Response<LobbyAccepted>(
+    return Response<Joined>(
       data: _responseData,
       headers: _response.headers,
       isRedirect: _response.isRedirect,
@@ -964,9 +971,9 @@ _responseData = rawData == null ? null : deserialize<LobbyAccepted, LobbyAccepte
   /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
   /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
   ///
-  /// Returns a [Future] containing a [Response] with a [LobbyAccepted] as data
+  /// Returns a [Future] containing a [Response] with a [Joined] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<LobbyAccepted>> joinGameByCode({ 
+  Future<Response<Joined>> joinGameByCode({ 
     required JoinByCode joinByCode,
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
@@ -1020,11 +1027,11 @@ _bodyData=jsonEncode(joinByCode);
       onReceiveProgress: onReceiveProgress,
     );
 
-    LobbyAccepted? _responseData;
+    Joined? _responseData;
 
     try {
 final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<LobbyAccepted, LobbyAccepted>(rawData, 'LobbyAccepted', growable: true);
+_responseData = rawData == null ? null : deserialize<Joined, Joined>(rawData, 'Joined', growable: true);
 
     } catch (error, stackTrace) {
       throw DioException(
@@ -1036,7 +1043,7 @@ _responseData = rawData == null ? null : deserialize<LobbyAccepted, LobbyAccepte
       );
     }
 
-    return Response<LobbyAccepted>(
+    return Response<Joined>(
       data: _responseData,
       headers: _response.headers,
       isRedirect: _response.isRedirect,

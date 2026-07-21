@@ -1,5 +1,4 @@
 import 'package:eigen_api/eigen_api.dart';
-import 'package:eigen_flutter/core/game/participant_type.dart';
 
 /// Unified game-level player concept.
 ///
@@ -23,7 +22,7 @@ class GamePlayer {
   final int playerIndex;
 
   /// The type of this participant.
-  final ParticipantType type;
+  final SeatTypeEnum type;
 
   /// Resolved public identity. For a bot seat `info.username` is the bot's
   /// handle, which is also the key its brain is registered under server-side;

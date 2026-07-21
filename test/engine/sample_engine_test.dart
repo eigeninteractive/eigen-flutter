@@ -115,10 +115,6 @@ void main() {
     test('playersForConfig falls back to the creation spec bounds', () {
       check(module.playersForConfig(const {})).equals((2, 2));
     });
-
-    test('localBots defaults to none', () {
-      check(rules.localBots).isEmpty();
-    });
   });
 
   test('UnsupportedGameSchemaException names both versions', () {

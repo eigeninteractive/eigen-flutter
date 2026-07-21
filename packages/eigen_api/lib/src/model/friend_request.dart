@@ -103,7 +103,7 @@ class FriendRequest {
   )
 
 
-  final num since;
+  final int since;
 
 
 

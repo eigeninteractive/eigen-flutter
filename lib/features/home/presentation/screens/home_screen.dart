@@ -4,14 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shimmer/shimmer.dart';
-import 'package:eigen_flutter/core/game/participant_type.dart';
-import 'package:eigen_flutter/features/game/data/models/game.dart';
+
 import 'package:eigen_flutter/features/game/presentation/extensions/game_ui.dart';
+import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
 import 'package:eigen_flutter/features/game/presentation/widgets/turn_countdown.dart';
 import 'package:eigen_flutter/features/game/providers/game_providers.dart';
 import 'package:eigen_flutter/features/game/utils/game_timing.dart';
 import 'package:eigen_flutter/features/profile/providers/profile_providers.dart';
 import 'package:eigen_flutter/shared/widgets/overlapping_avatars.dart';
+import 'package:eigen_api/eigen_api.dart';
 
 /// Home screen showing active games dashboard.
 class HomeScreen extends ConsumerStatefulWidget {
@@ -326,15 +327,9 @@ class _GamesList extends StatelessWidget {
     required this.onJoinViaCode,
   });
 
-  final List<
-    ({
-      Game game,
-      int myPlayerIndex,
-      List<int>? pendingPlayers,
-      DateTime? turnDeadline,
-    })
-  >
-  entries;
+  /// The caller's active games. The summary already carries the roster, the
+  /// pending set and the deadline, so nothing has to be paired alongside it.
+  final List<GameSummary> entries;
   final DateTime lastRefreshed;
   final VoidCallback onRefresh;
   final VoidCallback onBrowseLobby;
@@ -401,22 +396,23 @@ class _GamesList extends StatelessWidget {
 class _GameCard extends ConsumerWidget {
   const _GameCard({required this.entry});
 
-  final ({
-    Game game,
-    int myPlayerIndex,
-    List<int>? pendingPlayers,
-    DateTime? turnDeadline,
-  })
-  entry;
+  final GameSummary entry;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final game = entry.game;
+    final game = entry;
 
-    // Null pendingPlayers = no observation yet (waiting/ready game).
-    final isMyTurn = entry.pendingPlayers?.contains(entry.myPlayerIndex);
+    // Null pendingPlayers = the game has not started yet.
+    final myUserId = ref.watch(currentUserIdProvider);
+    final mySeat = game.participants
+        .where((p) => p.userId == myUserId)
+        .map((p) => p.playerIndex)
+        .firstOrNull;
+    final isMyTurn = mySeat == null
+        ? null
+        : game.pendingPlayers?.contains(mySeat);
     final turnColor = isMyTurn == true
         ? colorScheme.primary
         : colorScheme.onSurfaceVariant;
@@ -427,7 +423,7 @@ class _GameCard extends ConsumerWidget {
         gamePlayersAsync.value?.players.values.toList() ?? const [];
     final avatars = [
       for (final gp in gamePlayers)
-        (avatarUrl: gp.info.avatarUrl, isBot: gp.type == ParticipantType.bot),
+        (avatarUrl: gp.info.avatarUrl, isBot: gp.type == SeatTypeEnum.bot),
     ];
 
     return Card(
@@ -489,9 +485,9 @@ class _GameCard extends ConsumerWidget {
                                   : FontWeight.normal,
                             ),
                           ),
-                          if (isMyTurn && entry.turnDeadline != null) ...[
+                          if (isMyTurn && game.turnDeadline != null) ...[
                             const SizedBox(width: 4),
-                            TurnCountdown(deadline: entry.turnDeadline!),
+                            TurnCountdown(deadline: game.turnDeadline!),
                           ],
                         ],
                       ),

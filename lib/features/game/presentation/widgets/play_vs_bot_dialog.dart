@@ -5,7 +5,7 @@ import 'package:eigen_flutter/core/errors/error_messages.dart';
 import 'package:eigen_flutter/core/game/game_creation_spec.dart';
 import 'package:eigen_flutter/core/game/game_module.dart';
 import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
-import 'package:eigen_flutter/features/game/data/models/bot_info.dart';
+import 'package:eigen_api/eigen_api.dart';
 import 'package:eigen_flutter/features/game/presentation/widgets/timing_selector.dart';
 import 'package:eigen_flutter/features/game/providers/game_providers.dart';
 
@@ -113,8 +113,8 @@ class _PlayVsBotDialogState extends ConsumerState<PlayVsBotDialog> {
   /// bots that ship in this build, plus server bots only when the game is timed
   /// and the caller is registered (the server rejects an untimed server-bot
   /// game, and guests are local-only).
-  List<BotInfo> _usableBots(
-    List<BotInfo> bots,
+  List<Bot> _usableBots(
+    List<Bot> bots,
     GameModule module, {
     required bool timed,
     required bool isGuest,
@@ -127,23 +127,24 @@ class _PlayVsBotDialogState extends ConsumerState<PlayVsBotDialog> {
     // chosen config (the Dart twin of the server's GameRules.botSeatable, which
     // enforces it at seating). Local UX only — no network round-trip per config.
     if (!rules.botSeatable(
-      BotSeatableArgs(gameConfig: _config, botConfig: b.config),
+      BotSeatableArgs(
+        gameConfig: _config,
+        botConfig: b.config as Map<String, dynamic>,
+      ),
     )) {
       return false;
     }
-    // Partition by timing: a local bot runs on the present human's client (no
-    // deadline backstop needed), so it is offered only in an *untimed* game; a
-    // server bot requires a timed game (its endpoint may be unreachable). The
-    // server enforces both, and the split means timing selects the bot class.
-    if (b.isLocal) {
-      return !timed && rules.localBots.any((l) => l.username == b.username);
-    }
+    // A server-seated bot requires a timed game: dispatch is single-attempt, so
+    // the turn deadline is the only thing that resolves a bot which never
+    // moves. The server enforces this, so offering an untimed option here would
+    // only produce a rejected create. (The untimed case returns when
+    // client-driven bots do, for offline play - those need no backstop.)
     return timed && !isGuest;
   }).toList();
 
   /// The bot id for opponent [seat]: the user's override if it is still usable,
   /// otherwise the default (first available bot).
-  String _seatBot(int seat, List<BotInfo> usable) {
+  String _seatBot(int seat, List<Bot> usable) {
     final override = _seatOverrides[seat];
     if (override != null && usable.any((b) => b.id == override)) {
       return override;
@@ -164,7 +165,7 @@ class _PlayVsBotDialogState extends ConsumerState<PlayVsBotDialog> {
         timed: timed,
         isGuest: isGuest,
       ),
-      _ => const <BotInfo>[],
+      _ => const <Bot>[],
     };
     final opponents = _totalPlayers - 1;
     final canPlay = !_creating && usable.isNotEmpty && opponents >= 1;
@@ -262,11 +263,13 @@ class _PlayVsBotDialogState extends ConsumerState<PlayVsBotDialog> {
 
     setState(() => _creating = true);
     try {
-      final gameId = await ref
+      final started = await ref
           .read(gameRepositoryProvider)
           .createSoloGame(
             botIds: botIds,
             schemaVersion: module.latestSchemaVersion,
+            minPlayers: _totalPlayers,
+            maxPlayers: _totalPlayers,
             turnSeconds: _timing.turnSeconds,
             budgetSeconds: _timing.budgetSeconds,
             incrementSeconds: _timing.incrementSeconds,
@@ -274,7 +277,7 @@ class _PlayVsBotDialogState extends ConsumerState<PlayVsBotDialog> {
           );
       if (!mounted) return;
       Navigator.pop(context);
-      context.pushNamed('game', pathParameters: {'gameId': gameId});
+      context.pushNamed('game', pathParameters: {'gameId': started.gameId});
     } catch (e) {
       if (!mounted) return;
       setState(() => _creating = false);
@@ -336,7 +339,7 @@ class _OpponentRow extends StatelessWidget {
 
   final String label;
   final String value;
-  final List<BotInfo> bots;
+  final List<Bot> bots;
   final bool enabled;
   final ValueChanged<String> onChanged;
 

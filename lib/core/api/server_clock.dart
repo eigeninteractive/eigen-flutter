@@ -39,6 +39,15 @@ class ServerClock {
     return left.isNegative ? Duration.zero : left;
   }
 
+  /// A server timestamp expressed on the *device* clock.
+  ///
+  /// Countdown widgets tick by repeatedly subtracting `DateTime.now()`, which
+  /// is device time — so converting once here keeps that arithmetic correct on
+  /// every tick, where handing them a raw server timestamp would bake the skew
+  /// into every frame.
+  DateTime deviceTimeFor(int serverEpochMs) =>
+      DateTime.now().add(remainingUntil(serverEpochMs));
+
   /// Records the server time reported by one response.
   void _observe(DateTime serverTime) {
     _offset = serverTime.difference(DateTime.now().toUtc());

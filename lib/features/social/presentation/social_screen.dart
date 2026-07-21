@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:eigen_flutter/core/errors/error_messages.dart';
-import 'package:eigen_flutter/core/game/participant_type.dart';
 import 'package:eigen_flutter/features/social/presentation/widgets/friend_actions.dart';
 import 'package:eigen_flutter/features/social/presentation/widgets/friend_buttons.dart';
 import 'package:eigen_flutter/features/social/presentation/widgets/player_profile_sheet.dart';
@@ -176,7 +175,7 @@ class _FriendListTile extends StatelessWidget {
       onTap: () => PlayerProfileSheet.show(
         context,
         playerId: userId,
-        type: ParticipantType.human,
+        type: SeatTypeEnum.human,
       ),
       leading: PlayerAvatar(avatarUrl: avatarUrl, radius: 20),
       title: Text(displayName),
@@ -343,7 +342,7 @@ class _AddFriendState extends ConsumerState<_AddFriend>
                   onTap: () => PlayerProfileSheet.show(
                     context,
                     playerId: user.id,
-                    type: ParticipantType.human,
+                    type: SeatTypeEnum.human,
                   ),
                   leading: PlayerAvatar(avatarUrl: user.avatarUrl, radius: 20),
                   title: Text(user.displayName),

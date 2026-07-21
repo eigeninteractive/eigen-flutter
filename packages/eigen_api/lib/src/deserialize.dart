@@ -24,6 +24,7 @@ import 'package:eigen_api/src/model/friends_games.dart';
 import 'package:eigen_api/src/model/game_summary.dart';
 import 'package:eigen_api/src/model/join.dart';
 import 'package:eigen_api/src/model/join_by_code.dart';
+import 'package:eigen_api/src/model/joined.dart';
 import 'package:eigen_api/src/model/lobby.dart';
 import 'package:eigen_api/src/model/lobby_accepted.dart';
 import 'package:eigen_api/src/model/lobby_command.dart';
@@ -125,6 +126,8 @@ final _regMap = RegExp(r'^Map<String,(.*)>$');
           return Join.fromJson(value as Map<String, dynamic>) as ReturnType;
         case 'JoinByCode':
           return JoinByCode.fromJson(value as Map<String, dynamic>) as ReturnType;
+        case 'Joined':
+          return Joined.fromJson(value as Map<String, dynamic>) as ReturnType;
         case 'Lobby':
           return Lobby.fromJson(value as Map<String, dynamic>) as ReturnType;
         case 'LobbyAccepted':

@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:eigen_flutter/core/game/game_creation_spec.dart';
 import 'package:eigen_flutter/core/game/game_frame.dart';
-import 'package:eigen_flutter/core/game/game_outcome.dart';
-import 'package:eigen_flutter/core/game/game_status.dart';
 import 'package:eigen_flutter/core/game/my_seat.dart';
 import 'package:eigen_flutter/core/game/players_context.dart';
 import 'package:eigen_flutter/core/game/timing_context.dart';
-import 'package:eigen_api/eigen_api.dart' show GameAccess;
+import 'package:eigen_api/eigen_api.dart' show GameAccess, GameStatus, Outcome;
 
 /// How a submitted action resolved, reported to the game through the future
 /// returned by [GameContentContext.onAction].
@@ -72,7 +70,7 @@ class GameContentContext {
 
   /// Per-participant outcomes. Empty while the game is active; populated once
   /// it finishes.
-  final List<GameOutcome> outcomes;
+  final List<Outcome> outcomes;
 
   /// True while a submitted action awaits its confirming observation. Disable
   /// input on this to prevent double-submission.
@@ -299,7 +297,6 @@ abstract class GameRules<TObs, TAction, TConfig> {
   /// pickers locally (no network call). **UX only** — the server enforces the
   /// same rule (the TS `GameRules.botSeatable` twin) before seating.
   bool botSeatable(BotSeatableArgs args);
-
 }
 
 /// Contract every game implementor provides.

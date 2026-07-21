@@ -17,7 +17,7 @@ class _ActiveGameContent extends ConsumerWidget {
     required this.onForfeit,
   });
 
-  final Game game;
+  final GameSummary game;
   final bool isSubmittingAction;
   final bool isForfeiting;
   final Future<ActionSubmitResult> Function(Map<String, dynamic>, int) onAction;
@@ -63,13 +63,13 @@ class _ActiveGameContent extends ConsumerWidget {
     }
 
     // Outcomes are fetched once when the game finishes (invalidated by the
-    // gameStreamProvider listener in _GameScreenState). Empty list for active
+    // gameRosterProvider listener in _GameScreenState). Empty list for active
     // games — no outcome rows exist yet.
     final outcomes =
         ref
             .watch(gameOutcomesProvider(gameId: game.id))
             .whenOrNull(data: (o) => o) ??
-        const <GameOutcome>[];
+        const <Outcome>[];
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -146,7 +146,7 @@ class _ActiveGameContent extends ConsumerWidget {
 class _ShareReplayButton extends ConsumerWidget {
   const _ShareReplayButton({required this.game});
 
-  final Game game;
+  final GameSummary game;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -172,7 +172,7 @@ class _ShareReplayButton extends ConsumerWidget {
 class _NonParticipantContent extends StatelessWidget {
   const _NonParticipantContent({required this.game});
 
-  final Game game;
+  final GameSummary game;
 
   @override
   Widget build(BuildContext context) {
@@ -233,7 +233,7 @@ class _TimingHeader extends StatelessWidget {
     required this.myPlayerIndex,
   });
 
-  final Game game;
+  final GameSummary game;
   final TimingContext timing;
   final List<int> pendingPlayers;
   final int myPlayerIndex;
@@ -248,7 +248,7 @@ class _TimingHeader extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: 12),
           child: BudgetClock(
             playerTimes: playerTimes,
-            turnStartedAt: timing.turnStartedAt,
+            deadline: timing.deadline,
             pendingPlayers: pendingPlayers,
             myPlayerIndex: myPlayerIndex,
           ),
@@ -256,7 +256,7 @@ class _TimingHeader extends StatelessWidget {
       }
     }
 
-    if (timing.turnDeadline case final deadline?) {
+    if (timing.deadline case final deadline?) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: Row(
@@ -270,7 +270,7 @@ class _TimingHeader extends StatelessWidget {
             const SizedBox(width: 6),
             TurnCountdown(
               deadline: deadline,
-              turnStartedAt: timing.turnStartedAt,
+              windowMillis: timing.windowMillis,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ],

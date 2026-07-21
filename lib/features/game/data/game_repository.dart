@@ -13,6 +13,15 @@ const historyPageSize = 30;
 /// Number of games shown in the replay list on a player's profile.
 const profileGamesPageSize = 10;
 
+/// Games still playable - the home screen's list.
+///
+/// A plain string because the server declares the bucket as a query enum, and
+/// query parameters generate as strings rather than Dart enums.
+const activeGamesBucket = 'active';
+
+/// Games that have ended - the history list.
+const finishedGamesBucket = 'finished';
+
 /// Everything a client does to a game: discovery, the waiting room, moves, and
 /// the live frame feed.
 ///
@@ -30,14 +39,34 @@ class GameRepository {
   // ── Discovery ──────────────────────────────────────────────────────────────
 
   /// Public games waiting for players, newest first.
-  Future<List<GameSummary>> getLobby({int limit = lobbyPageSize}) async {
-    final response = await engineCall(() => _api.getLobby(limit: limit));
+  ///
+  /// [cursor] is the previous page's last `created_at`; omit it for the first
+  /// page. Paging by cursor rather than offset keeps a page stable while the
+  /// lobby churns underneath the reader - with an offset, one new game shifts
+  /// every subsequent page by one and a scroll shows the same row twice.
+  Future<List<GameSummary>> getLobby({
+    int limit = lobbyPageSize,
+    int? cursor,
+  }) async {
+    final response = await engineCall(
+      () => _api.getLobby(limit: limit, cursor: cursor),
+    );
     return response.data?.games ?? const [];
   }
 
-  /// The caller's own games - live ones first, then finished.
-  Future<List<GameSummary>> getMyGames({int limit = historyPageSize}) async {
-    final response = await engineCall(() => _api.getMyGames(limit: limit));
+  /// The caller's games in one bucket: `active` (still playable) or `finished`
+  /// (the history list).
+  ///
+  /// [cursor] is the previous page's last sort value - `updated_at` for active
+  /// games, `finished_at` (falling back to `updated_at`) for finished ones.
+  Future<List<GameSummary>> getMyGames({
+    String bucket = activeGamesBucket,
+    int limit = historyPageSize,
+    int? cursor,
+  }) async {
+    final response = await engineCall(
+      () => _api.getMyGames(bucket: bucket, limit: limit, cursor: cursor),
+    );
     return response.data?.games ?? const [];
   }
 
@@ -142,7 +171,11 @@ class GameRepository {
   /// Takes a seat. [clientSchemaVersion] is the newest version this build ships
   /// rules for - the server refuses rather than let an old build mis-parse a
   /// newer game.
-  Future<Roster> joinGame(
+  ///
+  /// Answers with the same [Joined] shape as [joinGameByCode]: they are one
+  /// operation differing only in how the game was named, so a caller handles
+  /// either result identically.
+  Future<Joined> joinGame(
     String gameId, {
     required int clientSchemaVersion,
     String? commandId,
@@ -156,11 +189,14 @@ class GameRepository {
         ),
       ),
     );
-    return response.data!.roster;
+    return response.data!;
   }
 
   /// Takes a seat using a shared short code rather than a game id.
-  Future<Roster> joinGameByCode(
+  ///
+  /// Returns the game's id alongside the roster - the caller supplied a code,
+  /// so this is the only place they learn which game they are now in.
+  Future<Joined> joinGameByCode(
     String shortCode, {
     required int clientSchemaVersion,
     String? commandId,
@@ -174,7 +210,7 @@ class GameRepository {
         ),
       ),
     );
-    return response.data!.roster;
+    return response.data!;
   }
 
   /// Gives up a seat before the game starts. The creator cancels instead.
@@ -314,7 +350,9 @@ class GameRepository {
   /// is the only one, which is why the response carries it at all.
   ///
   /// The first frame seen is emitted as-is: a cold load snaps to the present
-  /// rather than replaying the whole game.
+  /// rather than replaying the whole game. Opening mid-game is exactly that
+  /// case - the server reports its current version on connect, and only that
+  /// frame is fetched.
   Stream<GameSocketEvent> events(
     String gameId, {
     Stream<Frame>? inject,
@@ -356,12 +394,31 @@ class GameRepository {
       if (frame.version > lastVersion!) emit(frame);
     }
 
-    /// After a reconnect, ask for everything past the cursor. Any real gap is
-    /// then filled by [handleFrame] exactly as a live jump would be.
-    Future<void> resync() async {
+    /// Reconcile against the version the server reports on open.
+    ///
+    /// Three cases, and only one of them costs a request:
+    ///
+    /// - **Nothing seen yet** (a cold open, mid-game): fetch just [version].
+    ///   A cold load snaps to the present rather than replaying the game.
+    /// - **Already current**: no request at all. This is the common reconnect
+    ///   on a flaky connection, and is the reason the server reports its
+    ///   version instead of leaving the client to guess.
+    /// - **Behind**: fetch exactly the missing span, emitted in order, so the
+    ///   game animates through every transition it missed.
+    Future<void> syncTo(int version) async {
+      if (controller.isClosed) return;
       final cursor = lastVersion;
-      if (cursor == null || controller.isClosed) return;
-      for (final frame in await getFrames(gameId, from: cursor + 1)) {
+
+      if (cursor == null) {
+        for (final frame in await getFrames(gameId, from: version, to: version)) {
+          if (controller.isClosed) return;
+          emit(frame);
+        }
+        return;
+      }
+
+      if (version <= cursor) return;
+      for (final frame in await getFrames(gameId, from: cursor + 1, to: version)) {
         if (controller.isClosed) return;
         if (frame.version > lastVersion!) emit(frame);
       }
@@ -378,8 +435,12 @@ class GameRepository {
         socketSub = _socket.connect(gameId).listen((event) {
           switch (event) {
             case GameSocketConnected():
+              // Nothing to reconcile yet - the server reports where the game is
+              // in the sync that follows, and pre-game there is nothing to
+              // reconcile at all.
               controller.add(event);
-              enqueue(resync);
+            case GameSocketSync(:final version):
+              enqueue(() => syncTo(version));
             case GameSocketRoster():
               // Unversioned and idempotent - pass straight through.
               controller.add(event);

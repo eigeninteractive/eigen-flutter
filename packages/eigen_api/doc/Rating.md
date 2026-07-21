@@ -12,7 +12,7 @@ Name | Type | Description | Notes
 **mu** | **num** |  | 
 **sigma** | **num** |  | 
 **displayRating** | **int** |  | 
-**updatedAt** | **num** |  | 
+**updatedAt** | **int** |  | 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 

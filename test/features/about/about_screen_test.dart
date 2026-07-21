@@ -26,8 +26,7 @@ void main() {
       madeByCredit: 'Made by tester',
     ),
     engine: EngineConfig(
-      supabaseUrl: 'https://example.test',
-      supabasePublishableKey: 'key',
+      apiBaseUrl: 'https://example.test',
       googleWebClientId: 'client',
     ),
   );

@@ -95,7 +95,7 @@ class Frame {
   )
 
 
-  final num? deadline;
+  final int? deadline;
 
 
 
@@ -107,7 +107,7 @@ class Frame {
   )
 
 
-  final List<num>? playerTimes;
+  final List<int>? playerTimes;
 
 
 

@@ -116,8 +116,8 @@ class _ReconnectingBannerSlot extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isOffline = ref.watch(isOfflineProvider);
-    final obsAsync = ref.watch(gameObservationProvider(gameId: gameId));
-    final gameAsync = ref.watch(gameStreamProvider(gameId: gameId));
+    final obsAsync = ref.watch(gameEventsProvider(gameId: gameId));
+    final gameAsync = ref.watch(gameRosterProvider(gameId: gameId));
     final isDisconnected =
         isOffline || obsAsync is AsyncError || gameAsync is AsyncError;
 

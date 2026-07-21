@@ -6,9 +6,10 @@ import 'package:eigen_flutter/core/errors/error_messages.dart';
 import 'package:eigen_flutter/core/game/game_creation_spec.dart';
 import 'package:eigen_flutter/core/game/game_module.dart';
 import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
-import 'package:eigen_flutter/features/game/data/models/game.dart';
+
 import 'package:eigen_flutter/features/game/presentation/widgets/timing_selector.dart';
 import 'package:eigen_flutter/features/game/providers/game_providers.dart';
+import 'package:eigen_api/eigen_api.dart';
 
 /// Dialog for creating a new game.
 ///
@@ -249,14 +250,14 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
       ref
           .read(analyticsServiceProvider)
           .gameCreated(
-            gameId: gameId,
+            gameId: gameId.gameId,
             access: _access.name,
             timingMode: _timing.mode,
             rated: rated,
           );
       if (!mounted) return;
       Navigator.pop(context);
-      context.pushNamed('game', pathParameters: {'gameId': gameId});
+      context.pushNamed('game', pathParameters: {'gameId': gameId.gameId});
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);

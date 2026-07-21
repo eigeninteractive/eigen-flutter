@@ -115,7 +115,7 @@ class Profile {
   )
 
 
-  final num createdAt;
+  final int createdAt;
 
 
 

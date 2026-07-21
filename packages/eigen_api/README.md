@@ -134,6 +134,7 @@ Class | Method | HTTP request | Description
  - [GameSummary](doc/GameSummary.md)
  - [Join](doc/Join.md)
  - [JoinByCode](doc/JoinByCode.md)
+ - [Joined](doc/Joined.md)
  - [Lobby](doc/Lobby.md)
  - [LobbyAccepted](doc/LobbyAccepted.md)
  - [LobbyCommand](doc/LobbyCommand.md)

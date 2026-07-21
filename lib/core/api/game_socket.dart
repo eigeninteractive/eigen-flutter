@@ -9,17 +9,18 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 /// One message from a game's socket, or the signal that the socket (re)opened.
 ///
 /// The server never reads from this socket — every client-to-server command
-/// rides HTTP — so this is a one-way feed of exactly the two message kinds the
-/// protocol defines, plus the connection signal the ordering pipeline needs.
+/// rides HTTP — so this is a one-way feed of the message kinds the protocol
+/// defines, plus the connection signal the ordering pipeline needs.
 sealed class GameSocketEvent {
   const GameSocketEvent();
 }
 
 /// The socket just (re)opened.
 ///
-/// Emitted on the first connection and on every reconnect. A reconnect may have
-/// missed frames, so the pipeline treats this as "resync from my version
-/// cursor" — the server deliberately sends no backlog on open mid-game.
+/// Emitted on the first connection and on every reconnect. Nothing is
+/// reconciled from this alone: the server states where the game is in the
+/// [GameSocketRoster] or [GameSocketSync] that follows, so the pipeline acts on
+/// that rather than guessing from the fact of connecting.
 final class GameSocketConnected extends GameSocketEvent {
   const GameSocketConnected();
 }
@@ -33,6 +34,18 @@ final class GameSocketRoster extends GameSocketEvent {
   const GameSocketRoster(this.roster);
 
   final Roster roster;
+}
+
+/// Where the game currently is, sent once on a mid-game socket open.
+///
+/// Hand-parsed rather than generated: unlike [Roster] and [Frame], which appear
+/// in HTTP responses and so exist in the OpenAPI document, this message is
+/// socket-only and has no generated counterpart.
+final class GameSocketSync extends GameSocketEvent {
+  const GameSocketSync(this.version);
+
+  /// The newest committed version at the moment the socket opened.
+  final int version;
 }
 
 /// One versioned frame for the receiving seat.
@@ -141,6 +154,7 @@ class GameSocket {
       return switch (json['type']) {
         'roster' => GameSocketRoster(Roster.fromJson(json)),
         'frame' => GameSocketFrame(Frame.fromJson(json)),
+        'sync' => GameSocketSync(json['version'] as int),
         _ => null,
       };
     } catch (error, stack) {

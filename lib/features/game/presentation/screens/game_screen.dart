@@ -15,25 +15,23 @@ import 'package:go_router/go_router.dart';
 import 'package:eigen_flutter/core/errors/engine_exception.dart';
 import 'package:eigen_flutter/core/errors/error_messages.dart';
 import 'package:eigen_flutter/core/game/game_module.dart';
-import 'package:eigen_flutter/core/game/game_outcome.dart';
-import 'package:eigen_flutter/core/game/participant_type.dart';
 import 'package:eigen_flutter/core/game/players_context.dart';
-import 'package:eigen_flutter/core/game/game_status.dart';
 import 'package:eigen_flutter/core/game/my_seat.dart';
 import 'package:eigen_flutter/core/game/timing_constants.dart';
 import 'package:eigen_flutter/core/game/timing_context.dart';
 import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
-import 'package:eigen_flutter/features/game/data/models/bot_info.dart';
-import 'package:eigen_flutter/features/game/data/models/game.dart';
-import 'package:eigen_flutter/features/game/data/models/observation.dart';
+import 'package:eigen_api/eigen_api.dart';
+
+
 import 'package:eigen_flutter/features/game/presentation/widgets/budget_clock.dart';
 import 'package:eigen_flutter/features/game/presentation/widgets/turn_countdown.dart';
 import 'package:eigen_flutter/features/game/providers/game_providers.dart';
 import 'package:eigen_flutter/features/game/providers/game_frame_provider.dart';
-import 'package:eigen_flutter/features/game/providers/local_bot_driver.dart';
+
 import 'package:eigen_flutter/features/social/presentation/widgets/player_profile_sheet.dart';
 import 'package:eigen_flutter/shared/widgets/player_avatar.dart';
 import 'package:eigen_flutter/shared/widgets/player_tags.dart';
+import 'package:eigen_flutter/core/api/game_socket.dart';
 
 part 'game_screen_pre_game.dart';
 part 'game_screen_active.dart';
@@ -68,14 +66,12 @@ enum _PendingAction {
 
 class _GameScreenState extends ConsumerState<GameScreen> {
   _PendingAction? _pendingAction;
-  Timer? _deadlineTimer;
-  bool _pendingExpiry = false;
   bool _errorSnackBarShown = false;
   late final AppLifecycleListener _lifecycleListener;
-  late final ProviderSubscription<AsyncValue<Game>> _gameStatusSub;
-  late final ProviderSubscription<AsyncValue<List<GameOutcome>>> _outcomesSub;
+  late final ProviderSubscription<AsyncValue<Roster>> _gameStatusSub;
+  late final ProviderSubscription<AsyncValue<List<Outcome>>> _outcomesSub;
   late final ProviderSubscription<bool> _offlineSub;
-  late final ProviderSubscription<AsyncValue<Observation>> _observationSub;
+  late final ProviderSubscription<AsyncValue<GameSocketEvent>> _eventsSub;
 
   @override
   void initState() {
@@ -88,21 +84,21 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     // Registered before the build-cycle listeners so they read player count
     // before gamePlayersProvider is invalidated on status change.
     _gameStatusSub = ref.listenManual(
-      gameStreamProvider(gameId: widget.gameId),
+      gameRosterProvider(gameId: widget.gameId),
       _onGameStatusChange,
     );
     _outcomesSub = ref.listenManual(
       gameOutcomesProvider(gameId: widget.gameId),
-      _onGameOutcomes,
+      _onOutcomes,
     );
     _offlineSub = ref.listenManual(isOfflineProvider, _onConnectivityChange);
-    _observationSub = ref.listenManual(
-      gameObservationProvider(gameId: widget.gameId),
-      _onObservation,
+    _eventsSub = ref.listenManual(
+      gameEventsProvider(gameId: widget.gameId),
+      _onGameEvent,
     );
   }
 
-  void _onGameStatusChange(AsyncValue<Game>? prev, AsyncValue<Game> next) {
+  void _onGameStatusChange(AsyncValue<Roster>? prev, AsyncValue<Roster> next) {
     final prevStatus = prev?.value?.status;
     final status = next.value?.status;
     if (prevStatus == status) return;
@@ -137,9 +133,9 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     }
   }
 
-  void _onGameOutcomes(
-    AsyncValue<List<GameOutcome>>? prev,
-    AsyncValue<List<GameOutcome>> next,
+  void _onOutcomes(
+    AsyncValue<List<Outcome>>? prev,
+    AsyncValue<List<Outcome>> next,
   ) {
     // Side effects fire only on a witnessed empty → non-empty transition.
     // prev?.value is null on first load (re-opening a finished game must not
@@ -154,21 +150,21 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     _maybeTriggerWinHaptic(next.value!);
   }
 
-  void _maybeTriggerWinHaptic(List<GameOutcome> outcomes) {
+  void _maybeTriggerWinHaptic(List<Outcome> outcomes) {
     final mySeat = ref
         .read(gamePlayersProvider(gameId: widget.gameId))
         .value
         ?.mySeat;
     if (mySeat is! Seated) return;
     final didWin = outcomes.any(
-      (o) => o.playerIndex == mySeat.index && o.result == OutcomeResult.win,
+      (o) => o.playerIndex == mySeat.index && o.result == OutcomeResultEnum.win,
     );
     if (didWin) unawaited(HapticFeedback.heavyImpact());
   }
 
-  void _onObservation(
-    AsyncValue<Observation>? prev,
-    AsyncValue<Observation> next,
+  void _onGameEvent(
+    AsyncValue<GameSocketEvent>? prev,
+    AsyncValue<GameSocketEvent> next,
   ) {
     if (!mounted) return;
     // Use AsyncData pattern — next.value returns previous data even during
@@ -180,10 +176,10 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           _errorSnackBarShown = false;
           ScaffoldMessenger.of(context).clearSnackBars();
         }
-        if (_pendingAction == _PendingAction.submittingAction) {
+        if (value is GameSocketFrame &&
+            _pendingAction == _PendingAction.submittingAction) {
           setState(() => _pendingAction = null);
         }
-        _scheduleDeadlineTimer(value.turnDeadline);
       case AsyncError():
         if (_pendingAction == _PendingAction.submittingAction) {
           setState(() => _pendingAction = null);
@@ -194,7 +190,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         if (_errorSnackBarShown) return;
         _errorSnackBarShown = true;
         final status = ref
-            .read(gameStreamProvider(gameId: widget.gameId))
+            .read(gameRosterProvider(gameId: widget.gameId))
             .value
             ?.status;
         final isTerminal =
@@ -214,7 +210,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                 : SnackBarAction(
                     label: 'Retry',
                     onPressed: () => ref.invalidate(
-                      gameObservationProvider(gameId: widget.gameId),
+                      gameEventsProvider(gameId: widget.gameId),
                     ),
                   ),
             duration: const Duration(seconds: 10),
@@ -230,17 +226,13 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     // Network restored — re-subscribe immediately for the fast
     // offline→online transition.
     _invalidateStreams();
-    if (_pendingExpiry) {
-      _pendingExpiry = false;
-      unawaited(_triggerExpiry());
-    }
   }
 
   /// Re-subscribes both Realtime streams immediately, bypassing Riverpod's
   /// retry backoff.
   void _invalidateStreams() {
-    ref.invalidate(gameStreamProvider(gameId: widget.gameId));
-    ref.invalidate(gameObservationProvider(gameId: widget.gameId));
+    ref.invalidate(gameRosterProvider(gameId: widget.gameId));
+    ref.invalidate(gameEventsProvider(gameId: widget.gameId));
   }
 
   /// Full refresh of every per-game provider this screen depends on.
@@ -250,7 +242,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     ref.invalidate(gameOutcomesProvider(gameId: widget.gameId));
   }
 
-  void _maybeRequestReview(List<GameOutcome> outcomes) {
+  void _maybeRequestReview(List<Outcome> outcomes) {
     final mySeat = ref
         .read(gamePlayersProvider(gameId: widget.gameId))
         .value
@@ -260,7 +252,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     final myOutcome = outcomes
         .where((o) => o.playerIndex == mySeat.index)
         .firstOrNull;
-    if (myOutcome?.result != OutcomeResult.win) return;
+    if (myOutcome?.result != OutcomeResultEnum.win) return;
 
     unawaited(ref.read(reviewProvider.notifier).onWin());
   }
@@ -270,8 +262,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     _gameStatusSub.close();
     _outcomesSub.close();
     _offlineSub.close();
-    _observationSub.close();
-    _deadlineTimer?.cancel();
+    _eventsSub.close();
     _lifecycleListener.dispose();
     super.dispose();
   }
@@ -286,39 +277,11 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   /// ([kServerDeadlineGrace]) on purpose: nudging at exactly the deadline would
   /// hit the server while it is still abstaining, the nudge would no-op, and the
   /// timeout would slip to the next (every-minute) pg_cron sweep.
-  void _scheduleDeadlineTimer(DateTime? deadline) {
-    _deadlineTimer?.cancel();
-    _deadlineTimer = null;
-    if (deadline == null) return;
-    final delay = deadline.add(kExpiryTriggerDelay).difference(DateTime.now());
-    _deadlineTimer = Timer(
-      delay.isNegative ? Duration.zero : delay,
-      _triggerExpiry,
-    );
-  }
 
-  Future<void> _triggerExpiry() async {
-    if (ref.read(isOfflineProvider)) {
-      // Queue the nudge for when connectivity returns; pg_cron is the backstop.
-      _pendingExpiry = true;
-      return;
-    }
-    try {
-      await ref.read(gameRepositoryProvider).triggerTurnExpiry(widget.gameId);
-    } catch (_) {
-      // Server re-validates under lock; errors here are expected when the
-      // game has already ended or the deadline was extended by a concurrent action.
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
-    final gameAsync = ref.watch(gameStreamProvider(gameId: widget.gameId));
-    // Keep the local-bot driver alive while this screen is shown. Its state is
-    // void (it never rebuilds); watching it is what lets it react to game,
-    // engine, players and observation changes and drive pending local-bot seats.
-    ref.watch(localBotDriverProvider(gameId: widget.gameId));
-
+    final gameAsync = ref.watch(gameSummaryProvider(gameId: widget.gameId));
     return Scaffold(
       body: Column(
         children: [
@@ -361,6 +324,19 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     await ref.read(gamePlayersProvider(gameId: widget.gameId).future);
   }
 
+  /// The caller's own seat, or null when they are only watching.
+  ///
+  /// Every state-changing command carries it: the server verifies the named
+  /// seat against its roster rather than resolving one for the caller, so a
+  /// seat nobody holds is a clean rejection instead of a guess.
+  int? _mySeat() {
+    final seat = ref
+        .read(gamePlayersProvider(gameId: widget.gameId))
+        .value
+        ?.mySeat;
+    return seat is Seated ? seat.index : null;
+  }
+
   /// Submits an action and reports the outcome to the game's content widget
   /// (via [GameContentContext.onAction]). Error display stays here — the game
   /// only uses the [ActionSubmitResult] to manage optimistic rendering.
@@ -379,11 +355,14 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     setState(() => _pendingAction = _PendingAction.submittingAction);
 
     try {
+      final seat = _mySeat();
+      if (seat == null) return ActionSubmitResult.rejected;
       await ref
           .read(gameRepositoryProvider)
           .submitAction(
             gameId: widget.gameId,
-            actionData: actionJson,
+            seat: seat,
+            data: actionJson,
             expectedVersion: gameVersion,
           );
       // Keep _pendingAction = submittingAction on success.
@@ -453,7 +432,11 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   Future<void> _forfeitGame() async {
     setState(() => _pendingAction = _PendingAction.forfeiting);
     try {
-      await ref.read(gameRepositoryProvider).forfeitGame(widget.gameId);
+      final seat = _mySeat();
+      if (seat == null) return;
+      await ref
+          .read(gameRepositoryProvider)
+          .forfeitGame(gameId: widget.gameId, seat: seat);
       if (mounted) {
         setState(() => _pendingAction = null);
         unawaited(ref.read(analyticsServiceProvider).forfeit());
@@ -487,7 +470,7 @@ class _GameBody extends StatelessWidget {
     required this.onForfeit,
   });
 
-  final Game game;
+  final GameSummary game;
 
   /// The in-flight user operation, if any. Leaf widgets receive the specific
   /// booleans they need, derived here.
@@ -521,10 +504,7 @@ class _GameBody extends StatelessWidget {
           ],
         );
 
-      // An unrecognised status (newer server value) is treated as aborted —
-      // the client can't safely render a state it doesn't understand.
       case GameStatus.aborted:
-      case GameStatus.unknown:
         return const CustomScrollView(
           physics: AlwaysScrollableScrollPhysics(),
           slivers: [

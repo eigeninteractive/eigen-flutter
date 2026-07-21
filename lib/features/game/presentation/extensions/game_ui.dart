@@ -1,6 +1,5 @@
+import 'package:eigen_api/eigen_api.dart';
 import 'package:flutter/material.dart';
-import 'package:eigen_flutter/core/game/game_outcome.dart';
-import 'package:eigen_flutter/core/game/game_status.dart';
 
 /// UI helpers for [GameStatus] — color and icon mappings.
 extension GameStatusUI on GameStatus {
@@ -11,7 +10,6 @@ extension GameStatusUI on GameStatus {
     GameStatus.active => colorScheme.primary,
     GameStatus.finished => colorScheme.outline,
     GameStatus.aborted => colorScheme.error,
-    GameStatus.unknown => colorScheme.outline,
   };
 
   /// Returns the icon associated with this status.
@@ -21,42 +19,38 @@ extension GameStatusUI on GameStatus {
     GameStatus.active => Icons.sports_esports,
     GameStatus.finished => Icons.emoji_events,
     GameStatus.aborted => Icons.cancel_outlined,
-    GameStatus.unknown => Icons.help_outline,
   };
 }
 
-/// UI helpers for [OutcomeResult] — icon, color, and label mappings.
+/// UI helpers for [OutcomeResultEnum] — icon, color, and label mappings.
 ///
 /// Defined on the nullable type so the null case (aborted game, no outcome
 /// row written) can be handled uniformly alongside real results.
-extension OutcomeResultUI on OutcomeResult? {
+extension OutcomeResultUI on OutcomeResultEnum? {
   /// Returns the icon associated with this result.
   IconData get icon => switch (this) {
-    OutcomeResult.win => Icons.emoji_events,
-    OutcomeResult.loss => Icons.close,
-    OutcomeResult.draw => Icons.handshake_outlined,
-    OutcomeResult.eliminated => Icons.remove_circle_outline,
-    OutcomeResult.unknown => Icons.help_outline,
+    OutcomeResultEnum.win => Icons.emoji_events,
+    OutcomeResultEnum.loss => Icons.close,
+    OutcomeResultEnum.draw => Icons.handshake_outlined,
+    OutcomeResultEnum.eliminated => Icons.remove_circle_outline,
     null => Icons.cancel_outlined,
   };
 
   /// Returns the color associated with this result from [colorScheme].
   Color color(ColorScheme colorScheme) => switch (this) {
-    OutcomeResult.win => colorScheme.primary,
-    OutcomeResult.loss => colorScheme.error,
-    OutcomeResult.draw => colorScheme.tertiary,
-    OutcomeResult.eliminated => colorScheme.error,
-    OutcomeResult.unknown => colorScheme.outline,
+    OutcomeResultEnum.win => colorScheme.primary,
+    OutcomeResultEnum.loss => colorScheme.error,
+    OutcomeResultEnum.draw => colorScheme.tertiary,
+    OutcomeResultEnum.eliminated => colorScheme.error,
     null => colorScheme.outline,
   };
 
   /// Returns the short display label for this result.
   String get label => switch (this) {
-    OutcomeResult.win => 'Won',
-    OutcomeResult.loss => 'Lost',
-    OutcomeResult.draw => 'Draw',
-    OutcomeResult.eliminated => 'Eliminated',
-    OutcomeResult.unknown => 'Unknown',
+    OutcomeResultEnum.win => 'Won',
+    OutcomeResultEnum.loss => 'Lost',
+    OutcomeResultEnum.draw => 'Draw',
+    OutcomeResultEnum.eliminated => 'Eliminated',
     null => 'Aborted',
   };
 }

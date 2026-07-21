@@ -2,8 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:eigen_flutter/core/game/game_creation_spec.dart';
 import 'package:eigen_flutter/core/game/game_module.dart';
-import 'package:eigen_flutter/features/game/data/models/game.dart'
-    show GameAccess;
+import 'package:eigen_api/eigen_api.dart' show GameAccess;
 
 /// Minimal tic-tac-toe-like observation: a flat board of 9 cells where each
 /// entry is the occupying player index, or null if empty.

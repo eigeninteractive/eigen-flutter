@@ -1,5 +1,5 @@
 import 'package:checks/checks.dart';
-import 'package:eigen_flutter/features/game/data/models/replay_frame.dart';
+import 'package:eigen_api/eigen_api.dart';
 import 'package:eigen_flutter/features/game/providers/game_frame_provider.dart';
 import 'package:eigen_flutter/features/game/providers/replay_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,11 +7,13 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../../helpers/container.dart';
 import '../../../helpers/example_rules.dart';
 
-ReplayFrame _frame(int version, int moves) => ReplayFrame(
+Frame _frame(int version, int moves) => Frame(
+  type: FrameTypeEnum.frame,
   version: version,
   data: {'moves': moves},
   pendingPlayers: const [0],
-  createdAt: DateTime.utc(2026, 7, 10),
+  deadline: null,
+  playerTimes: null,
 );
 
 void main() {
@@ -90,7 +92,7 @@ void main() {
             check(frame).isNotNull();
             check(frame!.version).equals(1);
             check(frame.observation).equals(const ExampleObservation(1));
-            check(frame.timing.turnDeadline).isNull();
+            check(frame.timing.deadline).isNull();
           });
     });
 

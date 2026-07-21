@@ -189,23 +189,51 @@ void main() {
     await injected.close();
   });
 
-  test('resyncs from the version cursor on reconnect', () async {
-    // The server sends no backlog on a mid-game open, so the client must ask.
+  test('catches up to the version reported on reconnect', () async {
     final t = _build(available: [3, 4, 5]);
 
     final seen = await _versions(t.repo.events('g'), () async {
       t.socket.emit(GameSocketFrame(_frame(2)));
       await Future<void>.delayed(const Duration(milliseconds: 20));
-      t.socket.emit(const GameSocketConnected());
+      t.socket.emit(const GameSocketSync(5));
     });
 
     check(seen).deepEquals([2, 3, 4, 5]);
-    check(t.adapter.requests).deepEquals([(from: 3, to: null)]);
+    check(t.adapter.requests).deepEquals([(from: 3, to: 5)]);
   });
 
-  test('does not resync before any frame has been seen', () async {
-    // The first connect has no cursor to resync from; fetching would replay
-    // the whole game rather than snapping to the present.
+  test('fetches nothing when the reconnect missed nothing', () async {
+    // The common reconnect on a flaky connection. Without the server stating
+    // its version this would be an unavoidable no-op round trip every time.
+    final t = _build(available: [0, 1, 2]);
+
+    final seen = await _versions(t.repo.events('g'), () async {
+      t.socket.emit(GameSocketFrame(_frame(2)));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      t.socket.emit(const GameSocketSync(2));
+    });
+
+    check(seen).deepEquals([2]);
+    check(t.adapter.requests).isEmpty();
+  });
+
+  test('a cold mid-game open loads only the current frame', () async {
+    // Joining a game already in progress must show the present position, not
+    // replay it from v0 - and must show something at all, rather than waiting
+    // for the next move.
+    final t = _build(available: [0, 1, 2, 3, 4]);
+
+    final seen = await _versions(t.repo.events('g'), () async {
+      t.socket.emit(const GameSocketSync(4));
+    });
+
+    check(seen).deepEquals([4]);
+    check(t.adapter.requests).deepEquals([(from: 4, to: 4)]);
+  });
+
+  test('connecting alone reconciles nothing', () async {
+    // Pre-game there is no version to reconcile against; the roster snapshot
+    // that follows carries the state instead.
     final t = _build(available: [0, 1, 2]);
 
     final seen = await _versions(t.repo.events('g'), () async {

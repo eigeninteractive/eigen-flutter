@@ -101,7 +101,7 @@ class RatingHistoryEntry {
   )
 
 
-  final num createdAt;
+  final int createdAt;
 
 
 
