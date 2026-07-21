@@ -1,7 +1,9 @@
 # Migrations
 
 - Why do we need engineCall and separate api definitions in engine_api_providers
-  instead of eigenApi?
+  instead of eigenApi? Cant we just add the middleware to eigenApi instead? Is
+  this the idiomatic way to handle errors?
+- Web - wss + ?token=, web Firebase auth, avatar URLs; add to CI
 
 # Tracks
 
