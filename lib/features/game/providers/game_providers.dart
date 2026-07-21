@@ -78,20 +78,22 @@ Future<Map<String, Bot>> botCatalogById(Ref ref) async {
 
 /// Whether the solo-play entry should be offered for this deployment.
 ///
-/// Three conditions, all enforced server-side too - this only avoids offering
-/// an entry that would fail:
+/// Two conditions, both enforced server-side too - this only avoids offering an
+/// entry that would fail:
 ///
-/// 1. **A registered account.** Guests cannot seat bots in rated games, and
-///    solo games are rated when eligible.
-/// 2. **A bot this build's rules can play.** Solo creation always targets the
+/// 1. **A bot this build's rules can play.** Solo creation always targets the
 ///    latest version, so usability is judged against the latest unit.
-/// 3. **A timed mode.** A *server-seated* bot requires one: dispatch is
+/// 2. **A timed mode.** A *server-seated* bot requires one: dispatch is
 ///    single-attempt, so if a bot's turn is never delivered the only thing that
 ///    resolves the game is the turn deadline firing the server's alarm. Untimed
 ///    means no deadline, no alarm, and a game wedged forever - the server
 ///    refuses it on the seating path.
 ///
-/// Gating on all three - rather than just "a bot exists" - keeps an untimed-only
+/// Guests are deliberately *not* gated out: solo-vs-bot is a guest's first-run
+/// experience, and the server accepts it - the game simply comes out unrated,
+/// since rating requires a registered account.
+///
+/// Gating on both - rather than just "a bot exists" - keeps an untimed-only
 /// deployment from showing a solo entry that opens a dead-end picker.
 ///
 /// The timing condition is deliberately tied to *server* seating rather than to
@@ -104,7 +106,6 @@ Future<Map<String, Bot>> botCatalogById(Ref ref) async {
 bool soloPlayAvailable(Ref ref) {
   final module = ref.watch(currentGameModuleProvider);
   final bots = ref.watch(availableBotsProvider).value ?? const [];
-  if (ref.watch(isAnonymousProvider)) return false;
 
   final hasTimedMode = module.creationSpec.timingConfigs.values.any(
     (c) => c is! UntimedConfig,

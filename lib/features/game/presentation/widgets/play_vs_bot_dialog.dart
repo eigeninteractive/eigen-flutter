@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:eigen_flutter/core/errors/error_messages.dart';
 import 'package:eigen_flutter/core/game/game_creation_spec.dart';
 import 'package:eigen_flutter/core/game/game_module.dart';
-import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
 import 'package:eigen_api/eigen_api.dart';
 import 'package:eigen_flutter/features/game/presentation/widgets/timing_selector.dart';
 import 'package:eigen_flutter/features/game/providers/game_providers.dart';
@@ -99,25 +98,19 @@ class _PlayVsBotDialogState extends ConsumerState<PlayVsBotDialog> {
     final bots = ref.read(availableBotsProvider).value;
     if (bots == null) return untimedKey;
 
-    final isGuest = ref.read(isAnonymousProvider);
-    if (_usableBots(bots, module, timed: false, isGuest: isGuest).isNotEmpty) {
-      return untimedKey;
-    }
-    if (_usableBots(bots, module, timed: true, isGuest: isGuest).isNotEmpty) {
-      return timedKey;
-    }
+    if (_usableBots(bots, module, timed: false).isNotEmpty) return untimedKey;
+    if (_usableBots(bots, module, timed: true).isNotEmpty) return timedKey;
     return null;
   }
 
-  /// Usable bots for the current timing/guest state: schema-compatible local
-  /// bots that ship in this build, plus server bots only when the game is timed
-  /// and the caller is registered (the server rejects an untimed server-bot
-  /// game, and guests are local-only).
+  /// Bots this build can seat for the chosen timing.
+  ///
+  /// Guests are not excluded: a guest may play a bot, the game just comes out
+  /// unrated. The rated/eligibility pairing is the server's call at seating.
   List<Bot> _usableBots(
     List<Bot> bots,
     GameModule module, {
     required bool timed,
-    required bool isGuest,
   }) => bots.where((b) {
     // Solo creation always targets the latest version, so bots are gated
     // against the latest rules unit.
@@ -139,7 +132,7 @@ class _PlayVsBotDialogState extends ConsumerState<PlayVsBotDialog> {
     // moves. The server enforces this, so offering an untimed option here would
     // only produce a rejected create. (The untimed case returns when
     // client-driven bots do, for offline play - those need no backstop.)
-    return timed && !isGuest;
+    return timed;
   }).toList();
 
   /// The bot id for opponent [seat]: the user's override if it is still usable,
@@ -156,15 +149,9 @@ class _PlayVsBotDialogState extends ConsumerState<PlayVsBotDialog> {
   Widget build(BuildContext context) {
     final module = ref.watch(currentGameModuleProvider);
     final botsAsync = ref.watch(availableBotsProvider);
-    final isGuest = ref.watch(isAnonymousProvider);
     final timed = _timing.mode != 'untimed';
     final usable = switch (botsAsync) {
-      AsyncData(:final value) => _usableBots(
-        value,
-        module,
-        timed: timed,
-        isGuest: isGuest,
-      ),
+      AsyncData(:final value) => _usableBots(value, module, timed: timed),
       _ => const <Bot>[],
     };
     final opponents = _totalPlayers - 1;
@@ -255,7 +242,6 @@ class _PlayVsBotDialogState extends ConsumerState<PlayVsBotDialog> {
       ref.read(availableBotsProvider).value ?? const [],
       module,
       timed: _timing.mode != 'untimed',
-      isGuest: ref.read(isAnonymousProvider),
     );
     if (usable.isEmpty) return;
     final opponents = _totalPlayers - 1;
