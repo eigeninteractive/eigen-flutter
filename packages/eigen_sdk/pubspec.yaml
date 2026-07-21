@@ -10,6 +10,8 @@ environment:
 resolution: workspace
 
 dependencies:
+  eigen_api:
+    path: ../eigen_api
   # REST client + models are generated from the server's openapi.json in Stage 1
   # (generator bake-off). web_socket_channel is added when the socket layer lands.
 

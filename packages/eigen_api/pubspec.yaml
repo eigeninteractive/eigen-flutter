@@ -1,0 +1,24 @@
+name: eigen_api
+description: >-
+  Generated dart-dio REST client for the Eigen server. Its lib/ sources are
+  regenerated wholesale by tool/generate_api.sh; THIS manifest is hand-owned and
+  the generator is told to skip it (see .openapi-generator-ignore).
+#
+# Why owned: the dart-dio template stamps `sdk: >=3.5.0` but its own
+# json_serializable + copy_with_extension output uses Dart 3.8 null-aware
+# elements — a generator bug: OpenAPITools/openapi-generator#21815.
+# To unwind once that lands (generated pubspec stamps >=3.8): delete this file
+# and .openapi-generator-ignore, and restore `rm -rf "$OUT"` in generate_api.sh.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.0
+dependencies:
+  copy_with_extension: ^15.0.1
+  dio: ^5.10.0
+  json_annotation: ^4.12.0
+dev_dependencies:
+  build_runner: ^2.15.2
+  copy_with_extension_gen: ^15.0.1
+  json_serializable: ^6.14.0

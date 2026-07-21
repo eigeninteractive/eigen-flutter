@@ -1,0 +1,61 @@
+//
+// AUTO-GENERATED FILE, DO NOT MODIFY!
+//
+
+export 'package:eigen_api/src/api.dart';
+export 'package:eigen_api/src/auth/api_key_auth.dart';
+export 'package:eigen_api/src/auth/basic_auth.dart';
+export 'package:eigen_api/src/auth/bearer_auth.dart';
+export 'package:eigen_api/src/auth/oauth.dart';
+
+
+export 'package:eigen_api/src/api/default_api.dart';
+
+export 'package:eigen_api/src/model/action.dart';
+export 'package:eigen_api/src/model/add_bot.dart';
+export 'package:eigen_api/src/model/bot.dart';
+export 'package:eigen_api/src/model/bot_action.dart';
+export 'package:eigen_api/src/model/bots.dart';
+export 'package:eigen_api/src/model/command_accepted.dart';
+export 'package:eigen_api/src/model/create_game.dart';
+export 'package:eigen_api/src/model/create_solo.dart';
+export 'package:eigen_api/src/model/created.dart';
+export 'package:eigen_api/src/model/device_registration.dart';
+export 'package:eigen_api/src/model/error_response.dart';
+export 'package:eigen_api/src/model/forfeit.dart';
+export 'package:eigen_api/src/model/frame.dart';
+export 'package:eigen_api/src/model/frames.dart';
+export 'package:eigen_api/src/model/friend.dart';
+export 'package:eigen_api/src/model/friend_request.dart';
+export 'package:eigen_api/src/model/friend_request_result.dart';
+export 'package:eigen_api/src/model/friend_requests.dart';
+export 'package:eigen_api/src/model/friend_target.dart';
+export 'package:eigen_api/src/model/friends.dart';
+export 'package:eigen_api/src/model/friends_games.dart';
+export 'package:eigen_api/src/model/game_status.dart';
+export 'package:eigen_api/src/model/game_summary.dart';
+export 'package:eigen_api/src/model/join.dart';
+export 'package:eigen_api/src/model/join_by_code.dart';
+export 'package:eigen_api/src/model/lobby.dart';
+export 'package:eigen_api/src/model/lobby_accepted.dart';
+export 'package:eigen_api/src/model/lobby_command.dart';
+export 'package:eigen_api/src/model/my_games.dart';
+export 'package:eigen_api/src/model/outcome.dart';
+export 'package:eigen_api/src/model/player.dart';
+export 'package:eigen_api/src/model/players.dart';
+export 'package:eigen_api/src/model/profile.dart';
+export 'package:eigen_api/src/model/rating.dart';
+export 'package:eigen_api/src/model/rating_delta.dart';
+export 'package:eigen_api/src/model/rating_delta_identity.dart';
+export 'package:eigen_api/src/model/rating_delta_identity_any_of.dart';
+export 'package:eigen_api/src/model/rating_delta_identity_any_of1.dart';
+export 'package:eigen_api/src/model/rating_history.dart';
+export 'package:eigen_api/src/model/rating_history_entry.dart';
+export 'package:eigen_api/src/model/ratings.dart';
+export 'package:eigen_api/src/model/roster.dart';
+export 'package:eigen_api/src/model/seat.dart';
+export 'package:eigen_api/src/model/solo_started.dart';
+export 'package:eigen_api/src/model/user_search.dart';
+export 'package:eigen_api/src/model/username_update.dart';
+export 'package:eigen_api/src/model/username_updated.dart';
+

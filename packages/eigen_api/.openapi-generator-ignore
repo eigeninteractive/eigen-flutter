@@ -1,0 +1,5 @@
+# The pubspec is hand-owned (see its header): the dart-dio template stamps too
+# low an SDK constraint for its own json_serializable output
+# (OpenAPITools/openapi-generator#21815), so we keep our own and the generator
+# leaves it alone. Everything else (lib/, docs, README) regenerates normally.
+pubspec.yaml
