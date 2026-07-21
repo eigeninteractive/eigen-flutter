@@ -37,6 +37,45 @@ final _serverAccess = <RegExp>[
 /// what made the fold safe - without it the boundary is a convention nobody
 /// notices breaking.
 void main() {
+  test('the public barrel exports types, never the API classes', () {
+    // A game app depends on `eigen_flutter`, not on `eigen_api` — so the barrel
+    // must re-export the wire *vocabulary* a game renders from, without handing
+    // apps the ability to call the server directly. A wholesale
+    // `export 'package:eigen_api/eigen_api.dart';` would do exactly that, which
+    // is why this checks for the `show` clause rather than merely for an export.
+    final barrel = File('lib/eigen_flutter.dart').readAsStringSync();
+
+    check(
+      because: 'the barrel must re-export the generated types a game needs',
+      barrel,
+    ).contains("export 'package:eigen_api/eigen_api.dart'");
+
+    final leaked = RegExp(
+      r"export 'package:eigen_api/eigen_api\.dart';",
+    ).hasMatch(barrel);
+    check(
+      because:
+          'exporting eigen_api wholesale leaks GamesApi/SocialApi/... into every '
+          'app that depends on eigen_flutter; keep the explicit `show` list',
+      leaked,
+    ).isFalse();
+
+    for (final api in const [
+      'GamesApi',
+      'SocialApi',
+      'MeApi',
+      'PlayersApi',
+      'BotsApi',
+      'BotWebhookApi',
+      'EigenApi',
+    ]) {
+      check(
+        because: '$api must not be part of the public surface',
+        barrel,
+      ).not((b) => b.contains(api));
+    }
+  });
+
   test('only the data layer talks to the server', () {
     final libDir = Directory('lib');
     check(

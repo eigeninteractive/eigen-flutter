@@ -6,6 +6,39 @@
 /// config, and the game contract.
 library;
 
+/// The wire types a game renders from.
+///
+/// Re-exported deliberately, the way `supabase_flutter` re-exports `supabase`:
+/// they are generated, but they *are* this engine's domain vocabulary — there
+/// are no hand-written mirrors to hide them behind. A game app must be able to
+/// name a [GameStatus] or an [OutcomeResultEnum] without depending on
+/// `eigen_api` itself, which is a build artifact that `tool/generate_api.sh`
+/// deletes and rewrites wholesale.
+///
+/// Listed explicitly rather than exported wholesale so the generated `*Api`
+/// classes and their Dio plumbing stay out of an app's namespace: naming a type
+/// is part of the contract, calling the server is not.
+export 'package:eigen_api/eigen_api.dart'
+    show
+        Bot,
+        ErrorCode,
+        Frame,
+        Friend,
+        FriendRequest,
+        GameAccess,
+        GameStatus,
+        GameSummary,
+        Outcome,
+        OutcomeResultEnum,
+        Player,
+        Profile,
+        Rating,
+        RatingDelta,
+        RatingIdentity,
+        Roster,
+        Seat,
+        SeatTypeEnum;
+
 export 'app_runner.dart' show runEngineApp, MyApp;
 export 'core/config/app_config.dart'
     show AppConfig, Branding, EngineConfig, appConfigProvider;
@@ -19,3 +52,9 @@ export 'core/game/players_context.dart';
 export 'core/game/timing_context.dart';
 export 'features/game/providers/game_providers.dart'
     show currentGameModuleProvider;
+
+/// Shared UI a game composes with. Seat rendering in particular belongs here:
+/// avatar URLs may be relative to the API host, and routing every avatar
+/// through this widget is what keeps that resolution in one place.
+export 'shared/widgets/player_avatar.dart' show PlayerAvatar;
+export 'shared/widgets/player_tags.dart';
