@@ -257,12 +257,33 @@
             "type": "string"
           },
           "code": {
-            "type": "string"
+            "$ref": "#/components/schemas/ErrorCode"
           }
         },
         "required": [
           "error"
         ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "not_active",
+          "not_ready",
+          "expired",
+          "not_pending",
+          "state_updated",
+          "invalid_payload",
+          "illegal_move",
+          "unknown_game",
+          "not_joinable",
+          "game_full",
+          "already_joined",
+          "not_participant",
+          "not_creator",
+          "creator_cannot_leave",
+          "schema_unsupported"
+        ],
+        "description": "A stable machine code identifying why a request failed."
       },
       "MyGames": {
         "type": "object",
@@ -650,30 +671,7 @@
         "type": "object",
         "properties": {
           "identity": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "user_id": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "user_id"
-                ]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "bot_id": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "bot_id"
-                ]
-              }
-            ]
+            "$ref": "#/components/schemas/RatingIdentity"
           },
           "pool": {
             "type": "string"
@@ -710,6 +708,27 @@
           "sigma_after",
           "display_after",
           "display_change"
+        ]
+      },
+      "RatingIdentity": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bot_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "user_id",
+          "bot_id"
         ]
       },
       "CreateSolo": {
@@ -1179,6 +1198,9 @@
     "/api/engine/lobby": {
       "get": {
         "operationId": "getLobby",
+        "tags": [
+          "Games"
+        ],
         "parameters": [
           {
             "schema": {
@@ -1249,6 +1271,9 @@
     "/api/engine/games/mine": {
       "get": {
         "operationId": "getMyGames",
+        "tags": [
+          "Games"
+        ],
         "parameters": [
           {
             "schema": {
@@ -1332,6 +1357,9 @@
     "/api/engine/games/{gameId}": {
       "get": {
         "operationId": "getGame",
+        "tags": [
+          "Games"
+        ],
         "parameters": [
           {
             "schema": {
@@ -1400,6 +1428,9 @@
     "/api/engine/players": {
       "get": {
         "operationId": "getPlayers",
+        "tags": [
+          "Players"
+        ],
         "parameters": [
           {
             "schema": {
@@ -1468,6 +1499,9 @@
     "/api/engine/bots": {
       "get": {
         "operationId": "getBots",
+        "tags": [
+          "Bots"
+        ],
         "responses": {
           "200": {
             "description": "The bot catalog",
@@ -1525,6 +1559,9 @@
     "/api/engine/me": {
       "get": {
         "operationId": "getProfile",
+        "tags": [
+          "Me"
+        ],
         "responses": {
           "200": {
             "description": "The caller's own profile",
@@ -1580,6 +1617,9 @@
       },
       "delete": {
         "operationId": "deleteAccount",
+        "tags": [
+          "Me"
+        ],
         "responses": {
           "204": {
             "description": "The account and its data were deleted"
@@ -1610,6 +1650,9 @@
     "/api/engine/me/ratings": {
       "get": {
         "operationId": "getMyRatings",
+        "tags": [
+          "Me"
+        ],
         "responses": {
           "200": {
             "description": "The caller's current rating per pool",
@@ -1667,6 +1710,9 @@
     "/api/engine/me/rating-history": {
       "get": {
         "operationId": "getMyRatingHistory",
+        "tags": [
+          "Me"
+        ],
         "parameters": [
           {
             "schema": {
@@ -1745,6 +1791,9 @@
     "/api/engine/games": {
       "post": {
         "operationId": "createGame",
+        "tags": [
+          "Games"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1832,6 +1881,9 @@
     "/api/engine/games/solo": {
       "post": {
         "operationId": "createSoloGame",
+        "tags": [
+          "Games"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1919,6 +1971,9 @@
     "/api/engine/games/{gameId}/join": {
       "post": {
         "operationId": "joinGame",
+        "tags": [
+          "Games"
+        ],
         "parameters": [
           {
             "schema": {
@@ -2017,6 +2072,9 @@
     "/api/engine/games/join-by-code": {
       "post": {
         "operationId": "joinGameByCode",
+        "tags": [
+          "Games"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2104,6 +2162,9 @@
     "/api/engine/games/{gameId}/leave": {
       "post": {
         "operationId": "leaveGame",
+        "tags": [
+          "Games"
+        ],
         "parameters": [
           {
             "schema": {
@@ -2202,6 +2263,9 @@
     "/api/engine/games/{gameId}/cancel": {
       "post": {
         "operationId": "cancelGame",
+        "tags": [
+          "Games"
+        ],
         "parameters": [
           {
             "schema": {
@@ -2300,6 +2364,9 @@
     "/api/engine/games/{gameId}/add-bot": {
       "post": {
         "operationId": "addBot",
+        "tags": [
+          "Games"
+        ],
         "parameters": [
           {
             "schema": {
@@ -2398,6 +2465,9 @@
     "/api/engine/games/{gameId}/start": {
       "post": {
         "operationId": "startGame",
+        "tags": [
+          "Games"
+        ],
         "parameters": [
           {
             "schema": {
@@ -2496,6 +2566,9 @@
     "/api/engine/games/{gameId}/action": {
       "post": {
         "operationId": "submitAction",
+        "tags": [
+          "Games"
+        ],
         "parameters": [
           {
             "schema": {
@@ -2594,6 +2667,9 @@
     "/api/engine/games/{gameId}/forfeit": {
       "post": {
         "operationId": "forfeitGame",
+        "tags": [
+          "Games"
+        ],
         "parameters": [
           {
             "schema": {
@@ -2692,6 +2768,9 @@
     "/api/engine/games/{gameId}/frames": {
       "get": {
         "operationId": "getFrames",
+        "tags": [
+          "Games"
+        ],
         "parameters": [
           {
             "schema": {
@@ -2805,6 +2884,9 @@
     "/api/engine/me/username": {
       "put": {
         "operationId": "updateUsername",
+        "tags": [
+          "Me"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2862,6 +2944,9 @@
     "/api/engine/me/devices": {
       "put": {
         "operationId": "registerDevice",
+        "tags": [
+          "Me"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2902,6 +2987,9 @@
     "/api/engine/me/devices/{fid}": {
       "delete": {
         "operationId": "unregisterDevice",
+        "tags": [
+          "Me"
+        ],
         "parameters": [
           {
             "schema": {
@@ -2933,6 +3021,9 @@
     "/api/engine/friends": {
       "get": {
         "operationId": "listFriends",
+        "tags": [
+          "Social"
+        ],
         "responses": {
           "200": {
             "description": "The caller's accepted friends",
@@ -2990,6 +3081,9 @@
     "/api/engine/friends/requests": {
       "get": {
         "operationId": "listFriendRequests",
+        "tags": [
+          "Social"
+        ],
         "responses": {
           "200": {
             "description": "Pending requests, incoming and outgoing",
@@ -3045,6 +3139,9 @@
       },
       "post": {
         "operationId": "sendFriendRequest",
+        "tags": [
+          "Social"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -3112,6 +3209,9 @@
     "/api/engine/friends/games": {
       "get": {
         "operationId": "getFriendsGames",
+        "tags": [
+          "Social"
+        ],
         "parameters": [
           {
             "schema": {
@@ -3182,6 +3282,9 @@
     "/api/engine/users/search": {
       "get": {
         "operationId": "searchUsers",
+        "tags": [
+          "Social"
+        ],
         "parameters": [
           {
             "schema": {
@@ -3261,6 +3364,9 @@
     "/api/engine/friends/requests/{userId}/accept": {
       "post": {
         "operationId": "acceptFriendRequest",
+        "tags": [
+          "Social"
+        ],
         "parameters": [
           {
             "schema": {
@@ -3322,6 +3428,9 @@
     "/api/engine/friends/{userId}": {
       "delete": {
         "operationId": "removeFriend",
+        "tags": [
+          "Social"
+        ],
         "parameters": [
           {
             "schema": {
@@ -3383,6 +3492,9 @@
     "/api/engine/friends/{userId}/block": {
       "post": {
         "operationId": "blockUser",
+        "tags": [
+          "Social"
+        ],
         "parameters": [
           {
             "schema": {
@@ -3442,6 +3554,9 @@
       },
       "delete": {
         "operationId": "unblockUser",
+        "tags": [
+          "Social"
+        ],
         "parameters": [
           {
             "schema": {
@@ -3503,6 +3618,9 @@
     "/api/bot/action": {
       "post": {
         "operationId": "botAction",
+        "tags": [
+          "BotWebhook"
+        ],
         "security": [
           {
             "botHmac": []

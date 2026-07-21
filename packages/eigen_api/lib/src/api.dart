@@ -7,7 +7,12 @@ import 'package:eigen_api/src/auth/api_key_auth.dart';
 import 'package:eigen_api/src/auth/basic_auth.dart';
 import 'package:eigen_api/src/auth/bearer_auth.dart';
 import 'package:eigen_api/src/auth/oauth.dart';
-import 'package:eigen_api/src/api/default_api.dart';
+import 'package:eigen_api/src/api/bot_webhook_api.dart';
+import 'package:eigen_api/src/api/bots_api.dart';
+import 'package:eigen_api/src/api/games_api.dart';
+import 'package:eigen_api/src/api/me_api.dart';
+import 'package:eigen_api/src/api/players_api.dart';
+import 'package:eigen_api/src/api/social_api.dart';
 
 class EigenApi {
   static const String basePath = r'http://localhost';
@@ -60,9 +65,39 @@ class EigenApi {
     }
   }
 
-  /// Get DefaultApi instance, base route and serializer can be overridden by a given but be careful,
+  /// Get BotWebhookApi instance, base route and serializer can be overridden by a given but be careful,
   /// by doing that all interceptors will not be executed
-  DefaultApi getDefaultApi() {
-    return DefaultApi(dio);
+  BotWebhookApi getBotWebhookApi() {
+    return BotWebhookApi(dio);
+  }
+
+  /// Get BotsApi instance, base route and serializer can be overridden by a given but be careful,
+  /// by doing that all interceptors will not be executed
+  BotsApi getBotsApi() {
+    return BotsApi(dio);
+  }
+
+  /// Get GamesApi instance, base route and serializer can be overridden by a given but be careful,
+  /// by doing that all interceptors will not be executed
+  GamesApi getGamesApi() {
+    return GamesApi(dio);
+  }
+
+  /// Get MeApi instance, base route and serializer can be overridden by a given but be careful,
+  /// by doing that all interceptors will not be executed
+  MeApi getMeApi() {
+    return MeApi(dio);
+  }
+
+  /// Get PlayersApi instance, base route and serializer can be overridden by a given but be careful,
+  /// by doing that all interceptors will not be executed
+  PlayersApi getPlayersApi() {
+    return PlayersApi(dio);
+  }
+
+  /// Get SocialApi instance, base route and serializer can be overridden by a given but be careful,
+  /// by doing that all interceptors will not be executed
+  SocialApi getSocialApi() {
+    return SocialApi(dio);
   }
 }

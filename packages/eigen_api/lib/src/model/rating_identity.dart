@@ -3,12 +3,10 @@
 //
 
 // ignore_for_file: unused_element
-import 'package:eigen_api/src/model/rating_delta_identity_any_of.dart';
-import 'package:eigen_api/src/model/rating_delta_identity_any_of1.dart';
 import 'package:copy_with_extension/copy_with_extension.dart';
 import 'package:json_annotation/json_annotation.dart';
 
-part 'rating_delta_identity.g.dart';
+part 'rating_identity.g.dart';
 
 
 @CopyWith()
@@ -18,9 +16,9 @@ part 'rating_delta_identity.g.dart';
   disallowUnrecognizedKeys: false,
   explicitToJson: true,
 )
-class RatingDeltaIdentity {
-  /// Returns a new [RatingDeltaIdentity] instance.
-  RatingDeltaIdentity({
+class RatingIdentity {
+  /// Returns a new [RatingIdentity] instance.
+  RatingIdentity({
 
     required  this.userId,
 
@@ -31,11 +29,11 @@ class RatingDeltaIdentity {
     
     name: r'user_id',
     required: true,
-    includeIfNull: false,
+    includeIfNull: true,
   )
 
 
-  final String userId;
+  final String? userId;
 
 
 
@@ -43,29 +41,29 @@ class RatingDeltaIdentity {
     
     name: r'bot_id',
     required: true,
-    includeIfNull: false,
+    includeIfNull: true,
   )
 
 
-  final String botId;
+  final String? botId;
 
 
 
 
 
     @override
-    bool operator ==(Object other) => identical(this, other) || other is RatingDeltaIdentity &&
+    bool operator ==(Object other) => identical(this, other) || other is RatingIdentity &&
       other.userId == userId &&
       other.botId == botId;
 
     @override
     int get hashCode =>
-        userId.hashCode +
-        botId.hashCode;
+        (userId == null ? 0 : userId.hashCode) +
+        (botId == null ? 0 : botId.hashCode);
 
-  factory RatingDeltaIdentity.fromJson(Map<String, dynamic> json) => _$RatingDeltaIdentityFromJson(json);
+  factory RatingIdentity.fromJson(Map<String, dynamic> json) => _$RatingIdentityFromJson(json);
 
-  Map<String, dynamic> toJson() => _$RatingDeltaIdentityToJson(this);
+  Map<String, dynamic> toJson() => _$RatingIdentityToJson(this);
 
   @override
   String toString() {

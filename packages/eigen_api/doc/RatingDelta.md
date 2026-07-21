@@ -8,7 +8,7 @@ import 'package:eigen_api/api.dart';
 ## Properties
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
-**identity** | [**RatingDeltaIdentity**](RatingDeltaIdentity.md) |  | 
+**identity** | [**RatingIdentity**](RatingIdentity.md) |  | 
 **pool** | **String** |  | 
 **muBefore** | **num** |  | 
 **sigmaBefore** | **num** |  | 

@@ -3,6 +3,7 @@
 //
 
 // ignore_for_file: unused_element
+import 'package:eigen_api/src/model/error_code.dart';
 import 'package:copy_with_extension/copy_with_extension.dart';
 import 'package:json_annotation/json_annotation.dart';
 
@@ -45,7 +46,7 @@ class ErrorResponse {
   )
 
 
-  final String? code;
+  final ErrorCode? code;
 
 
 

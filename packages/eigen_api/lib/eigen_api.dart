@@ -9,7 +9,12 @@ export 'package:eigen_api/src/auth/bearer_auth.dart';
 export 'package:eigen_api/src/auth/oauth.dart';
 
 
-export 'package:eigen_api/src/api/default_api.dart';
+export 'package:eigen_api/src/api/bot_webhook_api.dart';
+export 'package:eigen_api/src/api/bots_api.dart';
+export 'package:eigen_api/src/api/games_api.dart';
+export 'package:eigen_api/src/api/me_api.dart';
+export 'package:eigen_api/src/api/players_api.dart';
+export 'package:eigen_api/src/api/social_api.dart';
 
 export 'package:eigen_api/src/model/action.dart';
 export 'package:eigen_api/src/model/add_bot.dart';
@@ -21,6 +26,7 @@ export 'package:eigen_api/src/model/create_game.dart';
 export 'package:eigen_api/src/model/create_solo.dart';
 export 'package:eigen_api/src/model/created.dart';
 export 'package:eigen_api/src/model/device_registration.dart';
+export 'package:eigen_api/src/model/error_code.dart';
 export 'package:eigen_api/src/model/error_response.dart';
 export 'package:eigen_api/src/model/forfeit.dart';
 export 'package:eigen_api/src/model/frame.dart';
@@ -46,11 +52,9 @@ export 'package:eigen_api/src/model/players.dart';
 export 'package:eigen_api/src/model/profile.dart';
 export 'package:eigen_api/src/model/rating.dart';
 export 'package:eigen_api/src/model/rating_delta.dart';
-export 'package:eigen_api/src/model/rating_delta_identity.dart';
-export 'package:eigen_api/src/model/rating_delta_identity_any_of.dart';
-export 'package:eigen_api/src/model/rating_delta_identity_any_of1.dart';
 export 'package:eigen_api/src/model/rating_history.dart';
 export 'package:eigen_api/src/model/rating_history_entry.dart';
+export 'package:eigen_api/src/model/rating_identity.dart';
 export 'package:eigen_api/src/model/ratings.dart';
 export 'package:eigen_api/src/model/roster.dart';
 export 'package:eigen_api/src/model/seat.dart';

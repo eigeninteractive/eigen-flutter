@@ -32,11 +32,9 @@ import 'package:eigen_api/src/model/players.dart';
 import 'package:eigen_api/src/model/profile.dart';
 import 'package:eigen_api/src/model/rating.dart';
 import 'package:eigen_api/src/model/rating_delta.dart';
-import 'package:eigen_api/src/model/rating_delta_identity.dart';
-import 'package:eigen_api/src/model/rating_delta_identity_any_of.dart';
-import 'package:eigen_api/src/model/rating_delta_identity_any_of1.dart';
 import 'package:eigen_api/src/model/rating_history.dart';
 import 'package:eigen_api/src/model/rating_history_entry.dart';
+import 'package:eigen_api/src/model/rating_identity.dart';
 import 'package:eigen_api/src/model/ratings.dart';
 import 'package:eigen_api/src/model/roster.dart';
 import 'package:eigen_api/src/model/seat.dart';
@@ -83,6 +81,9 @@ final _regMap = RegExp(r'^Map<String,(.*)>$');
           return Created.fromJson(value as Map<String, dynamic>) as ReturnType;
         case 'DeviceRegistration':
           return DeviceRegistration.fromJson(value as Map<String, dynamic>) as ReturnType;
+        case 'ErrorCode':
+          
+          
         case 'ErrorResponse':
           return ErrorResponse.fromJson(value as Map<String, dynamic>) as ReturnType;
         case 'Forfeit':
@@ -134,16 +135,12 @@ final _regMap = RegExp(r'^Map<String,(.*)>$');
           return Rating.fromJson(value as Map<String, dynamic>) as ReturnType;
         case 'RatingDelta':
           return RatingDelta.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'RatingDeltaIdentity':
-          return RatingDeltaIdentity.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'RatingDeltaIdentityAnyOf':
-          return RatingDeltaIdentityAnyOf.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'RatingDeltaIdentityAnyOf1':
-          return RatingDeltaIdentityAnyOf1.fromJson(value as Map<String, dynamic>) as ReturnType;
         case 'RatingHistory':
           return RatingHistory.fromJson(value as Map<String, dynamic>) as ReturnType;
         case 'RatingHistoryEntry':
           return RatingHistoryEntry.fromJson(value as Map<String, dynamic>) as ReturnType;
+        case 'RatingIdentity':
+          return RatingIdentity.fromJson(value as Map<String, dynamic>) as ReturnType;
         case 'Ratings':
           return Ratings.fromJson(value as Map<String, dynamic>) as ReturnType;
         case 'Roster':

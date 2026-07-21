@@ -3,7 +3,7 @@
 //
 
 // ignore_for_file: unused_element
-import 'package:eigen_api/src/model/rating_delta_identity.dart';
+import 'package:eigen_api/src/model/rating_identity.dart';
 import 'package:copy_with_extension/copy_with_extension.dart';
 import 'package:json_annotation/json_annotation.dart';
 
@@ -48,7 +48,7 @@ class RatingDelta {
   )
 
 
-  final RatingDeltaIdentity identity;
+  final RatingIdentity identity;
 
 
 

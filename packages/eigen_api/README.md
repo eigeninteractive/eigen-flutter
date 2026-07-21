@@ -48,13 +48,13 @@ Please follow the [installation procedure](#installation--usage) and then run th
 import 'package:eigen_api/eigen_api.dart';
 
 
-final api = EigenApi().getDefaultApi();
-final String userId = userId_example; // String | 
+final api = EigenApi().getBotWebhookApi();
+final BotAction botAction = ; // BotAction | 
 
 try {
-    api.acceptFriendRequest(userId);
+    api.botAction(botAction);
 } catch on DioException (e) {
-    print("Exception when calling DefaultApi->acceptFriendRequest: $e\n");
+    print("Exception when calling BotWebhookApi->botAction: $e\n");
 }
 
 ```
@@ -65,39 +65,39 @@ All URIs are relative to *http://localhost*
 
 Class | Method | HTTP request | Description
 ------------ | ------------- | ------------- | -------------
-[*DefaultApi*](doc/DefaultApi.md) | [**acceptFriendRequest**](doc/DefaultApi.md#acceptfriendrequest) | **POST** /api/engine/friends/requests/{userId}/accept | 
-[*DefaultApi*](doc/DefaultApi.md) | [**addBot**](doc/DefaultApi.md#addbot) | **POST** /api/engine/games/{gameId}/add-bot | 
-[*DefaultApi*](doc/DefaultApi.md) | [**blockUser**](doc/DefaultApi.md#blockuser) | **POST** /api/engine/friends/{userId}/block | 
-[*DefaultApi*](doc/DefaultApi.md) | [**botAction**](doc/DefaultApi.md#botaction) | **POST** /api/bot/action | 
-[*DefaultApi*](doc/DefaultApi.md) | [**cancelGame**](doc/DefaultApi.md#cancelgame) | **POST** /api/engine/games/{gameId}/cancel | 
-[*DefaultApi*](doc/DefaultApi.md) | [**createGame**](doc/DefaultApi.md#creategame) | **POST** /api/engine/games | 
-[*DefaultApi*](doc/DefaultApi.md) | [**createSoloGame**](doc/DefaultApi.md#createsologame) | **POST** /api/engine/games/solo | 
-[*DefaultApi*](doc/DefaultApi.md) | [**deleteAccount**](doc/DefaultApi.md#deleteaccount) | **DELETE** /api/engine/me | 
-[*DefaultApi*](doc/DefaultApi.md) | [**forfeitGame**](doc/DefaultApi.md#forfeitgame) | **POST** /api/engine/games/{gameId}/forfeit | 
-[*DefaultApi*](doc/DefaultApi.md) | [**getBots**](doc/DefaultApi.md#getbots) | **GET** /api/engine/bots | 
-[*DefaultApi*](doc/DefaultApi.md) | [**getFrames**](doc/DefaultApi.md#getframes) | **GET** /api/engine/games/{gameId}/frames | 
-[*DefaultApi*](doc/DefaultApi.md) | [**getFriendsGames**](doc/DefaultApi.md#getfriendsgames) | **GET** /api/engine/friends/games | 
-[*DefaultApi*](doc/DefaultApi.md) | [**getGame**](doc/DefaultApi.md#getgame) | **GET** /api/engine/games/{gameId} | 
-[*DefaultApi*](doc/DefaultApi.md) | [**getLobby**](doc/DefaultApi.md#getlobby) | **GET** /api/engine/lobby | 
-[*DefaultApi*](doc/DefaultApi.md) | [**getMyGames**](doc/DefaultApi.md#getmygames) | **GET** /api/engine/games/mine | 
-[*DefaultApi*](doc/DefaultApi.md) | [**getMyRatingHistory**](doc/DefaultApi.md#getmyratinghistory) | **GET** /api/engine/me/rating-history | 
-[*DefaultApi*](doc/DefaultApi.md) | [**getMyRatings**](doc/DefaultApi.md#getmyratings) | **GET** /api/engine/me/ratings | 
-[*DefaultApi*](doc/DefaultApi.md) | [**getPlayers**](doc/DefaultApi.md#getplayers) | **GET** /api/engine/players | 
-[*DefaultApi*](doc/DefaultApi.md) | [**getProfile**](doc/DefaultApi.md#getprofile) | **GET** /api/engine/me | 
-[*DefaultApi*](doc/DefaultApi.md) | [**joinGame**](doc/DefaultApi.md#joingame) | **POST** /api/engine/games/{gameId}/join | 
-[*DefaultApi*](doc/DefaultApi.md) | [**joinGameByCode**](doc/DefaultApi.md#joingamebycode) | **POST** /api/engine/games/join-by-code | 
-[*DefaultApi*](doc/DefaultApi.md) | [**leaveGame**](doc/DefaultApi.md#leavegame) | **POST** /api/engine/games/{gameId}/leave | 
-[*DefaultApi*](doc/DefaultApi.md) | [**listFriendRequests**](doc/DefaultApi.md#listfriendrequests) | **GET** /api/engine/friends/requests | 
-[*DefaultApi*](doc/DefaultApi.md) | [**listFriends**](doc/DefaultApi.md#listfriends) | **GET** /api/engine/friends | 
-[*DefaultApi*](doc/DefaultApi.md) | [**registerDevice**](doc/DefaultApi.md#registerdevice) | **PUT** /api/engine/me/devices | 
-[*DefaultApi*](doc/DefaultApi.md) | [**removeFriend**](doc/DefaultApi.md#removefriend) | **DELETE** /api/engine/friends/{userId} | 
-[*DefaultApi*](doc/DefaultApi.md) | [**searchUsers**](doc/DefaultApi.md#searchusers) | **GET** /api/engine/users/search | 
-[*DefaultApi*](doc/DefaultApi.md) | [**sendFriendRequest**](doc/DefaultApi.md#sendfriendrequest) | **POST** /api/engine/friends/requests | 
-[*DefaultApi*](doc/DefaultApi.md) | [**startGame**](doc/DefaultApi.md#startgame) | **POST** /api/engine/games/{gameId}/start | 
-[*DefaultApi*](doc/DefaultApi.md) | [**submitAction**](doc/DefaultApi.md#submitaction) | **POST** /api/engine/games/{gameId}/action | 
-[*DefaultApi*](doc/DefaultApi.md) | [**unblockUser**](doc/DefaultApi.md#unblockuser) | **DELETE** /api/engine/friends/{userId}/block | 
-[*DefaultApi*](doc/DefaultApi.md) | [**unregisterDevice**](doc/DefaultApi.md#unregisterdevice) | **DELETE** /api/engine/me/devices/{fid} | 
-[*DefaultApi*](doc/DefaultApi.md) | [**updateUsername**](doc/DefaultApi.md#updateusername) | **PUT** /api/engine/me/username | 
+[*BotWebhookApi*](doc/BotWebhookApi.md) | [**botAction**](doc/BotWebhookApi.md#botaction) | **POST** /api/bot/action | 
+[*BotsApi*](doc/BotsApi.md) | [**getBots**](doc/BotsApi.md#getbots) | **GET** /api/engine/bots | 
+[*GamesApi*](doc/GamesApi.md) | [**addBot**](doc/GamesApi.md#addbot) | **POST** /api/engine/games/{gameId}/add-bot | 
+[*GamesApi*](doc/GamesApi.md) | [**cancelGame**](doc/GamesApi.md#cancelgame) | **POST** /api/engine/games/{gameId}/cancel | 
+[*GamesApi*](doc/GamesApi.md) | [**createGame**](doc/GamesApi.md#creategame) | **POST** /api/engine/games | 
+[*GamesApi*](doc/GamesApi.md) | [**createSoloGame**](doc/GamesApi.md#createsologame) | **POST** /api/engine/games/solo | 
+[*GamesApi*](doc/GamesApi.md) | [**forfeitGame**](doc/GamesApi.md#forfeitgame) | **POST** /api/engine/games/{gameId}/forfeit | 
+[*GamesApi*](doc/GamesApi.md) | [**getFrames**](doc/GamesApi.md#getframes) | **GET** /api/engine/games/{gameId}/frames | 
+[*GamesApi*](doc/GamesApi.md) | [**getGame**](doc/GamesApi.md#getgame) | **GET** /api/engine/games/{gameId} | 
+[*GamesApi*](doc/GamesApi.md) | [**getLobby**](doc/GamesApi.md#getlobby) | **GET** /api/engine/lobby | 
+[*GamesApi*](doc/GamesApi.md) | [**getMyGames**](doc/GamesApi.md#getmygames) | **GET** /api/engine/games/mine | 
+[*GamesApi*](doc/GamesApi.md) | [**joinGame**](doc/GamesApi.md#joingame) | **POST** /api/engine/games/{gameId}/join | 
+[*GamesApi*](doc/GamesApi.md) | [**joinGameByCode**](doc/GamesApi.md#joingamebycode) | **POST** /api/engine/games/join-by-code | 
+[*GamesApi*](doc/GamesApi.md) | [**leaveGame**](doc/GamesApi.md#leavegame) | **POST** /api/engine/games/{gameId}/leave | 
+[*GamesApi*](doc/GamesApi.md) | [**startGame**](doc/GamesApi.md#startgame) | **POST** /api/engine/games/{gameId}/start | 
+[*GamesApi*](doc/GamesApi.md) | [**submitAction**](doc/GamesApi.md#submitaction) | **POST** /api/engine/games/{gameId}/action | 
+[*MeApi*](doc/MeApi.md) | [**deleteAccount**](doc/MeApi.md#deleteaccount) | **DELETE** /api/engine/me | 
+[*MeApi*](doc/MeApi.md) | [**getMyRatingHistory**](doc/MeApi.md#getmyratinghistory) | **GET** /api/engine/me/rating-history | 
+[*MeApi*](doc/MeApi.md) | [**getMyRatings**](doc/MeApi.md#getmyratings) | **GET** /api/engine/me/ratings | 
+[*MeApi*](doc/MeApi.md) | [**getProfile**](doc/MeApi.md#getprofile) | **GET** /api/engine/me | 
+[*MeApi*](doc/MeApi.md) | [**registerDevice**](doc/MeApi.md#registerdevice) | **PUT** /api/engine/me/devices | 
+[*MeApi*](doc/MeApi.md) | [**unregisterDevice**](doc/MeApi.md#unregisterdevice) | **DELETE** /api/engine/me/devices/{fid} | 
+[*MeApi*](doc/MeApi.md) | [**updateUsername**](doc/MeApi.md#updateusername) | **PUT** /api/engine/me/username | 
+[*PlayersApi*](doc/PlayersApi.md) | [**getPlayers**](doc/PlayersApi.md#getplayers) | **GET** /api/engine/players | 
+[*SocialApi*](doc/SocialApi.md) | [**acceptFriendRequest**](doc/SocialApi.md#acceptfriendrequest) | **POST** /api/engine/friends/requests/{userId}/accept | 
+[*SocialApi*](doc/SocialApi.md) | [**blockUser**](doc/SocialApi.md#blockuser) | **POST** /api/engine/friends/{userId}/block | 
+[*SocialApi*](doc/SocialApi.md) | [**getFriendsGames**](doc/SocialApi.md#getfriendsgames) | **GET** /api/engine/friends/games | 
+[*SocialApi*](doc/SocialApi.md) | [**listFriendRequests**](doc/SocialApi.md#listfriendrequests) | **GET** /api/engine/friends/requests | 
+[*SocialApi*](doc/SocialApi.md) | [**listFriends**](doc/SocialApi.md#listfriends) | **GET** /api/engine/friends | 
+[*SocialApi*](doc/SocialApi.md) | [**removeFriend**](doc/SocialApi.md#removefriend) | **DELETE** /api/engine/friends/{userId} | 
+[*SocialApi*](doc/SocialApi.md) | [**searchUsers**](doc/SocialApi.md#searchusers) | **GET** /api/engine/users/search | 
+[*SocialApi*](doc/SocialApi.md) | [**sendFriendRequest**](doc/SocialApi.md#sendfriendrequest) | **POST** /api/engine/friends/requests | 
+[*SocialApi*](doc/SocialApi.md) | [**unblockUser**](doc/SocialApi.md#unblockuser) | **DELETE** /api/engine/friends/{userId}/block | 
 
 
 ## Documentation For Models
@@ -112,6 +112,7 @@ Class | Method | HTTP request | Description
  - [CreateSolo](doc/CreateSolo.md)
  - [Created](doc/Created.md)
  - [DeviceRegistration](doc/DeviceRegistration.md)
+ - [ErrorCode](doc/ErrorCode.md)
  - [ErrorResponse](doc/ErrorResponse.md)
  - [Forfeit](doc/Forfeit.md)
  - [Frame](doc/Frame.md)
@@ -137,11 +138,9 @@ Class | Method | HTTP request | Description
  - [Profile](doc/Profile.md)
  - [Rating](doc/Rating.md)
  - [RatingDelta](doc/RatingDelta.md)
- - [RatingDeltaIdentity](doc/RatingDeltaIdentity.md)
- - [RatingDeltaIdentityAnyOf](doc/RatingDeltaIdentityAnyOf.md)
- - [RatingDeltaIdentityAnyOf1](doc/RatingDeltaIdentityAnyOf1.md)
  - [RatingHistory](doc/RatingHistory.md)
  - [RatingHistoryEntry](doc/RatingHistoryEntry.md)
+ - [RatingIdentity](doc/RatingIdentity.md)
  - [Ratings](doc/Ratings.md)
  - [Roster](doc/Roster.md)
  - [Seat](doc/Seat.md)
