@@ -245,18 +245,8 @@ class FirebaseNotificationService {
     await prefs.setString(_registeredKey, registered);
   }
 
-  Future<void> _upsertInstallation(String fid) async {
-    final platform = kIsWeb
-        ? 'web'
-        : switch (defaultTargetPlatform) {
-            TargetPlatform.iOS || TargetPlatform.macOS => 'ios',
-            TargetPlatform.android => 'android',
-            _ => throw UnsupportedError(
-              'Push notifications not supported on $defaultTargetPlatform',
-            ),
-          };
-    await _installationRepository.upsert(fid: fid, platform: platform);
-  }
+  Future<void> _upsertInstallation(String fid) =>
+      _installationRepository.upsert(fid: fid);
 
   void _showForegroundNotification(RemoteMessage message) {
     if (kIsWeb) return; // flutter_local_notifications has no web implementation

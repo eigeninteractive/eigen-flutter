@@ -1,48 +1,26 @@
 import 'package:checks/checks.dart';
+import 'package:dio/dio.dart';
+import 'package:eigen_api/eigen_api.dart';
 import 'package:eigen_flutter/core/errors/engine_exception.dart';
 import 'package:eigen_flutter/core/errors/error_messages.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('humanize', () {
-    test('maps engine codes on EngineException to friendly copy', () {
+    test('maps engine codes to friendly copy', () {
       check(
         humanize(
-          const EngineException(
-            'Not your turn',
-            code: EngineErrorCodes.notYourTurn,
-          ),
+          const EngineException('Not pending', code: ErrorCode.notPending),
         ),
       ).equals("It's not your turn.");
       check(
         humanize(
           const EngineException(
             'Stale state: expected version 3, current 4',
-            code: EngineErrorCodes.staleVersion,
+            code: ErrorCode.stateUpdated,
           ),
         ),
       ).equals('The game updated — try again.');
-    });
-
-    test('maps codes from client-direct RPC failures (via dbGuard)', () {
-      // dbGuard rethrows PostgrestException as EngineException, so RPC
-      // failures arrive here already carrying their EIGxx / SQLSTATE code.
-      check(
-        humanize(
-          const EngineException(
-            'Game is full',
-            code: EngineErrorCodes.gameFull,
-          ),
-        ),
-      ).equals('This game is already full.');
-      check(
-        humanize(
-          const EngineException(
-            'duplicate key value violates unique constraint',
-            code: '23505',
-          ),
-        ),
-      ).equals('That seat just filled up.');
     });
 
     test('dispatches on code, not message text', () {
@@ -51,18 +29,37 @@ void main() {
         humanize(
           const EngineException(
             'reworded server copy',
-            code: EngineErrorCodes.usernameTaken,
+            code: ErrorCode.usernameTaken,
           ),
         ),
       ).equals('That username is already taken.');
+    });
+
+    test('gives every code its own copy', () {
+      // `messageForCode` is an exhaustive switch, so it cannot silently
+      // regress to a generic message for a newly added code — but it can
+      // regress to a copy-pasted duplicate, which this catches.
+      final messages = ErrorCode.values.map(messageForCode).toSet();
+      check(messages).length.equals(ErrorCode.values.length);
+    });
+
+    test('falls back to the generic message for an uncoded failure', () {
+      // Validation details and unexpected 500s: the server's own wording is
+      // diagnostic, sometimes internal, and never shown.
       check(
-        humanize(const EngineException('Not your turn')),
+        humanize(const EngineException('engine bug: expected a roster')),
       ).equals('Something went wrong. Please try again.');
     });
 
-    test('maps network errors by exception shape', () {
+    test('reports a transport failure as an offline message', () {
+      // By exception type, not by matching message text.
       check(
-        humanize(Exception('SocketException: failed host lookup')),
+        humanize(
+          DioException(
+            requestOptions: RequestOptions(path: '/api/engine/lobby'),
+            type: DioExceptionType.connectionError,
+          ),
+        ),
       ).equals("Can't reach the server. Check your connection.");
     });
 

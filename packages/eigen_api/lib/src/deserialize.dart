@@ -8,6 +8,8 @@ import 'package:eigen_api/src/model/create_game.dart';
 import 'package:eigen_api/src/model/create_solo.dart';
 import 'package:eigen_api/src/model/created.dart';
 import 'package:eigen_api/src/model/device_registration.dart';
+import 'package:eigen_api/src/model/display_name_update.dart';
+import 'package:eigen_api/src/model/display_name_updated.dart';
 import 'package:eigen_api/src/model/error_response.dart';
 import 'package:eigen_api/src/model/forfeit.dart';
 import 'package:eigen_api/src/model/frame.dart';
@@ -81,6 +83,10 @@ final _regMap = RegExp(r'^Map<String,(.*)>$');
           return Created.fromJson(value as Map<String, dynamic>) as ReturnType;
         case 'DeviceRegistration':
           return DeviceRegistration.fromJson(value as Map<String, dynamic>) as ReturnType;
+        case 'DisplayNameUpdate':
+          return DisplayNameUpdate.fromJson(value as Map<String, dynamic>) as ReturnType;
+        case 'DisplayNameUpdated':
+          return DisplayNameUpdated.fromJson(value as Map<String, dynamic>) as ReturnType;
         case 'ErrorCode':
           
           

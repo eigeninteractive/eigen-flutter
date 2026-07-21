@@ -1,29 +1,45 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:eigen_flutter/features/rating/data/models/player_rating.dart';
-import 'package:eigen_flutter/shared/data/db_guard.dart';
+import 'package:eigen_api/eigen_api.dart';
+import 'package:eigen_flutter/core/api/engine_call.dart';
 
-/// Repository for player rating data.
+/// Player ratings and the caller's own rating log.
 ///
-/// Reads directly from [player_ratings] via RLS-protected table queries.
-/// Writes are performed exclusively by the `update-ratings` Edge Function.
-/// Rating history is fetched as part of [GameRepository.getHistoryGameEntries].
+/// Ratings are computed server-side inside the finish transaction and
+/// delivered to a live game as a post-finish transition; this repository only
+/// reads the settled values.
 class RatingRepository {
-  RatingRepository(this._client);
+  RatingRepository(this._me, this._players);
 
-  final SupabaseClient _client;
+  final MeApi _me;
+  final PlayersApi _players;
 
-  /// Returns all pool ratings for [id], ordered by highest display rating.
+  /// Every pool [playerId] has played in, best rating first.
   ///
-  /// Works for both human and bot IDs — queries both [user_id] and [bot_id]
-  /// columns since the XOR constraint guarantees exactly one is set per row.
-  Future<List<PlayerRating>> getPlayerRatings(String id) async {
-    final response = await dbGuard(
-      () => _client
-          .from('player_ratings')
-          .select('pool, mu, sigma, display_rating')
-          .or('user_id.eq.$id,bot_id.eq.$id')
-          .order('display_rating', ascending: false),
+  /// Works for humans and bots alike: a rating row is keyed by exactly one of
+  /// the two, so the id alone is enough. Display ratings are public.
+  Future<List<Rating>> getPlayerRatings(String playerId) async {
+    final response = await engineCall(
+      () => _players.getPlayerRatings(playerId: playerId),
     );
-    return response.map(PlayerRating.fromJson).toList();
+    return response.data?.ratings ?? const [];
+  }
+
+  /// The caller's own ratings.
+  ///
+  /// Distinct from [getPlayerRatings] only in that it needs no id — the token
+  /// identifies the caller.
+  Future<List<Rating>> getMyRatings() async {
+    final response = await engineCall(() => _me.getMyRatings());
+    return response.data?.ratings ?? const [];
+  }
+
+  /// The caller's rating changes, newest first, optionally for one [pool].
+  Future<List<RatingHistoryEntry>> getMyRatingHistory({
+    String? pool,
+    int? limit,
+  }) async {
+    final response = await engineCall(
+      () => _me.getMyRatingHistory(pool: pool, limit: limit),
+    );
+    return response.data?.history ?? const [];
   }
 }

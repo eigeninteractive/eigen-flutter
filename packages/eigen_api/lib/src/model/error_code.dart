@@ -51,7 +51,25 @@ enum ErrorCode {
       creatorCannotLeave(r'creator_cannot_leave'),
           /// A stable machine code identifying why a request failed.
       @JsonValue(r'schema_unsupported')
-      schemaUnsupported(r'schema_unsupported');
+      schemaUnsupported(r'schema_unsupported'),
+          /// A stable machine code identifying why a request failed.
+      @JsonValue(r'username_invalid')
+      usernameInvalid(r'username_invalid'),
+          /// A stable machine code identifying why a request failed.
+      @JsonValue(r'username_taken')
+      usernameTaken(r'username_taken'),
+          /// A stable machine code identifying why a request failed.
+      @JsonValue(r'friends_only')
+      friendsOnly(r'friends_only'),
+          /// A stable machine code identifying why a request failed.
+      @JsonValue(r'registration_required')
+      registrationRequired(r'registration_required'),
+          /// A stable machine code identifying why a request failed.
+      @JsonValue(r'image_too_large')
+      imageTooLarge(r'image_too_large'),
+          /// A stable machine code identifying why a request failed.
+      @JsonValue(r'unsupported_image_type')
+      unsupportedImageType(r'unsupported_image_type');
 
   const ErrorCode(this.value);
 

@@ -1,12 +1,11 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:eigen_flutter/shared/data/db_guard.dart';
-import 'package:eigen_flutter/shared/data/models/player_info.dart';
+import 'package:eigen_api/eigen_api.dart';
+import 'package:eigen_flutter/core/api/engine_call.dart';
 
 /// Thrown when a player lookup matches no row.
 ///
-/// Deleted accounts leave no `app_players` row behind, so reaching this
-/// usually means a synthetic deleted-seat placeholder id (see
-/// `GamePlayer.isDeleted`) leaked into an identity lookup.
+/// Purged accounts leave no identity behind, so reaching this usually means a
+/// synthetic deleted-seat placeholder id (see `GamePlayer.isDeleted`) leaked
+/// into an identity lookup.
 class PlayerNotFoundException implements Exception {
   const PlayerNotFoundException(this.playerId);
 
@@ -17,29 +16,37 @@ class PlayerNotFoundException implements Exception {
   String toString() => 'No player found for id: $playerId';
 }
 
-/// Repository for fetching public player identities.
+/// Fetches public player identities — humans and bots alike.
 ///
-/// Uses the `app_players` RPC, which covers both human users and bots via a
-/// UNION. All data is public-safe (no email, no payment tier).
+/// The batch endpoint is the decided alternative to denormalising identity onto
+/// game rows: a caller collects the ids it needs and resolves them in one
+/// request, and the client's persisted cache absorbs the repeats.
+///
+/// Everything returned is public-safe — no email, no account state.
 class PlayerRepository {
-  PlayerRepository(this._client);
+  PlayerRepository(this._api);
 
-  final SupabaseClient _client;
+  final PlayersApi _api;
 
-  /// Fetches public identity for any player (human or bot) by ID.
+  /// Public identity for one player, human or bot.
   ///
-  /// Throws [PlayerNotFoundException] when no player has this id.
-  Future<PlayerInfo> getPlayer(String id) async {
-    final response = await dbGuard(
-      () => _client.rpc(
-        'app_players',
-        params: {
-          'p_ids': [id],
-        },
-      ),
-    );
-    final rows = response as List;
-    if (rows.isEmpty) throw PlayerNotFoundException(id);
-    return PlayerInfo.fromJson(rows.single);
+  /// Throws [PlayerNotFoundException] when no player has this id. Prefer
+  /// [getPlayers] when resolving more than one: the endpoint is a batch, and
+  /// calling it per id defeats the point of having it.
+  Future<Player> getPlayer(String id) async {
+    final players = await getPlayers([id]);
+    if (players.isEmpty) throw PlayerNotFoundException(id);
+    return players.single;
+  }
+
+  /// Public identities for a batch of ids.
+  ///
+  /// Ids that match nothing are simply absent, so the result may be shorter
+  /// than [ids] — a purged account is a normal outcome here, not an error. An
+  /// empty [ids] resolves without a request.
+  Future<List<Player>> getPlayers(List<String> ids) async {
+    if (ids.isEmpty) return const [];
+    final response = await engineCall(() => _api.getPlayers(ids: ids.join(',')));
+    return response.data?.players ?? const [];
   }
 }

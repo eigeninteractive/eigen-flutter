@@ -1,85 +1,51 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:eigen_flutter/features/profile/data/models/user_profile.dart';
-import 'package:eigen_flutter/shared/data/db_guard.dart';
+import 'package:eigen_api/eigen_api.dart';
+import 'package:eigen_flutter/core/api/engine_call.dart';
 
-/// Repository for user profile data operations.
+/// The signed-in user's own profile.
 ///
-/// Handles CRUD operations for user data, combining `users` and `user_profiles`
-/// tables in a single query. Auth-agnostic - userId must be provided by caller.
+/// Everything here is scoped to the caller by their token, so no user id is
+/// passed: `/me` is always "whoever this request is authenticated as". Reading
+/// *another* player's public identity is [PlayerRepository]'s job.
 class ProfileRepository {
-  ProfileRepository(this._client);
+  ProfileRepository(this._api);
 
-  final SupabaseClient _client;
+  final MeApi _api;
 
-  /// Fetches a user's complete profile (users + user_profiles joined).
-  Future<UserProfile> getUserProfile(String userId) async {
-    // Query user_profiles and join with users table
-    final response = await dbGuard(
-      () => _client
-          .from('user_profiles')
-          .select('''
-            id,
-            display_name,
-            avatar_url,
-            created_at,
-            updated_at,
-            users!inner (
-              username,
-              email,
-              payment_tier
-            )
-          ''')
-          .eq('id', userId)
-          .single(),
+  /// The caller's own profile, including the private fields (email) that the
+  /// public [Player] projection omits.
+  Future<Profile> getProfile() async {
+    final response = await engineCall(() => _api.getProfile());
+    return response.data!;
+  }
+
+  /// Changes the caller's username — the unique, charset-constrained handle.
+  ///
+  /// Throws an [EngineException] with [ErrorCode.usernameTaken] or
+  /// [ErrorCode.usernameInvalid]; both are field-level form errors rather than
+  /// failures to report generically.
+  Future<String> updateUsername(String username) async {
+    final response = await engineCall(
+      () => _api.updateUsername(usernameUpdate: UsernameUpdate(username: username)),
     );
-
-    // Flatten the nested response
-    final users = response['users'] as Map<String, dynamic>;
-    return UserProfile.fromJson({
-      'id': response['id'],
-      'display_name': response['display_name'],
-      'avatar_url': response['avatar_url'],
-      'created_at': response['created_at'],
-      'updated_at': response['updated_at'],
-      'username': users['username'],
-      'email': users['email'],
-      'payment_tier': users['payment_tier'],
-    });
+    return response.data!.username;
   }
 
-  /// Updates a user's profile.
-  ///
-  /// Returns the updated [UserProfile] on success.
-  Future<UserProfile> updateProfile(
-    String userId, {
-    String? displayName,
-    String? avatarUrl,
-  }) async {
-    final updates = <String, dynamic>{};
-
-    if (displayName != null) updates['display_name'] = displayName;
-    if (avatarUrl != null) updates['avatar_url'] = avatarUrl;
-
-    if (updates.isNotEmpty) {
-      await dbGuard(
-        () => _client.from('user_profiles').update(updates).eq('id', userId),
-      );
-    }
-
-    // Re-fetch the complete profile
-    return getUserProfile(userId);
-  }
-
-  /// Updates the current user's username via RPC.
-  ///
-  /// Throws on validation or uniqueness errors.
-  Future<String> updateUsername(String newUsername) async {
-    final response = await dbGuard(
-      () => _client.rpc(
-        'app_update_username',
-        params: {'new_username': newUsername},
+  /// Changes the caller's display name — the free-form label shown beside their
+  /// moves. Not unique: two players may share one, which is what the username
+  /// disambiguates.
+  Future<String> updateDisplayName(String displayName) async {
+    final response = await engineCall(
+      () => _api.updateDisplayName(
+        displayNameUpdate: DisplayNameUpdate(displayName: displayName),
       ),
     );
-    return response as String;
+    return response.data!.displayName;
   }
+
+  /// Deletes the caller's account and all of its data.
+  ///
+  /// Irreversible. The server forfeits or cancels their live games, deletes the
+  /// identity provider account, then purges the database — in that order, so a
+  /// failure leaves the account intact and the call retriable.
+  Future<void> deleteAccount() => engineCall(() => _api.deleteAccount());
 }

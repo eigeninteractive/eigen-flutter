@@ -87,7 +87,9 @@ Class | Method | HTTP request | Description
 [*MeApi*](doc/MeApi.md) | [**getProfile**](doc/MeApi.md#getprofile) | **GET** /api/engine/me | 
 [*MeApi*](doc/MeApi.md) | [**registerDevice**](doc/MeApi.md#registerdevice) | **PUT** /api/engine/me/devices | 
 [*MeApi*](doc/MeApi.md) | [**unregisterDevice**](doc/MeApi.md#unregisterdevice) | **DELETE** /api/engine/me/devices/{fid} | 
+[*MeApi*](doc/MeApi.md) | [**updateDisplayName**](doc/MeApi.md#updatedisplayname) | **PUT** /api/engine/me/display-name | 
 [*MeApi*](doc/MeApi.md) | [**updateUsername**](doc/MeApi.md#updateusername) | **PUT** /api/engine/me/username | 
+[*PlayersApi*](doc/PlayersApi.md) | [**getPlayerRatings**](doc/PlayersApi.md#getplayerratings) | **GET** /api/engine/players/{playerId}/ratings | 
 [*PlayersApi*](doc/PlayersApi.md) | [**getPlayers**](doc/PlayersApi.md#getplayers) | **GET** /api/engine/players | 
 [*SocialApi*](doc/SocialApi.md) | [**acceptFriendRequest**](doc/SocialApi.md#acceptfriendrequest) | **POST** /api/engine/friends/requests/{userId}/accept | 
 [*SocialApi*](doc/SocialApi.md) | [**blockUser**](doc/SocialApi.md#blockuser) | **POST** /api/engine/friends/{userId}/block | 
@@ -112,6 +114,8 @@ Class | Method | HTTP request | Description
  - [CreateSolo](doc/CreateSolo.md)
  - [Created](doc/Created.md)
  - [DeviceRegistration](doc/DeviceRegistration.md)
+ - [DisplayNameUpdate](doc/DisplayNameUpdate.md)
+ - [DisplayNameUpdated](doc/DisplayNameUpdated.md)
  - [ErrorCode](doc/ErrorCode.md)
  - [ErrorResponse](doc/ErrorResponse.md)
  - [Forfeit](doc/Forfeit.md)

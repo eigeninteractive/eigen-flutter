@@ -26,6 +26,8 @@ export 'package:eigen_api/src/model/create_game.dart';
 export 'package:eigen_api/src/model/create_solo.dart';
 export 'package:eigen_api/src/model/created.dart';
 export 'package:eigen_api/src/model/device_registration.dart';
+export 'package:eigen_api/src/model/display_name_update.dart';
+export 'package:eigen_api/src/model/display_name_updated.dart';
 export 'package:eigen_api/src/model/error_code.dart';
 export 'package:eigen_api/src/model/error_response.dart';
 export 'package:eigen_api/src/model/forfeit.dart';

@@ -36,19 +36,20 @@ class AppConfig {
 @immutable
 class EngineConfig {
   const EngineConfig({
-    required this.supabaseUrl,
-    required this.supabasePublishableKey,
+    required this.apiBaseUrl,
     required this.googleWebClientId,
     this.firebaseVapidKey,
     this.appHost,
     this.legalHost,
   });
 
-  /// Supabase project URL.
-  final String supabaseUrl;
-
-  /// Supabase publishable key (formerly the "anon" key).
-  final String supabasePublishableKey;
+  /// Origin of the Eigen server, with no trailing slash and no path — for
+  /// example `https://api.example.com`.
+  ///
+  /// Only the origin: every generated route already carries the `/api/engine`
+  /// prefix, and the game socket is built from this same origin with the scheme
+  /// swapped to `ws`/`wss`.
+  final String apiBaseUrl;
 
   /// Google Sign-In web/server client id.
   final String googleWebClientId;
@@ -99,8 +100,7 @@ class Branding {
 ///       seedColor: Colors.deepPurple,
 ///     ),
 ///     engine: EngineConfig(
-///       supabaseUrl: Env.supabaseUrl,
-///       supabasePublishableKey: Env.supabasePublishableKey,
+///       apiBaseUrl: Env.apiBaseUrl,
 ///       googleWebClientId: Env.googleWebClientId,
 ///     ),
 ///   ),

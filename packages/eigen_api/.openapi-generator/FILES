@@ -14,6 +14,8 @@ doc/CreateGame.md
 doc/CreateSolo.md
 doc/Created.md
 doc/DeviceRegistration.md
+doc/DisplayNameUpdate.md
+doc/DisplayNameUpdated.md
 doc/ErrorCode.md
 doc/ErrorResponse.md
 doc/Forfeit.md
@@ -78,6 +80,8 @@ lib/src/model/create_game.dart
 lib/src/model/create_solo.dart
 lib/src/model/created.dart
 lib/src/model/device_registration.dart
+lib/src/model/display_name_update.dart
+lib/src/model/display_name_updated.dart
 lib/src/model/error_code.dart
 lib/src/model/error_response.dart
 lib/src/model/forfeit.dart

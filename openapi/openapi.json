@@ -281,7 +281,13 @@
           "not_participant",
           "not_creator",
           "creator_cannot_leave",
-          "schema_unsupported"
+          "schema_unsupported",
+          "username_invalid",
+          "username_taken",
+          "friends_only",
+          "registration_required",
+          "image_too_large",
+          "unsupported_image_type"
         ],
         "description": "A stable machine code identifying why a request failed."
       },
@@ -982,6 +988,30 @@
           "username"
         ]
       },
+      "DisplayNameUpdated": {
+        "type": "object",
+        "properties": {
+          "display_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "display_name"
+        ]
+      },
+      "DisplayNameUpdate": {
+        "type": "object",
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          }
+        },
+        "required": [
+          "display_name"
+        ]
+      },
       "DeviceRegistration": {
         "type": "object",
         "properties": {
@@ -1656,6 +1686,77 @@
         "responses": {
           "200": {
             "description": "The caller's current rating per pool",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ratings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/engine/players/{playerId}/ratings": {
+      "get": {
+        "operationId": "getPlayerRatings",
+        "tags": [
+          "Players"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "playerId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "That player's current rating per pool",
             "content": {
               "application/json": {
                 "schema": {
@@ -2930,6 +3031,56 @@
           },
           "409": {
             "description": "Username already taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/engine/me/display-name": {
+      "put": {
+        "operationId": "updateDisplayName",
+        "tags": [
+          "Me"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisplayNameUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The new display name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisplayNameUpdated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid display name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid token",
             "content": {
               "application/json": {
                 "schema": {

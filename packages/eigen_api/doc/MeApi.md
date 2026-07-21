@@ -15,6 +15,7 @@ Method | HTTP request | Description
 [**getProfile**](MeApi.md#getprofile) | **GET** /api/engine/me | 
 [**registerDevice**](MeApi.md#registerdevice) | **PUT** /api/engine/me/devices | 
 [**unregisterDevice**](MeApi.md#unregisterdevice) | **DELETE** /api/engine/me/devices/{fid} | 
+[**updateDisplayName**](MeApi.md#updatedisplayname) | **PUT** /api/engine/me/display-name | 
 [**updateUsername**](MeApi.md#updateusername) | **PUT** /api/engine/me/username | 
 
 
@@ -247,6 +248,47 @@ void (empty response body)
 ### HTTP request headers
 
  - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **updateDisplayName**
+> DisplayNameUpdated updateDisplayName(displayNameUpdate)
+
+
+
+### Example
+```dart
+import 'package:eigen_api/api.dart';
+
+final api = EigenApi().getMeApi();
+final DisplayNameUpdate displayNameUpdate = ; // DisplayNameUpdate | 
+
+try {
+    final response = api.updateDisplayName(displayNameUpdate);
+    print(response);
+} catch on DioException (e) {
+    print('Exception when calling MeApi->updateDisplayName: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **displayNameUpdate** | [**DisplayNameUpdate**](DisplayNameUpdate.md)|  | 
+
+### Return type
+
+[**DisplayNameUpdated**](DisplayNameUpdated.md)
+
+### Authorization
+
+[firebase](../README.md#firebase)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
  - **Accept**: application/json
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)

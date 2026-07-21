@@ -31,7 +31,15 @@ void main() {
         'not_participant',
         'not_creator',
         'creator_cannot_leave',
+        // Raised by a route before the command reaches the game. Each exists
+        // because the UI renders something specific for it.
         'schema_unsupported',
+        'username_invalid',
+        'username_taken',
+        'friends_only',
+        'registration_required',
+        'image_too_large',
+        'unsupported_image_type',
       });
     });
 
