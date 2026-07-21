@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:eigen_flutter/features/profile/data/models/user_profile.dart';
+import 'package:eigen_api/eigen_api.dart';
 import 'package:eigen_flutter/features/profile/providers/profile_providers.dart';
 import 'package:eigen_flutter/features/rating/presentation/widgets/player_ratings.dart';
 
@@ -82,7 +82,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  void _showEditSheet(BuildContext context, UserProfile profile) {
+  void _showEditSheet(BuildContext context, Profile profile) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -332,7 +332,7 @@ class _RatingsSection extends StatelessWidget {
 class _EditProfileSheet extends ConsumerStatefulWidget {
   const _EditProfileSheet({required this.profile});
 
-  final UserProfile profile;
+  final Profile profile;
 
   @override
   ConsumerState<_EditProfileSheet> createState() => _EditProfileSheetState();

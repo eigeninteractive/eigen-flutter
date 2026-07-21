@@ -9,7 +9,7 @@ import 'package:eigen_api/api.dart';
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **schemaVersion** | **int** |  | 
-**config** | **Map&lt;String, Object&gt;** |  | 
+**config** | **Object** |  | 
 **minPlayers** | **int** |  | 
 **maxPlayers** | **int** |  | 
 **rated** | **bool** |  | [optional] 

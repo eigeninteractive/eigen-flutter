@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:eigen_flutter/core/game/local_bot.dart';
 import 'package:eigen_flutter/core/game/game_creation_spec.dart';
 import 'package:eigen_flutter/core/game/game_frame.dart';
 import 'package:eigen_flutter/core/game/game_outcome.dart';
@@ -7,8 +6,7 @@ import 'package:eigen_flutter/core/game/game_status.dart';
 import 'package:eigen_flutter/core/game/my_seat.dart';
 import 'package:eigen_flutter/core/game/players_context.dart';
 import 'package:eigen_flutter/core/game/timing_context.dart';
-import 'package:eigen_flutter/features/game/data/models/game.dart'
-    show GameAccess;
+import 'package:eigen_api/eigen_api.dart' show GameAccess;
 
 /// How a submitted action resolved, reported to the game through the future
 /// returned by [GameContentContext.onAction].
@@ -173,7 +171,7 @@ class BotSeatableArgs {
 /// - [isValidAction] — the legality half of the TS `applyAction`, transcribed;
 /// - [previewAction] — the game's own optimistic projection of `applyAction`
 ///   (a standardized contract; infra never calls it);
-/// - rendering ([buildContent]) and [localBots];
+/// - rendering ([buildContent]);
 /// - display-only twins of the two predicates ([ratingPool] / [botSeatable]).
 ///
 /// Keep the twins in sync with the TS unit for the same version — the server
@@ -302,18 +300,6 @@ abstract class GameRules<TObs, TAction, TConfig> {
   /// same rule (the TS `GameRules.botSeatable` twin) before seating.
   bool botSeatable(BotSeatableArgs args);
 
-  /// Local bots this version ships, keyed by [LocalBot.username].
-  ///
-  /// This is the *entire* bot contract surface: a non-empty list is what
-  /// "supports local bots" means. Empty by default — adding bots is never
-  /// required. Server bots need nothing here (they are deployment data,
-  /// discovered at runtime via `app_bots`). Whether solo play is offered, and
-  /// with which opponents, is **derived** from this plus the registered bots —
-  /// never declared separately.
-  ///
-  /// Per-version because a [LocalBot] is generic over this version's payload
-  /// types; a v2 unit re-lists (or re-adapts) the bots it supports.
-  List<LocalBot> get localBots => const [];
 }
 
 /// Contract every game implementor provides.

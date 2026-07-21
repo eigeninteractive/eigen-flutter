@@ -11,7 +11,7 @@ Name | Type | Description | Notes
 **id** | **String** |  | 
 **createdBy** | **String** |  | 
 **status** | [**GameStatus**](GameStatus.md) |  | 
-**access** | **String** |  | 
+**access** | [**GameAccess**](GameAccess.md) |  | 
 **schemaVersion** | **int** |  | 
 **config** | **Object** |  | 
 **turnSeconds** | **num** |  | 

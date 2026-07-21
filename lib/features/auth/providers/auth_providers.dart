@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'dart:developer' as developer;
+
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:eigen_flutter/core/analytics/analytics_provider.dart';
 import 'package:eigen_flutter/core/config/app_config.dart';
@@ -9,7 +11,7 @@ import 'package:eigen_flutter/features/auth/data/auth_service.dart';
 import 'package:eigen_flutter/features/auth/data/models/auth_user.dart';
 import 'package:eigen_flutter/features/profile/providers/profile_providers.dart';
 import 'package:eigen_flutter/shared/providers/player_providers.dart';
-import 'package:eigen_flutter/shared/providers/supabase_client_provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 part 'auth_providers.g.dart';
 
@@ -27,12 +29,14 @@ enum UpgradeOutcome {
 /// Provider for AuthService instance
 @Riverpod(keepAlive: true)
 AuthService authService(Ref ref) {
-  final supabase = ref.watch(supabaseClientProvider);
   final googleWebClientId = ref
       .watch(appConfigProvider)
       .engine
       .googleWebClientId;
-  return AuthService(supabase, googleWebClientId: googleWebClientId);
+  return AuthService(
+    FirebaseAuth.instance,
+    googleWebClientId: googleWebClientId,
+  );
 }
 
 /// The signed-in user's id, or null when signed out.
@@ -147,13 +151,31 @@ class AuthController extends _$AuthController {
   }
 
   /// Permanently deletes the current user's account.
+  ///
+  /// Two steps, in this order and no other: the server tears the account down
+  /// (forfeiting live games, deleting the identity, purging the database), and
+  /// only then is the local session cleared. Signing out first would leave no
+  /// token to authenticate the deletion with.
+  ///
+  /// The sign-out is best-effort: the identity is already gone by then, so the
+  /// provider may refuse to invalidate a session that no longer exists, and
+  /// reporting that as a failed deletion would be a lie.
   Future<void> deleteAccount() async {
     state = const AsyncLoading();
 
     state = await AsyncValue.guard(() async {
       final userId = ref.read(currentUserProvider)?.id;
+      await ref.read(profileRepositoryProvider).deleteAccount();
       if (userId != null) await deleteUserData(ref, userId);
-      await ref.read(authServiceProvider).deleteAccount();
+      try {
+        await ref.read(authServiceProvider).signOut();
+      } catch (error) {
+        developer.log(
+          'Sign-out after account deletion failed (ignored)',
+          name: 'auth.providers',
+          error: error,
+        );
+      }
     });
   }
 

@@ -89,6 +89,7 @@ Class | Method | HTTP request | Description
 [*MeApi*](doc/MeApi.md) | [**unregisterDevice**](doc/MeApi.md#unregisterdevice) | **DELETE** /api/engine/me/devices/{fid} | 
 [*MeApi*](doc/MeApi.md) | [**updateDisplayName**](doc/MeApi.md#updatedisplayname) | **PUT** /api/engine/me/display-name | 
 [*MeApi*](doc/MeApi.md) | [**updateUsername**](doc/MeApi.md#updateusername) | **PUT** /api/engine/me/username | 
+[*PlayersApi*](doc/PlayersApi.md) | [**getPlayerGames**](doc/PlayersApi.md#getplayergames) | **GET** /api/engine/players/{playerId}/games | 
 [*PlayersApi*](doc/PlayersApi.md) | [**getPlayerRatings**](doc/PlayersApi.md#getplayerratings) | **GET** /api/engine/players/{playerId}/ratings | 
 [*PlayersApi*](doc/PlayersApi.md) | [**getPlayers**](doc/PlayersApi.md#getplayers) | **GET** /api/engine/players | 
 [*SocialApi*](doc/SocialApi.md) | [**acceptFriendRequest**](doc/SocialApi.md#acceptfriendrequest) | **POST** /api/engine/friends/requests/{userId}/accept | 
@@ -128,6 +129,7 @@ Class | Method | HTTP request | Description
  - [FriendTarget](doc/FriendTarget.md)
  - [Friends](doc/Friends.md)
  - [FriendsGames](doc/FriendsGames.md)
+ - [GameAccess](doc/GameAccess.md)
  - [GameStatus](doc/GameStatus.md)
  - [GameSummary](doc/GameSummary.md)
  - [Join](doc/Join.md)
@@ -138,6 +140,7 @@ Class | Method | HTTP request | Description
  - [MyGames](doc/MyGames.md)
  - [Outcome](doc/Outcome.md)
  - [Player](doc/Player.md)
+ - [PlayerGames](doc/PlayerGames.md)
  - [Players](doc/Players.md)
  - [Profile](doc/Profile.md)
  - [Rating](doc/Rating.md)

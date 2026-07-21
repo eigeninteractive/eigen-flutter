@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:eigen_flutter/shared/data/models/player_info.dart';
 import 'package:eigen_flutter/shared/widgets/player_avatar.dart';
 
-/// An avatar to render: a player's identity plus whether it's a bot.
-typedef AvatarEntry = ({PlayerInfo info, bool isBot});
+/// An avatar to render: the player's stored avatar URL plus whether it is a
+/// bot. A URL rather than an identity model, so callers can build one from any
+/// of the identity-carrying wire types without converting between them.
+typedef AvatarEntry = ({String? avatarUrl, bool isBot});
 
 /// Displays a row of [PlayerAvatar]s that partially overlap horizontally.
 ///
@@ -58,7 +59,7 @@ class OverlappingAvatars extends StatelessWidget {
                   border: Border.all(color: colorScheme.surface, width: 2),
                 ),
                 child: PlayerAvatar(
-                  playerInfo: visible[i].info,
+                  avatarUrl: visible[i].avatarUrl,
                   radius: radius - 2,
                   isBot: visible[i].isBot,
                 ),

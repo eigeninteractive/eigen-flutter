@@ -1,22 +1,34 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:eigen_flutter/core/api/avatar_url.dart';
+import 'package:eigen_flutter/core/config/app_config.dart';
 import 'package:flutter/material.dart';
-import 'package:eigen_flutter/shared/data/models/player_info.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Circular avatar for a player, with customizable size.
 ///
-/// Shows a cached network image if [PlayerInfo.avatarUrl] is available,
-/// otherwise shows a generic person icon. The same icon is used as placeholder
-/// while the image loads and as fallback on error.
+/// Shows a cached network image when [avatarUrl] is set, otherwise a generic
+/// person icon. The same icon is used as placeholder while the image loads and
+/// as fallback on error.
+///
+/// Takes the raw URL rather than an identity model because the three shapes
+/// that carry one - a player, a friend, and a friend request - are distinct
+/// generated types with no common supertype. Passing the field keeps this
+/// usable from all three without conversion.
+///
+/// This is also where a stored avatar URL is resolved: the server may hand back
+/// a path relative to the API host rather than an absolute URL, so every
+/// avatar in the app is routed through `resolveAvatarUrl` here rather than at
+/// each call site.
 ///
 /// When [isBot] is true the avatar is marked as a bot: a small robot badge is
 /// overlaid in the bottom-right corner, and the no-photo fallback uses a robot
 /// glyph instead of the person glyph. This is the single place bots are made
 /// visually distinct from humans, so every surface that renders a [PlayerAvatar]
 /// gets the marker for free — pass [isBot] wherever the participant type is known.
-class PlayerAvatar extends StatelessWidget {
+class PlayerAvatar extends ConsumerWidget {
   const PlayerAvatar({
     super.key,
-    required this.playerInfo,
+    required this.avatarUrl,
     this.radius = 20,
     this.isBot = false,
     this.showBorder = false,
@@ -24,8 +36,9 @@ class PlayerAvatar extends StatelessWidget {
     this.onTap,
   });
 
-  /// The player's public identity data.
-  final PlayerInfo playerInfo;
+  /// The player's stored avatar URL, absolute or relative. Null renders the
+  /// fallback icon.
+  final String? avatarUrl;
 
   /// Radius of the circle avatar. Default is 20 (40px diameter).
   final double radius;
@@ -43,9 +56,12 @@ class PlayerAvatar extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final avatar = _AvatarCircle(
-      playerInfo: playerInfo,
+      avatarUrl: resolveAvatarUrl(
+        avatarUrl,
+        ref.watch(appConfigProvider).engine.apiBaseUrl,
+      ),
       radius: radius,
       isBot: isBot,
       showBorder: showBorder,
@@ -61,14 +77,15 @@ class PlayerAvatar extends StatelessWidget {
 
 class _AvatarCircle extends StatelessWidget {
   const _AvatarCircle({
-    required this.playerInfo,
+    required this.avatarUrl,
     required this.radius,
     required this.isBot,
     required this.showBorder,
     required this.borderColor,
   });
 
-  final PlayerInfo playerInfo;
+  /// Already resolved to an absolute URL.
+  final String? avatarUrl;
   final double radius;
   final bool isBot;
   final bool showBorder;
@@ -86,10 +103,10 @@ class _AvatarCircle extends StatelessWidget {
     Widget circle = CircleAvatar(
       radius: radius,
       backgroundColor: colorScheme.surfaceContainerHighest,
-      child: playerInfo.avatarUrl != null
+      child: avatarUrl != null
           ? ClipOval(
               child: CachedNetworkImage(
-                imageUrl: playerInfo.avatarUrl!,
+                imageUrl: avatarUrl!,
                 width: radius * 2,
                 height: radius * 2,
                 fit: BoxFit.cover,

@@ -59,7 +59,7 @@ class CreateSolo {
   )
 
 
-  final Map<String, Object> config;
+  final Object config;
 
 
 

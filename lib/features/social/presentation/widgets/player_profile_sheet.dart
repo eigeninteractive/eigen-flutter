@@ -9,7 +9,7 @@ import 'package:eigen_flutter/features/game/presentation/extensions/game_ui.dart
 import 'package:eigen_flutter/features/game/providers/game_providers.dart';
 import 'package:eigen_flutter/features/rating/presentation/widgets/player_ratings.dart';
 import 'package:eigen_flutter/features/social/presentation/widgets/friend_actions.dart';
-import 'package:eigen_flutter/shared/data/models/player_info.dart';
+import 'package:eigen_api/eigen_api.dart';
 import 'package:eigen_flutter/shared/providers/player_providers.dart';
 import 'package:eigen_flutter/shared/widgets/player_avatar.dart';
 import 'package:eigen_flutter/shared/widgets/player_tags.dart';
@@ -68,7 +68,7 @@ class PlayerProfileSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
-    final AsyncValue<PlayerInfo> playerAsync = ref.watch(
+    final AsyncValue<Player> playerAsync = ref.watch(
       playerInfoCacheProvider(id: playerId),
     );
 
@@ -104,7 +104,7 @@ class PlayerProfileSheet extends ConsumerWidget {
             // section stays hidden rather than flashing an Add Friend button
             // at a player who may turn out to be a guest.
             if (type == ParticipantType.human &&
-                playerAsync.value?.isGuest == false)
+                playerAsync.value?.isAnonymous == false)
               SliverToBoxAdapter(child: _SocialSection(playerId: playerId)),
             const SliverToBoxAdapter(child: SizedBox(height: 32)),
           ],
@@ -138,7 +138,7 @@ class _DragHandle extends StatelessWidget {
 class _Header extends StatelessWidget {
   const _Header({required this.player, required this.type});
 
-  final PlayerInfo player;
+  final Player player;
   final ParticipantType type;
 
   @override
@@ -151,7 +151,7 @@ class _Header extends StatelessWidget {
       child: Column(
         children: [
           PlayerAvatar(
-            playerInfo: player,
+            avatarUrl: player.avatarUrl,
             radius: 40,
             isBot: type == ParticipantType.bot,
           ),
@@ -171,7 +171,7 @@ class _Header extends StatelessWidget {
           if (type == ParticipantType.bot) ...[
             const SizedBox(height: 12),
             const BotTag(),
-          ] else if (player.isGuest) ...[
+          ] else if (player.isAnonymous) ...[
             const SizedBox(height: 12),
             const GuestTag(),
           ],

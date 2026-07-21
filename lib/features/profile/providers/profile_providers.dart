@@ -1,172 +1,154 @@
 import 'dart:typed_data';
 
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter_riverpod/experimental/persist.dart';
-import 'package:riverpod_annotation/experimental/json_persist.dart';
-import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:eigen_api/eigen_api.dart';
+import 'package:eigen_flutter/core/api/avatar_url.dart';
+import 'package:eigen_flutter/core/api/engine_api_providers.dart';
+import 'package:eigen_flutter/core/config/app_config.dart';
 import 'package:eigen_flutter/core/storage/storage_provider.dart';
 import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
 import 'package:eigen_flutter/features/profile/data/avatar_storage_service.dart';
-import 'package:eigen_flutter/features/profile/data/models/user_profile.dart';
 import 'package:eigen_flutter/features/profile/data/profile_repository.dart';
 import 'package:eigen_flutter/shared/providers/player_providers.dart';
-import 'package:eigen_flutter/shared/providers/supabase_client_provider.dart';
+import 'package:flutter_riverpod/experimental/persist.dart';
+import 'package:riverpod_annotation/experimental/json_persist.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'profile_providers.g.dart';
 
 /// Provider for ProfileRepository instance.
 @Riverpod(keepAlive: true)
 ProfileRepository profileRepository(Ref ref) {
-  final supabase = ref.watch(supabaseClientProvider);
-  return ProfileRepository(supabase);
+  return ProfileRepository(ref.watch(meApiProvider));
 }
 
 /// Provider for AvatarStorageService instance.
 @Riverpod(keepAlive: true)
 AvatarStorageService avatarStorageService(Ref ref) {
-  final supabase = ref.watch(supabaseClientProvider);
-  return AvatarStorageService(supabase);
+  return AvatarStorageService(ref.watch(engineDioProvider));
 }
 
-/// Provider for current user's profile data.
+/// The signed-in user's own profile.
 ///
-/// Kept alive and persisted to SQLite so the profile loads from cache
-/// on cold start (no spinner). The network fetch runs in the background
-/// and silently refreshes state when it completes.
+/// Kept alive and persisted to SQLite so the profile loads from cache on cold
+/// start (no spinner). The network fetch runs in the background and silently
+/// refreshes state when it completes.
+///
+/// Every mutation below re-reads the profile from the server rather than
+/// patching state locally. That is not caution for its own sake: the server
+/// derives fields the client does not send - it stamps `avatar_url` itself on
+/// upload, complete with the cache-buster - so a locally patched copy would
+/// diverge from what every other client sees.
 @Riverpod(keepAlive: true)
 @JsonPersist()
 class CurrentUserProfile extends _$CurrentUserProfile {
   @override
-  Future<UserProfile> build() async {
+  Future<Profile> build() async {
     final user = ref.watch(currentUserProvider);
     if (user == null) {
       throw StateError('User not authenticated');
     }
 
-    // Stale-while-revalidate: SQLite cache races the network fetch.
-    // Cache (~5ms) typically wins first, eliminating the cold-start spinner.
-    // Network result overwrites silently; if network wins first, stale
-    // cache is discarded automatically via didChange guard in persist().
+    // Stale-while-revalidate: SQLite cache races the network fetch. Cache
+    // (~5ms) typically wins first, eliminating the cold-start spinner. The
+    // network result overwrites silently; if the network wins first, the stale
+    // cache is discarded automatically via the didChange guard in persist().
     persist(
       ref.watch(storageProvider.future),
       key: profileCacheKey(user.id),
       options: const StorageOptions(
         cacheTime: StorageCacheTime.unsafe_forever,
-        // Cache-schema version for the persisted UserProfile. Bump when this
-        // model's JSON shape changes breakingly — stale rows are then discarded
-        // on next launch (a decode failure is already a safe cache-miss). It is
-        // per-provider, so bumping it doesn't disturb other caches.
-        destroyKey: '1',
+        // Cache-schema version for the persisted profile. Bumped to 2 when the
+        // hand-written UserProfile was replaced by the generated Profile.
+        destroyKey: '2',
       ),
     );
 
-    final repository = ref.watch(profileRepositoryProvider);
-    return repository.getUserProfile(user.id);
+    return ref.watch(profileRepositoryProvider).getProfile();
   }
 
-  /// Refreshes the profile from the database.
+  /// Refreshes the profile from the server.
   void refresh() {
     ref.invalidateSelf();
     future.ignore();
   }
 
-  /// Uploads [bytes] as the user's new avatar and updates the profile.
+  /// Uploads [bytes] as the user's new avatar.
   ///
-  /// Stores the storage path in the DB; a signed URL is generated at read
-  /// time by [ProfileRepository.getUserProfile].
+  /// The server stores the image and stamps the new `avatar_url` on the profile
+  /// itself, so this re-reads rather than constructing a URL locally.
   Future<void> uploadAvatar(Uint8List bytes) async {
-    final currentProfile = state.value;
-    if (currentProfile == null) return;
+    final current = state.value;
+    if (current == null) return;
 
-    // Evict old avatar from local image caches before uploading. The new upload
-    // gets a fresh ?v=timestamp URL so the old entry is never requested again,
-    // but evicting here reclaims disk/memory immediately rather than waiting
-    // for LRU expiry.
-    final oldUrl = currentProfile.avatarUrl;
+    // Evict the old image before uploading. The new URL carries a fresh
+    // cache-buster so the old entry would never be requested again anyway;
+    // evicting reclaims disk and memory now instead of at LRU expiry.
+    final oldUrl = resolveAvatarUrl(
+      current.avatarUrl,
+      ref.read(appConfigProvider).engine.apiBaseUrl,
+    );
     if (oldUrl != null) await CachedNetworkImageProvider(oldUrl).evict();
 
-    state = const AsyncLoading<UserProfile>();
-
-    final repository = ref.read(profileRepositoryProvider);
-    final storageService = ref.read(avatarStorageServiceProvider);
-
+    state = const AsyncLoading<Profile>();
     try {
-      final path = await storageService.uploadAvatar(currentProfile.id, bytes);
-      final updatedProfile = await repository.updateProfile(
-        currentProfile.id,
-        avatarUrl: path,
-      );
-      state = AsyncData(updatedProfile);
-      ref.invalidate(playerInfoCacheProvider(id: currentProfile.id));
-    } catch (e) {
-      try {
-        final refreshed = await repository.getUserProfile(currentProfile.id);
-        state = AsyncData(refreshed);
-      } catch (_) {
-        state = AsyncData(currentProfile);
-      }
+      await ref.read(avatarStorageServiceProvider).uploadAvatar(bytes);
+      await _reload(current);
+    } catch (_) {
+      await _restore(current);
       rethrow;
     }
   }
 
-  /// Updates the profile with new values in a single operation.
+  /// Applies whichever of [username] and [displayName] actually changed.
   ///
-  /// Sets loading state during save, then refreshes from server.
-  /// Only updates fields that differ from current values.
+  /// The two are separate endpoints because they are different things: the
+  /// username is unique and charset-constrained (and so can fail with
+  /// [ErrorCode.usernameTaken] or [ErrorCode.usernameInvalid]), while the
+  /// display name is free-form and cannot collide.
   Future<void> updateProfileFields({
     String? username,
     String? displayName,
-    String? avatarUrl,
   }) async {
-    final currentProfile = state.value;
-    if (currentProfile == null) return;
+    final current = state.value;
+    if (current == null) return;
 
-    // Determine what actually changed
-    final usernameChanged =
-        username != null && username != currentProfile.username;
-    final displayNameChanged =
-        displayName != null && displayName != currentProfile.displayName;
-    final avatarChanged =
-        avatarUrl != null && avatarUrl != currentProfile.avatarUrl;
+    final newUsername = username != current.username ? username : null;
+    final newDisplayName = displayName != current.displayName
+        ? displayName
+        : null;
+    if (newUsername == null && newDisplayName == null) return;
 
-    if (!usernameChanged && !displayNameChanged && !avatarChanged) return;
-
-    // Set loading state
-    state = const AsyncLoading<UserProfile>();
-
+    state = const AsyncLoading<Profile>();
     final repository = ref.read(profileRepositoryProvider);
     try {
-      // Update username via RPC (has uniqueness constraint)
-      if (usernameChanged) {
-        await repository.updateUsername(username);
+      if (newUsername != null) await repository.updateUsername(newUsername);
+      if (newDisplayName != null) {
+        await repository.updateDisplayName(newDisplayName);
       }
-
-      // Update profile fields (display name, avatar).
-      // updateProfile re-fetches internally, so use its return value directly.
-      final UserProfile updatedProfile;
-      if (displayNameChanged || avatarChanged) {
-        updatedProfile = await repository.updateProfile(
-          currentProfile.id,
-          displayName: displayNameChanged ? displayName : null,
-          avatarUrl: avatarChanged ? avatarUrl : null,
-        );
-      } else {
-        // Only username changed — fetch updated profile.
-        updatedProfile = await repository.getUserProfile(currentProfile.id);
-      }
-      state = AsyncData(updatedProfile);
-      ref.invalidate(playerInfoCacheProvider(id: currentProfile.id));
-    } catch (e) {
-      // Re-fetch server state rather than blindly reverting — a partial update
-      // (e.g. username succeeded, display name RPC failed) may have already
-      // committed, so reverting to currentProfile would lie about server state.
-      try {
-        final refreshed = await repository.getUserProfile(currentProfile.id);
-        state = AsyncData(refreshed);
-      } catch (_) {
-        state = AsyncData(currentProfile);
-      }
+      await _reload(current);
+    } catch (_) {
+      // Re-read rather than blindly reverting: with two writes, the first may
+      // have committed before the second failed, so restoring the old value
+      // would misreport what the server holds.
+      await _restore(current);
       rethrow;
+    }
+  }
+
+  /// Re-reads the profile and republishes the identity cache entry for it.
+  Future<void> _reload(Profile previous) async {
+    state = AsyncData(await ref.read(profileRepositoryProvider).getProfile());
+    ref.invalidate(playerInfoCacheProvider(id: previous.id));
+  }
+
+  /// Best-effort resync after a failed mutation, falling back to what was on
+  /// screen if even the re-read fails.
+  Future<void> _restore(Profile previous) async {
+    try {
+      await _reload(previous);
+    } catch (_) {
+      state = AsyncData(previous);
     }
   }
 }

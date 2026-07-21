@@ -28,6 +28,7 @@ doc/FriendRequests.md
 doc/FriendTarget.md
 doc/Friends.md
 doc/FriendsGames.md
+doc/GameAccess.md
 doc/GameStatus.md
 doc/GameSummary.md
 doc/GamesApi.md
@@ -40,6 +41,7 @@ doc/MeApi.md
 doc/MyGames.md
 doc/Outcome.md
 doc/Player.md
+doc/PlayerGames.md
 doc/Players.md
 doc/PlayersApi.md
 doc/Profile.md
@@ -94,6 +96,7 @@ lib/src/model/friend_requests.dart
 lib/src/model/friend_target.dart
 lib/src/model/friends.dart
 lib/src/model/friends_games.dart
+lib/src/model/game_access.dart
 lib/src/model/game_status.dart
 lib/src/model/game_summary.dart
 lib/src/model/join.dart
@@ -104,6 +107,7 @@ lib/src/model/lobby_command.dart
 lib/src/model/my_games.dart
 lib/src/model/outcome.dart
 lib/src/model/player.dart
+lib/src/model/player_games.dart
 lib/src/model/players.dart
 lib/src/model/profile.dart
 lib/src/model/rating.dart

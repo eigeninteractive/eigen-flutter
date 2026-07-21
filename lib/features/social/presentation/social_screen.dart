@@ -8,8 +8,7 @@ import 'package:eigen_flutter/features/social/presentation/widgets/friend_action
 import 'package:eigen_flutter/features/social/presentation/widgets/friend_buttons.dart';
 import 'package:eigen_flutter/features/social/presentation/widgets/player_profile_sheet.dart';
 import 'package:eigen_flutter/features/social/providers/social_providers.dart';
-import 'package:eigen_flutter/shared/data/models/player_info.dart';
-import 'package:eigen_flutter/shared/providers/player_providers.dart';
+import 'package:eigen_api/eigen_api.dart';
 import 'package:eigen_flutter/shared/widgets/empty_state_view.dart';
 import 'package:eigen_flutter/shared/widgets/player_avatar.dart';
 
@@ -40,7 +39,7 @@ class _SocialScreenState extends ConsumerState<SocialScreen>
 
   @override
   Widget build(BuildContext context) {
-    final requestCount = switch (ref.watch(pendingRequestsProvider)) {
+    final requestCount = switch (ref.watch(incomingRequestsProvider)) {
       AsyncData(:final value) => value.length,
       _ => 0,
     };
@@ -100,12 +99,12 @@ class _FriendsListState extends ConsumerState<_FriendsList>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final friendsAsync = ref.watch(acceptedFriendsProvider);
+    final friendsAsync = ref.watch(friendsProvider);
 
     return friendsAsync.when(
       skipLoadingOnReload: true,
       data: (friendships) => RefreshIndicator(
-        onRefresh: () async => ref.invalidate(friendshipsProvider),
+        onRefresh: () async => ref.invalidate(friendsProvider),
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
@@ -128,8 +127,11 @@ class _FriendsListState extends ConsumerState<_FriendsList>
                 sliver: SliverList.builder(
                   itemCount: friendships.length,
                   itemBuilder: (context, index) => _FriendListTile(
-                    key: ValueKey(friendships[index].friendId),
-                    friendId: friendships[index].friendId,
+                    key: ValueKey(friendships[index].userId),
+                    userId: friendships[index].userId,
+                    displayName: friendships[index].displayName,
+                    username: friendships[index].username,
+                    avatarUrl: friendships[index].avatarUrl,
                     variant: _FriendListVariant.friends,
                   ),
                 ),
@@ -145,69 +147,57 @@ class _FriendsListState extends ConsumerState<_FriendsList>
 
 enum _FriendListVariant { friends, requests }
 
-class _FriendListTile extends ConsumerWidget {
+/// One friend or incoming request.
+///
+/// Takes the identity directly rather than resolving it from the player cache:
+/// both the friends and the requests endpoint already embed the other user's
+/// username, display name and avatar, so a per-row lookup would re-fetch what
+/// the list response just delivered. That is also why this has no loading or
+/// error state - there is nothing left to await.
+class _FriendListTile extends StatelessWidget {
   const _FriendListTile({
     super.key,
-    required this.friendId,
+    required this.userId,
+    required this.displayName,
+    required this.username,
+    required this.avatarUrl,
     required this.variant,
   });
 
-  final String friendId;
+  final String userId;
+  final String displayName;
+  final String username;
+  final String? avatarUrl;
   final _FriendListVariant variant;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final playerAsync = ref.watch(playerInfoCacheProvider(id: friendId));
-
-    return playerAsync.when(
-      data: (player) => ListTile(
-        onTap: () => PlayerProfileSheet.show(
-          context,
-          playerId: friendId,
-          type: ParticipantType.human,
-        ),
-        leading: PlayerAvatar(playerInfo: player, radius: 20),
-        title: Text(player.displayName),
-        subtitle: Text(
-          variant == _FriendListVariant.requests
-              ? '@${player.username} wants to be friends'
-              : '@${player.username}',
-        ),
-        trailing: switch (variant) {
-          _FriendListVariant.friends => RemoveFriendButton(
-            playerId: friendId,
-            compact: true,
-          ),
-          _FriendListVariant.requests => Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AcceptRequestButton(playerId: friendId, compact: true),
-              DeclineRequestButton(playerId: friendId, compact: true),
-            ],
-          ),
-        },
+  Widget build(BuildContext context) {
+    return ListTile(
+      onTap: () => PlayerProfileSheet.show(
+        context,
+        playerId: userId,
+        type: ParticipantType.human,
       ),
-      loading: () => ListTile(
-        leading: CircleAvatar(
-          backgroundColor: colorScheme.surfaceContainerHighest,
-        ),
-        title: Container(
-          height: 14,
-          width: 80,
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(4),
-          ),
-        ),
+      leading: PlayerAvatar(avatarUrl: avatarUrl, radius: 20),
+      title: Text(displayName),
+      subtitle: Text(
+        variant == _FriendListVariant.requests
+            ? '@$username wants to be friends'
+            : '@$username',
       ),
-      error: (e, _) => ListTile(
-        leading: CircleAvatar(
-          backgroundColor: colorScheme.surfaceContainerHighest,
-          child: Icon(Icons.error_outline, color: colorScheme.error, size: 20),
+      trailing: switch (variant) {
+        _FriendListVariant.friends => RemoveFriendButton(
+          playerId: userId,
+          compact: true,
         ),
-        title: Text('Error: ${humanize(e)}'),
-      ),
+        _FriendListVariant.requests => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AcceptRequestButton(playerId: userId, compact: true),
+            DeclineRequestButton(playerId: userId, compact: true),
+          ],
+        ),
+      },
     );
   }
 }
@@ -229,12 +219,12 @@ class _PendingRequestsState extends ConsumerState<_PendingRequests>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final requestsAsync = ref.watch(pendingRequestsProvider);
+    final requestsAsync = ref.watch(incomingRequestsProvider);
 
     return requestsAsync.when(
       skipLoadingOnReload: true,
       data: (requests) => RefreshIndicator(
-        onRefresh: () async => ref.invalidate(friendshipsProvider),
+        onRefresh: () async => ref.invalidate(friendsProvider),
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
@@ -253,8 +243,11 @@ class _PendingRequestsState extends ConsumerState<_PendingRequests>
                 sliver: SliverList.builder(
                   itemCount: requests.length,
                   itemBuilder: (context, index) => _FriendListTile(
-                    key: ValueKey(requests[index].friendId),
-                    friendId: requests[index].friendId,
+                    key: ValueKey(requests[index].userId),
+                    userId: requests[index].userId,
+                    displayName: requests[index].displayName,
+                    username: requests[index].username,
+                    avatarUrl: requests[index].avatarUrl,
                     variant: _FriendListVariant.requests,
                   ),
                 ),
@@ -280,7 +273,7 @@ class _AddFriend extends ConsumerStatefulWidget {
 class _AddFriendState extends ConsumerState<_AddFriend>
     with AutomaticKeepAliveClientMixin {
   final _searchController = TextEditingController();
-  List<PlayerInfo> _results = [];
+  List<Player> _results = [];
   bool _isLoading = false;
   Timer? _debounce;
 
@@ -352,7 +345,7 @@ class _AddFriendState extends ConsumerState<_AddFriend>
                     playerId: user.id,
                     type: ParticipantType.human,
                   ),
-                  leading: PlayerAvatar(playerInfo: user, radius: 20),
+                  leading: PlayerAvatar(avatarUrl: user.avatarUrl, radius: 20),
                   title: Text(user.displayName),
                   subtitle: Text('@${user.username}'),
                   trailing: FriendActions(playerId: user.id, compact: true),

@@ -30,6 +30,7 @@ import 'package:eigen_api/src/model/lobby_command.dart';
 import 'package:eigen_api/src/model/my_games.dart';
 import 'package:eigen_api/src/model/outcome.dart';
 import 'package:eigen_api/src/model/player.dart';
+import 'package:eigen_api/src/model/player_games.dart';
 import 'package:eigen_api/src/model/players.dart';
 import 'package:eigen_api/src/model/profile.dart';
 import 'package:eigen_api/src/model/rating.dart';
@@ -112,6 +113,9 @@ final _regMap = RegExp(r'^Map<String,(.*)>$');
           return Friends.fromJson(value as Map<String, dynamic>) as ReturnType;
         case 'FriendsGames':
           return FriendsGames.fromJson(value as Map<String, dynamic>) as ReturnType;
+        case 'GameAccess':
+          
+          
         case 'GameStatus':
           
           
@@ -133,6 +137,8 @@ final _regMap = RegExp(r'^Map<String,(.*)>$');
           return Outcome.fromJson(value as Map<String, dynamic>) as ReturnType;
         case 'Player':
           return Player.fromJson(value as Map<String, dynamic>) as ReturnType;
+        case 'PlayerGames':
+          return PlayerGames.fromJson(value as Map<String, dynamic>) as ReturnType;
         case 'Players':
           return Players.fromJson(value as Map<String, dynamic>) as ReturnType;
         case 'Profile':

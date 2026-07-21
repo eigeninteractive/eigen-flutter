@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:eigen_flutter/core/errors/error_messages.dart';
-import 'package:eigen_flutter/features/rating/data/models/player_rating.dart';
+import 'package:eigen_api/eigen_api.dart';
 import 'package:eigen_flutter/features/rating/presentation/extensions/rating_ui.dart';
 import 'package:eigen_flutter/features/rating/providers/rating_providers.dart';
 
-/// How [PlayerRatings] renders each pool.
+/// How [Ratings] renders each pool.
 enum RatingsLayout {
   /// Elevated cards, two to a row — for the roomy profile screen.
   cards,
@@ -74,7 +74,7 @@ class PlayerRatings extends ConsumerWidget {
 class _RatingCards extends StatelessWidget {
   const _RatingCards({required this.ratings});
 
-  final List<PlayerRating> ratings;
+  final List<Rating> ratings;
 
   @override
   Widget build(BuildContext context) {
@@ -102,7 +102,7 @@ class _RatingCards extends StatelessWidget {
 class _RatingCard extends StatelessWidget {
   const _RatingCard({required this.rating});
 
-  final PlayerRating rating;
+  final Rating rating;
 
   @override
   Widget build(BuildContext context) {
@@ -140,7 +140,7 @@ class _RatingCard extends StatelessWidget {
 class _RatingRows extends StatelessWidget {
   const _RatingRows({required this.ratings});
 
-  final List<PlayerRating> ratings;
+  final List<Rating> ratings;
 
   @override
   Widget build(BuildContext context) {
@@ -153,7 +153,7 @@ class _RatingRows extends StatelessWidget {
 class _RatingRow extends StatelessWidget {
   const _RatingRow({required this.rating});
 
-  final PlayerRating rating;
+  final Rating rating;
 
   @override
   Widget build(BuildContext context) {

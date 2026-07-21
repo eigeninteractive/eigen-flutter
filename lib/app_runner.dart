@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:eigen_flutter/core/config/app_config.dart';
 import 'package:eigen_flutter/core/game/game_module.dart';
 import 'package:eigen_flutter/core/navigation/providers/navigation_providers.dart';
@@ -20,7 +19,7 @@ import 'package:eigen_flutter/features/game/providers/game_providers.dart';
 /// This is the framework's "app as a library" entry point: each game app's
 /// `main()` is just a call to this with its [module], [config] and Firebase
 /// wiring. It performs all engine-level initialisation (Firebase, crash/
-/// analytics gating, Supabase, fonts) and installs the two composition-root
+/// analytics gating, fonts) and installs the two composition-root
 /// overrides ([currentGameModuleProvider] and [appConfigProvider]).
 ///
 /// [firebaseOptions] are the app's generated `DefaultFirebaseOptions`; they
@@ -51,10 +50,10 @@ Future<void> runEngineApp({
   };
   FirebaseMessaging.onBackgroundMessage(onBackgroundMessage);
 
-  await Supabase.initialize(
-    url: config.engine.supabaseUrl,
-    publishableKey: config.engine.supabasePublishableKey,
-  );
+  // The engine client needs no initialisation of its own: the HTTP client and
+  // the game socket are built lazily from `config.engine.apiBaseUrl` by
+  // `engineDioProvider`, and authenticate off whatever Firebase session
+  // `Firebase.initializeApp` above restored.
 
   runApp(
     ProviderScope(

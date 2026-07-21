@@ -5,6 +5,7 @@
 // ignore_for_file: unused_element
 import 'package:eigen_api/src/model/seat.dart';
 import 'package:eigen_api/src/model/game_status.dart';
+import 'package:eigen_api/src/model/game_access.dart';
 import 'package:eigen_api/src/model/outcome.dart';
 import 'package:copy_with_extension/copy_with_extension.dart';
 import 'package:json_annotation/json_annotation.dart';
@@ -110,7 +111,7 @@ class GameSummary {
   )
 
 
-  final GameSummaryAccessEnum access;
+  final GameAccess access;
 
 
 
@@ -378,22 +379,4 @@ class GameSummary {
   }
 
 }
-
-
-enum GameSummaryAccessEnum {
-@JsonValue(r'public')
-public(r'public'),
-@JsonValue(r'private')
-private(r'private'),
-@JsonValue(r'friends')
-friends(r'friends');
-
-const GameSummaryAccessEnum(this.value);
-
-final String value;
-
-@override
-String toString() => value;
-}
-
 

@@ -1,36 +1,62 @@
+import 'package:eigen_flutter/core/api/server_clock.dart';
+
 /// Timing data passed to [GameRules.buildContent] for every active game.
 ///
-/// Fields are null when not applicable to the game's timing mode — check
+/// Fields are null when not applicable to the game's timing mode - check
 /// before using. Use [TurnTimerBuilder] or [PlayerTimerBuilder] from
 /// `timer_builders.dart` to render live countdowns from these values.
 ///
 /// Index scheme: all lists are 0-based player indices, consistent with
 /// [GameFrame.pendingPlayers].
 class TimingContext {
-  const TimingContext({
-    this.playerTimes,
-    this.turnStartedAt,
-    this.turnDeadline,
-  });
+  const TimingContext({required this.clock, this.playerTimes, this.deadline});
+
+  /// Server time. Deadlines are absolute server timestamps, so every countdown
+  /// measures against this rather than the device clock - a device whose clock
+  /// is off would otherwise disagree with when the turn actually expires.
+  final ServerClock clock;
 
   /// Remaining budget in milliseconds per player, 0-indexed.
   ///
-  /// Non-null only in budget (accumulated clock) mode. Use with
-  /// [PlayerTimerBuilder] to render a live draining clock for any player:
-  /// pass [playerIndex] for the player you want to display.
+  /// Non-null only in budget (accumulated clock) mode. These are the values as
+  /// of this frame: the *running* player's bank is draining and should be read
+  /// from [remaining] instead, while every other player's is static.
   final List<int>? playerTimes;
 
-  /// Server timestamp of when the current turn began.
+  /// Absolute deadline for the current turn as epoch milliseconds on the
+  /// server. Non-null for any timed game - per-action mode, budget mode, or a
+  /// hook-override deadline.
   ///
-  /// Combined with [playerTimes] by [PlayerTimerBuilder] to animate the active
-  /// player's live drain without polling. Null for non-budget games.
-  final DateTime? turnStartedAt;
+  /// This is the same instant the server's own expiry alarm fires on, so a
+  /// countdown derived from it cannot disagree with when the turn really dies.
+  /// The server additionally allows a grace period, deliberately not reflected
+  /// here: the client shows the true deadline and lets the server be lenient.
+  final int? deadline;
 
-  /// Absolute deadline for the current turn. Non-null for any timed game
-  /// (per-action mode, budget mode, or a hook-override deadline).
+  /// Whether this game is timed at all.
+  bool get isTimed => deadline != null;
+
+  /// Time left on the current turn, or null when untimed.
   ///
-  /// Use with [TurnTimerBuilder] to render a shared countdown. In budget mode
-  /// prefer [playerTimes] + [PlayerTimerBuilder] for per-player display; use
-  /// this only if you want a single unified "time left this turn" indicator.
-  final DateTime? turnDeadline;
+  /// Clamped at zero once the deadline passes. In budget mode this is the
+  /// running player's remaining bank - budget mode permits only one pending
+  /// seat, so the turn deadline and that seat's bank are the same quantity.
+  Duration? get remaining {
+    final at = deadline;
+    return at == null ? null : clock.remainingUntil(at);
+  }
+
+  /// [player]'s remaining bank, live for whoever is on the clock.
+  ///
+  /// Returns null outside budget mode. For the player currently acting this
+  /// tracks down in real time via [remaining]; for everyone else it is the
+  /// static value from this frame, since only one bank drains at a time.
+  Duration? bankFor(int player, {required List<int> pendingPlayers}) {
+    final times = playerTimes;
+    if (times == null || player >= times.length) return null;
+    if (pendingPlayers.length == 1 && pendingPlayers.first == player) {
+      return remaining ?? Duration(milliseconds: times[player]);
+    }
+    return Duration(milliseconds: times[player]);
+  }
 }

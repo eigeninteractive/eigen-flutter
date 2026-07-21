@@ -35,7 +35,7 @@ class SendRequestButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.listen(Friendships.send(playerId), (_, next) {
+    ref.listen(Friends.send(playerId), (_, next) {
       if (next is MutationError) {
         ScaffoldMessenger.of(
           context,
@@ -43,15 +43,15 @@ class SendRequestButton extends ConsumerWidget {
       }
     });
 
-    void send() => Friendships.send(playerId)
+    void send() => Friends.send(playerId)
         .run(
           ref,
           (tsx) async =>
-              tsx.get(friendshipsProvider.notifier).sendRequest(playerId),
+              tsx.get(friendsProvider.notifier).sendRequest(playerId),
         )
         .ignore();
 
-    return switch (ref.watch(Friendships.send(playerId))) {
+    return switch (ref.watch(Friends.send(playerId))) {
       MutationIdle() =>
         compact
             ? FilledButton.tonal(onPressed: send, child: const Text('Add'))
@@ -91,7 +91,7 @@ class AcceptRequestButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.listen(Friendships.accept(playerId), (_, next) {
+    ref.listen(Friends.accept(playerId), (_, next) {
       if (next is MutationError) {
         ScaffoldMessenger.of(
           context,
@@ -99,17 +99,17 @@ class AcceptRequestButton extends ConsumerWidget {
       }
     });
 
-    void accept() => Friendships.accept(playerId)
+    void accept() => Friends.accept(playerId)
         .run(
           ref,
           (tsx) async =>
-              tsx.get(friendshipsProvider.notifier).acceptRequest(playerId),
+              tsx.get(friendsProvider.notifier).acceptRequest(playerId),
         )
         .ignore();
 
     final colorScheme = Theme.of(context).colorScheme;
 
-    return switch (ref.watch(Friendships.accept(playerId))) {
+    return switch (ref.watch(Friends.accept(playerId))) {
       MutationIdle() =>
         compact
             ? IconButton(
@@ -155,7 +155,7 @@ class DeclineRequestButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.listen(Friendships.remove(playerId), (_, next) {
+    ref.listen(Friends.remove(playerId), (_, next) {
       if (next is MutationError) {
         ScaffoldMessenger.of(
           context,
@@ -163,17 +163,17 @@ class DeclineRequestButton extends ConsumerWidget {
       }
     });
 
-    void decline() => Friendships.remove(playerId)
+    void decline() => Friends.remove(playerId)
         .run(
           ref,
           (tsx) async =>
-              tsx.get(friendshipsProvider.notifier).removeFriend(playerId),
+              tsx.get(friendsProvider.notifier).removeFriend(playerId),
         )
         .ignore();
 
     final colorScheme = Theme.of(context).colorScheme;
 
-    return switch (ref.watch(Friendships.remove(playerId))) {
+    return switch (ref.watch(Friends.remove(playerId))) {
       MutationIdle() =>
         compact
             ? IconButton(
@@ -243,11 +243,11 @@ class _RemoveFriendButtonState extends ConsumerState<RemoveFriendButton> {
         ),
       );
       if (confirmed != true || !mounted) return;
-      Friendships.remove(widget.playerId)
+      Friends.remove(widget.playerId)
           .run(
             ref,
             (tsx) async => tsx
-                .get(friendshipsProvider.notifier)
+                .get(friendsProvider.notifier)
                 .removeFriend(widget.playerId),
           )
           .ignore();
@@ -258,7 +258,7 @@ class _RemoveFriendButtonState extends ConsumerState<RemoveFriendButton> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen(Friendships.remove(widget.playerId), (_, next) {
+    ref.listen(Friends.remove(widget.playerId), (_, next) {
       if (next is MutationError) {
         ScaffoldMessenger.of(
           context,
@@ -266,7 +266,7 @@ class _RemoveFriendButtonState extends ConsumerState<RemoveFriendButton> {
       }
     });
 
-    final mutState = ref.watch(Friendships.remove(widget.playerId));
+    final mutState = ref.watch(Friends.remove(widget.playerId));
     final disabled = _confirming || mutState.isPending;
 
     return switch (mutState) {

@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:eigen_api/eigen_api.dart';
 import 'package:eigen_flutter/core/api/auth_interceptor.dart';
+import 'package:eigen_flutter/core/api/game_socket.dart';
+import 'package:eigen_flutter/core/api/server_clock.dart';
 import 'package:eigen_flutter/core/config/app_config.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -32,9 +34,17 @@ Dio engineDio(Ref ref) {
     ),
   );
   dio.interceptors.add(AuthInterceptor(FirebaseAuth.instance));
+  dio.interceptors.add(ref.watch(serverClockProvider).interceptor);
   ref.onDispose(dio.close);
   return dio;
 }
+
+/// Server time, tracked from the `Date` header of every engine response.
+///
+/// Deadlines on the wire are absolute server timestamps, so every countdown in
+/// the app measures against this rather than the device clock.
+@Riverpod(keepAlive: true)
+ServerClock serverClock(Ref ref) => ServerClock();
 
 /// Games, the lobby, and the frame history — the whole play surface.
 @Riverpod(keepAlive: true)
@@ -55,3 +65,13 @@ PlayersApi playersApi(Ref ref) => PlayersApi(ref.watch(engineDioProvider));
 /// The bot catalog offered when creating a solo game.
 @Riverpod(keepAlive: true)
 BotsApi botsApi(Ref ref) => BotsApi(ref.watch(engineDioProvider));
+
+/// Opens per-game frame sockets.
+///
+/// Stateless and shared: one instance dials as many games as the session needs,
+/// and each `connect` owns its own connection and reconnect loop.
+@Riverpod(keepAlive: true)
+GameSocket gameSocket(Ref ref) => GameSocket(
+  baseUrl: ref.watch(appConfigProvider).engine.apiBaseUrl,
+  auth: FirebaseAuth.instance,
+);

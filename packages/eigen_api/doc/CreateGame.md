@@ -8,9 +8,9 @@ import 'package:eigen_api/api.dart';
 ## Properties
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
-**access** | **String** |  | 
+**access** | [**GameAccess**](GameAccess.md) |  | 
 **schemaVersion** | **int** |  | 
-**config** | **Map&lt;String, Object&gt;** |  | 
+**config** | **Object** |  | 
 **minPlayers** | **int** |  | 
 **maxPlayers** | **int** |  | 
 **rated** | **bool** |  | [optional] 

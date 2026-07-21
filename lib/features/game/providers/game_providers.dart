@@ -1,107 +1,30 @@
-import 'package:flutter_riverpod/experimental/persist.dart';
-import 'package:riverpod_annotation/experimental/json_persist.dart';
-import 'package:riverpod_annotation/riverpod_annotation.dart';
-
-import 'package:eigen_flutter/core/game/game_creation_spec.dart';
+import 'package:eigen_api/eigen_api.dart';
+import 'package:eigen_flutter/core/api/engine_api_providers.dart';
+import 'package:eigen_flutter/core/api/game_socket.dart';
 import 'package:eigen_flutter/core/game/game_module.dart';
 import 'package:eigen_flutter/core/game/game_player.dart';
-import 'package:eigen_flutter/core/game/game_outcome.dart';
 import 'package:eigen_flutter/core/game/my_seat.dart';
 import 'package:eigen_flutter/core/game/participant_type.dart';
 import 'package:eigen_flutter/core/game/players_context.dart';
 import 'package:eigen_flutter/core/storage/storage_provider.dart';
 import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
 import 'package:eigen_flutter/features/game/data/game_repository.dart';
-import 'package:eigen_flutter/features/game/data/models/bot_info.dart';
-import 'package:eigen_flutter/features/game/data/models/game.dart';
-import 'package:eigen_flutter/features/game/data/models/observation.dart';
-import 'package:eigen_flutter/shared/data/models/player_info.dart';
 import 'package:eigen_flutter/shared/providers/player_providers.dart';
-import 'package:eigen_flutter/shared/providers/supabase_client_provider.dart';
+import 'package:flutter_riverpod/experimental/persist.dart';
+import 'package:riverpod_annotation/experimental/json_persist.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'game_providers.g.dart';
 
 /// Provider for GameRepository instance.
 @Riverpod(keepAlive: true)
 GameRepository gameRepository(Ref ref) {
-  final supabase = ref.watch(supabaseClientProvider);
-  return GameRepository(supabase);
-}
-
-/// The bot catalog for this deployment — the bot *capability* layer (is_local,
-/// config, schema, rated-eligibility), used by the solo / "Add bot"
-/// pickers and by the local-bot driver to resolve a seat's config.
-///
-/// `keepAlive`: the catalog is static reference data that changes rarely (bots are
-/// added by hand in the dashboard), so it is fetched once and reused across the
-/// session rather than re-fetched per screen. Invalidate to force a refresh.
-///
-/// `@JsonPersist()` caches it to SQLite so the pickers and the local-bot driver
-/// resolve from cache (~5 ms) on cold start, before the network refresh lands
-/// (stale-while-revalidate). The catalog is deployment-global public reference
-/// data — like [PlayerInfoCache] it is **not** user-scoped and **not** cleared on
-/// sign-out, so the auto-derived (no `key:`) global storage key is correct. Bump
-/// [StorageOptions.destroyKey] if [BotInfo]'s persisted JSON shape changes.
-@Riverpod(keepAlive: true)
-@JsonPersist()
-class AvailableBots extends _$AvailableBots {
-  @override
-  Future<List<BotInfo>> build() async {
-    persist(
-      ref.watch(storageProvider.future),
-      options: const StorageOptions(
-        cacheTime: StorageCacheTime.unsafe_forever,
-        // Bumped to '2': config is now required non-null (was nullable; server
-        // rows cached with config:null in the old shape must be discarded).
-        destroyKey: '2',
-      ),
-    );
-
-    return ref.watch(gameRepositoryProvider).getBots();
-  }
-}
-
-/// The bot catalog indexed by bot id, for O(1) capability lookups (e.g. the
-/// local-bot driver resolving a seat's `config`). Derived from [availableBots].
-@Riverpod(keepAlive: true)
-Future<Map<String, BotInfo>> botCatalogById(Ref ref) async {
-  final bots = await ref.watch(availableBotsProvider.future);
-  return {for (final bot in bots) bot.id: bot};
-}
-
-/// Whether the solo-play entry should be offered for this deployment.
-///
-/// Solo play is available iff there is a playable (timing, bot-class) combination,
-/// mirroring the `create_solo_game` partition (local ⇒ untimed, server ⇒ timed):
-/// an **untimed** mode with a usable **local** bot, or a **timed** mode with a
-/// usable **server** bot (servers are off-limits to guests). Gating the FAB on
-/// this — not just "a local bot exists" — keeps a timed-only game from showing a
-/// solo-play entry that would open a dead-end picker.
-@riverpod
-bool soloPlayAvailable(Ref ref) {
-  final module = ref.watch(currentGameModuleProvider);
-  final bots = ref.watch(availableBotsProvider).value ?? const [];
-  final isGuest = ref.watch(isAnonymousProvider);
-
-  final timing = module.creationSpec.timingConfigs.values;
-  final hasUntimed = timing.any((c) => c is UntimedConfig);
-  final hasTimed = timing.any((c) => c is! UntimedConfig);
-
-  // Solo creation always targets the latest version, so bot usability is
-  // evaluated against the latest rules unit.
-  final hasUsableLocal = bots.any(
-    (b) =>
-        b.isLocal &&
-        b.schemaVersion <= module.latestSchemaVersion &&
-        module.latestRules.localBots.any((l) => l.username == b.username),
+  return GameRepository(
+    ref.watch(gamesApiProvider),
+    ref.watch(botsApiProvider),
+    ref.watch(playersApiProvider),
+    ref.watch(gameSocketProvider),
   );
-  final hasUsableServer =
-      !isGuest &&
-      bots.any(
-        (b) => !b.isLocal && b.schemaVersion <= module.latestSchemaVersion,
-      );
-
-  return (hasUntimed && hasUsableLocal) || (hasTimed && hasUsableServer);
 }
 
 /// The active [GameModule].
@@ -117,140 +40,211 @@ GameModule currentGameModule(Ref ref) => throw UnimplementedError(
   'Add currentGameModuleProvider.overrideWithValue(...) to ProviderScope.',
 );
 
-/// Provider for the current user's active games with the structural data
-/// needed to derive turn info in the UI.
+/// The bot catalog for this deployment - the pickers' source of truth.
 ///
-/// Fetches on first watch (auto-refresh on navigation) and on explicit
-/// invalidation via [RefreshIndicator].
+/// `keepAlive`: static reference data that changes rarely (bots are registered
+/// by an operator), so it is fetched once and reused for the session.
+///
+/// `@JsonPersist()` caches it to SQLite so the pickers resolve from cache
+/// (~5 ms) on cold start, before the network refresh lands. The catalog is
+/// deployment-global public reference data - like [PlayerInfoCache] it is not
+/// user-scoped and not cleared on sign-out, so the auto-derived global storage
+/// key is correct.
+@Riverpod(keepAlive: true)
+@JsonPersist()
+class AvailableBots extends _$AvailableBots {
+  @override
+  Future<List<Bot>> build() async {
+    persist(
+      ref.watch(storageProvider.future),
+      options: const StorageOptions(
+        cacheTime: StorageCacheTime.unsafe_forever,
+        // Bumped to '3': bots are now the generated Bot, which dropped the
+        // is_local flag along with client-driven bots.
+        destroyKey: '3',
+      ),
+    );
+
+    return ref.watch(gameRepositoryProvider).getBots();
+  }
+}
+
+/// The bot catalog indexed by id, for O(1) capability lookups.
+@Riverpod(keepAlive: true)
+Future<Map<String, Bot>> botCatalogById(Ref ref) async {
+  final bots = await ref.watch(availableBotsProvider.future);
+  return {for (final bot in bots) bot.id: bot};
+}
+
+/// Whether the solo-play entry should be offered for this deployment.
+///
+/// Solo play means seating a server-side bot, which needs a registered account
+/// and a bot this build's rules can play against. Timing no longer enters into
+/// it: bots run on the server, so every timing mode is available to them.
 @riverpod
-Future<
-  List<
-    ({
-      Game game,
-      int myPlayerIndex,
-      List<int>? pendingPlayers,
-      DateTime? turnDeadline,
-    })
-  >
->
-activeGames(Ref ref) async {
-  final entries = await ref
-      .watch(gameRepositoryProvider)
-      .getActiveGameEntries();
-  // "Your turn" first, then most recently updated. The secondary key is
-  // explicit because List.sort is not guaranteed stable, so relying on the
-  // SQL fetch order to survive the sort would be fragile.
-  final sorted = entries.toList()
+bool soloPlayAvailable(Ref ref) {
+  final module = ref.watch(currentGameModuleProvider);
+  final bots = ref.watch(availableBotsProvider).value ?? const [];
+  if (ref.watch(isAnonymousProvider)) return false;
+
+  // Solo creation always targets the latest version, so bot usability is
+  // evaluated against the latest rules unit.
+  return bots.any((b) => b.schemaVersion <= module.latestSchemaVersion);
+}
+
+/// The caller's games, "your turn" first then most recently updated.
+///
+/// One request: the summary already carries the roster, the pending set and
+/// the deadline, so nothing has to be derived from a second read.
+@riverpod
+Future<List<GameSummary>> activeGames(Ref ref) async {
+  final games = await ref.watch(gameRepositoryProvider).getMyGames();
+  final myUserId = ref.watch(currentUserIdProvider);
+
+  bool isMyTurn(GameSummary game) {
+    final seat = game.participants
+        .where((p) => p.userId == myUserId)
+        .map((p) => p.playerIndex)
+        .firstOrNull;
+    return seat != null && (game.pendingPlayers?.contains(seat) ?? false);
+  }
+
+  // The secondary key is explicit because List.sort is not stable, so relying
+  // on the server's order to survive the sort would be fragile.
+  return games.toList()
     ..sort((a, b) {
-      final aMyTurn = a.pendingPlayers?.contains(a.myPlayerIndex) ?? false;
-      final bMyTurn = b.pendingPlayers?.contains(b.myPlayerIndex) ?? false;
-      if (aMyTurn != bMyTurn) return aMyTurn ? -1 : 1;
-      return b.game.updatedAt.compareTo(a.game.updatedAt);
+      final aMine = isMyTurn(a);
+      if (aMine != isMyTurn(b)) return aMine ? -1 : 1;
+      return b.updatedAt.compareTo(a.updatedAt);
     });
-  return sorted;
 }
 
-/// Provider for realtime game status updates.
+/// One game's metadata: schema version, config, timing, access.
 ///
-/// Use this to detect when opponent joins or game status changes.
-/// Automatically retries with exponential backoff on channel errors.
+/// A plain read rather than a stream. These fields are fixed at creation and
+/// never change, so streaming them would be re-delivering constants; what does
+/// change - status and roster - arrives on [gameEvents] instead.
 @riverpod
-Stream<Game> gameStream(Ref ref, {required String gameId}) {
-  final repository = ref.watch(gameRepositoryProvider);
-  return repository.gameStream(gameId);
+Future<GameSummary> gameSummary(Ref ref, {required String gameId}) {
+  return ref.watch(gameRepositoryProvider).getGame(gameId);
 }
 
-/// Fetches participants for a game, resolves each identity via the globally
-/// cached [playerInfoCacheProvider], and returns the complete [PlayersContext]
-/// with non-nullable player data.
+/// The game's live feed: roster snapshots pre-game, then ordered frames.
 ///
-/// Works for both human and bot participants — [playerInfoCacheProvider] queries
-/// the unified `app_players` RPC covering both.
+/// One socket serves the whole game, so this is the single subscription a game
+/// screen needs. Riverpod's automatic retry covers a failure to establish it;
+/// drops after that are handled inside the socket, which reconnects and
+/// resyncs without tearing down this stream.
+@riverpod
+Stream<GameSocketEvent> gameEvents(Ref ref, {required String gameId}) {
+  return ref.watch(gameRepositoryProvider).events(gameId);
+}
+
+/// The newest roster seen for a game, seeded from the summary.
 ///
-/// Auto-disposes when no screen watches it — a session can touch many games
-/// (home cards, history navigation), and keeping every game's context alive
-/// forever would grow unboundedly. Re-fetching is cheap: identities come from
-/// the persisted [playerInfoCacheProvider]; only the participants query runs.
-/// Invalidate when participants change (e.g. opponent joins, status changes).
+/// The socket delivers a snapshot on open and on every roster change while the
+/// game is in the waiting room, but sends none once play starts - so the
+/// summary provides the starting value and later snapshots replace it.
+@riverpod
+Future<Roster> gameRoster(Ref ref, {required String gameId}) async {
+  final summary = await ref.watch(gameSummaryProvider(gameId: gameId).future);
+  final event = ref.watch(gameEventsProvider(gameId: gameId)).value;
+  if (event is GameSocketRoster) return event.roster;
+  return Roster(
+    type: RosterTypeEnum.roster,
+    status: summary.status,
+    players: summary.participants,
+  );
+}
+
+/// The newest frame seen for a game, or null before the first one arrives.
+@riverpod
+Frame? gameFrameData(Ref ref, {required String gameId}) {
+  final event = ref.watch(gameEventsProvider(gameId: gameId)).value;
+  return event is GameSocketFrame ? event.frame : null;
+}
+
+/// The game's seats with their identities resolved, plus which one is mine.
+///
+/// Seats come from the live roster rather than a separate fetch, so this
+/// re-derives as players join and leave. Identities come from the persisted
+/// player cache, which covers humans and bots alike.
 @riverpod
 Future<PlayersContext> gamePlayers(Ref ref, {required String gameId}) async {
-  final repo = ref.watch(gameRepositoryProvider);
-  final participants = await repo.getParticipants(gameId);
-  final currentUserId = ref.watch(currentUserProvider)?.id;
+  final roster = await ref.watch(gameRosterProvider(gameId: gameId).future);
+  final currentUserId = ref.watch(currentUserIdProvider);
 
-  // Resolve all player identities in parallel via the cached provider.
-  // userId and botId can both be null when a human account was deleted after
-  // the game finished — fall back to a synthetic identity in that case.
   final entries = await Future.wait([
-    for (final p in participants)
-      () {
-        final id = p.userId ?? p.botId;
-        if (id != null) {
-          return ref
-              .watch(playerInfoCacheProvider(id: id).future)
-              .then(
-                (info) => MapEntry(
-                  p.playerIndex,
-                  GamePlayer(
-                    playerIndex: p.playerIndex,
-                    type: p.type,
-                    info: info,
-                  ),
-                ),
-              );
-        }
-        return Future.value(
-          MapEntry(
-            p.playerIndex,
-            GamePlayer(
-              playerIndex: p.playerIndex,
-              type: p.type,
-              info: _deletedPlayerInfo(gameId, p.playerIndex),
-              isDeleted: true,
-            ),
-          ),
-        );
-      }(),
+    for (final seat in roster.players)
+      _resolveSeat(ref, gameId: gameId, seat: seat),
   ]);
 
-  final seat = participants
+  final mySeat = roster.players
       .where((p) => p.userId == currentUserId)
       .map((p) => p.playerIndex)
       .firstOrNull;
 
   return PlayersContext(
     players: Map.fromEntries(entries),
-    mySeat: seat == null ? const Viewer() : Seated(seat),
+    mySeat: mySeat == null ? const Viewer() : Seated(mySeat),
   );
 }
 
-/// Provider for observation stream (Realtime updates).
+/// Resolves one seat's identity, substituting a placeholder for a purged
+/// account.
 ///
-/// Automatically retries with exponential backoff on channel errors.
-@riverpod
-Stream<Observation> gameObservation(Ref ref, {required String gameId}) {
-  final repository = ref.watch(gameRepositoryProvider);
-  return repository.observationStream(gameId: gameId);
+/// Both ids are null when a human deleted their account after the game
+/// finished. The seat still has to render, so it gets a synthetic identity -
+/// marked [GamePlayer.isDeleted] so callers know not to feed its id back into
+/// an identity lookup or a profile sheet.
+Future<MapEntry<int, GamePlayer>> _resolveSeat(
+  Ref ref, {
+  required String gameId,
+  required Seat seat,
+}) async {
+  final type = seat.type == SeatTypeEnum.bot
+      ? ParticipantType.bot
+      : ParticipantType.human;
+  final id = seat.userId ?? seat.botId;
+
+  if (id == null) {
+    return MapEntry(
+      seat.playerIndex,
+      GamePlayer(
+        playerIndex: seat.playerIndex,
+        type: type,
+        info: _deletedPlayer(gameId, seat.playerIndex),
+        isDeleted: true,
+      ),
+    );
+  }
+
+  final info = await ref.watch(playerInfoCacheProvider(id: id).future);
+  return MapEntry(
+    seat.playerIndex,
+    GamePlayer(playerIndex: seat.playerIndex, type: type, info: info),
+  );
 }
 
-/// Synthetic identity for a participant whose account has been deleted.
+/// Synthetic identity for a seat whose account has been deleted.
 ///
-/// Both [PlayerInfo.id] and [PlayerInfo.username] use a seat-scoped key so
-/// different deleted players in the same game render distinctly.
-PlayerInfo _deletedPlayerInfo(String gameId, int playerIndex) => PlayerInfo(
+/// The id and username are seat-scoped so two deleted players in one game
+/// render distinctly, and so neither collides with a real id.
+Player _deletedPlayer(String gameId, int playerIndex) => Player(
   id: 'deleted_${gameId}_$playerIndex',
   username: 'player_$playerIndex',
   displayName: 'Deleted User',
-  isGuest: false,
+  avatarUrl: null,
+  isAnonymous: false,
 );
 
-/// Joins a game by invite code and returns the game ID.
+/// Joins a game by invite code and returns the resulting roster.
 ///
 /// Auto-disposes once the join screen navigates away. The screen uses
 /// [ref.listen] to react to the result rather than watching the value
 /// directly, so navigation happens exactly once.
 @riverpod
-Future<String> joinByCode(Ref ref, {required String code}) => ref
+Future<Roster> joinByCode(Ref ref, {required String code}) => ref
     .read(gameRepositoryProvider)
     .joinGameByCode(
       code,
@@ -259,35 +253,25 @@ Future<String> joinByCode(Ref ref, {required String code}) => ref
           .latestSchemaVersion,
     );
 
-/// One-time fetch of game outcomes for a finished game.
+/// A finished game's outcomes.
 ///
-/// Not a stream — outcomes are immutable once written by the server.
-/// Returns an empty list while the game is still active (no outcome rows yet).
-/// Invalidate this provider when [Game.status] transitions to [GameStatus.finished]
-/// to trigger a fresh fetch.
+/// Immutable once written, and already on the summary - so this is a
+/// projection rather than a fetch. Empty while the game is still running.
 @riverpod
-Future<List<GameOutcome>> gameOutcomes(
-  Ref ref, {
-  required String gameId,
-}) async {
-  final repository = ref.watch(gameRepositoryProvider);
-  return repository.getGameOutcomes(gameId);
+Future<List<Outcome>> gameOutcomes(Ref ref, {required String gameId}) async {
+  final summary = await ref.watch(gameSummaryProvider(gameId: gameId).future);
+  return summary.outcomes ?? const [];
 }
 
-/// A player's most recent public finished games, for the replay list on their
+/// A player's most recent finished public games, for the replay list on their
 /// profile.
 ///
-/// Works for any player, human or bot ([type] selects the identity column);
-/// the target need not be the current user. Backed by existing public-game RLS,
-/// so private games are never returned. Each entry carries the target player's
-/// own result. See [GameRepository.getPlayerPublicFinishedGames].
+/// Works for any player, human or bot. Public and finished only, so it never
+/// exposes a game that was not already replayable by anyone holding its id.
 @riverpod
-Future<List<({Game game, OutcomeResult? result})>> playerPublicFinishedGames(
+Future<List<GameSummary>> playerPublicFinishedGames(
   Ref ref, {
   required String playerId,
-  required ParticipantType type,
 }) {
-  return ref
-      .watch(gameRepositoryProvider)
-      .getPlayerPublicFinishedGames(playerId: playerId, type: type);
+  return ref.watch(gameRepositoryProvider).getPlayerGames(playerId);
 }

@@ -104,7 +104,6 @@ class _AppStartupState extends ConsumerState<AppStartup> {
       data: (authState) {
         final analytics = ref.read(analyticsServiceProvider);
         switch (authState.event) {
-          case AuthEvent.initialSession:
           case AuthEvent.signedIn:
             if (authState.user case final user?) {
               unawaited(analytics.identify(user.id));
@@ -129,9 +128,7 @@ class _AppStartupState extends ConsumerState<AppStartup> {
             }
           case AuthEvent.signedOut:
             unawaited(analytics.reset());
-          case AuthEvent.tokenRefreshed:
           case AuthEvent.userUpdated:
-          case AuthEvent.other:
             break;
         }
       },
@@ -142,7 +139,7 @@ class _AppStartupState extends ConsumerState<AppStartup> {
     final context = rootNavigatorKey.currentContext;
     if (context == null) return;
     if (path.startsWith('/social')) {
-      ref.invalidate(friendshipsProvider);
+      ref.invalidate(friendsProvider);
     }
     GoRouter.of(context).navigateFromNotification(path);
   }

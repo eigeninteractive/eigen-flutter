@@ -15,18 +15,22 @@ abstract class AuthUser with _$AuthUser {
 
 /// Auth lifecycle events surfaced by [AuthService.authStateChanges].
 ///
-/// [userUpdated] matters beyond the obvious three: a guest upgrade keeps the
-/// user id but flips [AuthUser.isAnonymous], and it arrives as a userUpdated
-/// event — `isAnonymousProvider` depends on it propagating.
+/// Derived by diffing consecutive sessions rather than reported by the provider,
+/// so these are exactly the transitions the app acts on — no provider-specific
+/// events it has no behaviour for.
 enum AuthEvent {
-  initialSession,
+  /// A session began, was restored on launch, or switched to another account.
+  /// The uid is new, so identity-scoped setup (analytics, push registration)
+  /// belongs here.
   signedIn,
-  signedOut,
-  tokenRefreshed,
-  userUpdated,
 
-  /// Any provider-specific event the app has no behavior for.
-  other,
+  /// The session ended.
+  signedOut,
+
+  /// Same user, changed session — a token refresh, or the guest upgrade that
+  /// keeps the uid and flips [AuthUser.isAnonymous]. State that depends on
+  /// guest-ness must re-read on this.
+  userUpdated,
 }
 
 /// A single emission of the auth state stream: what happened, and who the

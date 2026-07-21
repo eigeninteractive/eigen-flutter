@@ -427,7 +427,7 @@ class _GameCard extends ConsumerWidget {
         gamePlayersAsync.value?.players.values.toList() ?? const [];
     final avatars = [
       for (final gp in gamePlayers)
-        (info: gp.info, isBot: gp.type == ParticipantType.bot),
+        (avatarUrl: gp.info.avatarUrl, isBot: gp.type == ParticipantType.bot),
     ];
 
     return Card(

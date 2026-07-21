@@ -205,7 +205,7 @@ class _SocialDrawerIcon extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final count = switch (ref.watch(pendingRequestsProvider)) {
+    final count = switch (ref.watch(incomingRequestsProvider)) {
       AsyncData(:final value) => value.length,
       _ => 0,
     };

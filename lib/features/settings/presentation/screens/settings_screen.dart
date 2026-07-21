@@ -598,7 +598,7 @@ class _ProfileAvatarLeading extends ConsumerWidget {
     return ref
         .watch(playerInfoCacheProvider(id: currentUser.id))
         .when(
-          data: (player) => PlayerAvatar(playerInfo: player, radius: 20),
+          data: (player) => PlayerAvatar(avatarUrl: player.avatarUrl, radius: 20),
           loading: () => fallback,
           error: (_, _) => fallback,
         );

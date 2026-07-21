@@ -1,44 +1,51 @@
 import 'dart:typed_data';
 
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:dio/dio.dart';
+import 'package:eigen_flutter/core/api/engine_call.dart';
 
-/// Manages uploading user avatar images to Supabase Storage.
+/// Uploads the signed-in user's avatar.
+///
+/// Not part of the generated client: a raw binary body has no clean OpenAPI
+/// representation, so this is the one place that builds a request by hand. It
+/// still goes through [engineCall], so a rejection surfaces as the same
+/// `EngineException` - with [ErrorCode.imageTooLarge] or
+/// [ErrorCode.unsupportedImageType] - that every other call produces.
+///
+/// R2 has no client-direct writes and no row-level security, so the image is
+/// streamed through the worker rather than uploaded from the device.
 class AvatarStorageService {
-  AvatarStorageService(this._client);
+  AvatarStorageService(this._dio);
 
-  final SupabaseClient _client;
+  final Dio _dio;
 
-  static const _bucket = 'avatars';
+  /// Image types the server accepts.
+  static const allowedMimeTypes = {'image/jpeg', 'image/png', 'image/webp'};
 
-  /// Uploads [bytes] to the avatars bucket at path [userId], replacing any
-  /// existing avatar.
+  /// Replaces the caller's avatar with [bytes] and returns its new URL.
   ///
-  /// Returns the public URL with a `?v=<timestamp>` cache-buster so that
-  /// [CachedNetworkImage] and any CDN in front of Supabase treat each upload
-  /// as a distinct resource. Without this, the URL is identical before and
-  /// after an upload, causing both on-device and CDN caches to serve the
-  /// old image until their TTL expires.
+  /// The returned URL may be relative - run it through `resolveAvatarUrl`
+  /// before handing it to an image widget. It carries a `?v=` cache-buster the
+  /// server bumps per upload, because the underlying object is overwritten in
+  /// place and the URL would otherwise be unchanged.
   ///
-  /// A 1-year [cacheControl] is set because the URL is already unique per
-  /// upload — long edge-node caching is safe and improves delivery performance.
+  /// The server also writes the new URL onto the user's profile, so a cached
+  /// profile should be invalidated after this rather than patched locally.
   Future<String> uploadAvatar(
-    String userId,
     Uint8List bytes, {
     String mimeType = 'image/jpeg',
   }) async {
-    await _client.storage
-        .from(_bucket)
-        .uploadBinary(
-          userId,
-          bytes,
-          fileOptions: FileOptions(
-            contentType: mimeType,
-            upsert: true,
-            cacheControl: '31536000',
-          ),
-        );
-
-    final baseUrl = _client.storage.from(_bucket).getPublicUrl(userId);
-    return '$baseUrl?v=${DateTime.now().millisecondsSinceEpoch}';
+    final response = await engineCall(
+      () => _dio.put<Map<String, dynamic>>(
+        '/api/engine/me/avatar',
+        data: Stream.fromIterable([bytes]),
+        options: Options(
+          headers: {
+            Headers.contentTypeHeader: mimeType,
+            Headers.contentLengthHeader: bytes.length,
+          },
+        ),
+      ),
+    );
+    return response.data!['avatar_url'] as String;
   }
 }

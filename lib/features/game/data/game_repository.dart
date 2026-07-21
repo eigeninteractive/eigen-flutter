@@ -1,17 +1,8 @@
 import 'dart:async';
-import 'dart:developer' as developer;
 
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:eigen_flutter/core/errors/engine_exception.dart';
-import 'package:eigen_flutter/core/game/game_outcome.dart';
-import 'package:eigen_flutter/core/game/participant_type.dart';
-import 'package:eigen_flutter/features/game/data/models/bot_info.dart';
-import 'package:eigen_flutter/features/game/data/models/game.dart';
-import 'package:eigen_flutter/features/game/data/models/observation.dart';
-import 'package:eigen_flutter/features/game/data/models/participant.dart';
-import 'package:eigen_flutter/features/game/data/models/replay_frame.dart';
-import 'package:eigen_flutter/features/rating/data/models/rating_change.dart';
-import 'package:eigen_flutter/shared/data/db_guard.dart';
+import 'package:eigen_api/eigen_api.dart';
+import 'package:eigen_flutter/core/api/engine_call.dart';
+import 'package:eigen_flutter/core/api/game_socket.dart';
 
 /// Number of games fetched per lobby page.
 const lobbyPageSize = 50;
@@ -22,872 +13,392 @@ const historyPageSize = 30;
 /// Number of games shown in the replay list on a player's profile.
 const profileGamesPageSize = 10;
 
-/// Repository for game operations.
+/// Everything a client does to a game: discovery, the waiting room, moves, and
+/// the live frame feed.
 ///
-/// Game-rule operations (start, action, forfeit, expiry, local-bot moves) go
-/// through the `game` Edge Function, which runs the TypeScript gameModule and
-/// commits via gated RPCs. Lobby/discovery/bot-catalog operations and reads stay
-/// on PostgREST RPCs. Clients read observations via Realtime subscriptions.
+/// Commands all travel over HTTP even while a socket is open - the socket is a
+/// one-way feed. That is what makes a command's outcome unambiguous: it is the
+/// HTTP status, not something to correlate against a later broadcast.
 class GameRepository {
-  GameRepository(this._client);
+  GameRepository(this._api, this._bots, this._players, this._socket);
 
-  final SupabaseClient _client;
+  final GamesApi _api;
+  final BotsApi _bots;
+  final PlayersApi _players;
+  final GameSocket _socket;
 
-  /// Live observation pipelines by game id. [observationStream] registers its
-  /// enqueue callback here so [submitAction] can feed the caller's committed
-  /// frame (returned on the action response) into the same version-deduped
-  /// pipeline the Realtime events flow through — the own-move frame renders
-  /// off the HTTP response instead of waiting for the Realtime hop, and the
-  /// duplicate Realtime event is dropped by the pipeline's version check.
-  final _observationInjectors = <String, Set<void Function(Observation)>>{};
+  // ── Discovery ──────────────────────────────────────────────────────────────
 
-  /// Invokes an `engine` Edge Function game route.
-  ///
-  /// On failure the function returns `{ "error": "<message>", "code"?: "EIGxx" }`
-  /// with a non-2xx status; supabase throws [FunctionException] carrying that
-  /// body in [FunctionException.details]. It is rethrown as a structured
-  /// [EngineException] so callers (and [humanize]) can dispatch on the stable
-  /// code. A transport failure (no server response) propagates as the
-  /// underlying network exception, distinguishing "the server said no" from
-  /// "the outcome is unknown".
-  Future<dynamic> _invokeEngine(String route, Map<String, dynamic> body) async {
-    try {
-      final res = await _client.functions.invoke(
-        'engine/game/$route',
-        body: body,
-      );
-      return res.data;
-    } on FunctionException catch (e) {
-      final details = e.details;
-      final message = details is Map && details['error'] is String
-          ? details['error'] as String
-          : 'Edge function error (status ${e.status})';
-      final code = details is Map && details['code'] is String
-          ? details['code'] as String
-          : null;
-      throw EngineException(message, code: code);
-    }
+  /// Public games waiting for players, newest first.
+  Future<List<GameSummary>> getLobby({int limit = lobbyPageSize}) async {
+    final response = await engineCall(() => _api.getLobby(limit: limit));
+    return response.data?.games ?? const [];
   }
 
-  /// Creates a new game via RPC.
+  /// The caller's own games - live ones first, then finished.
+  Future<List<GameSummary>> getMyGames({int limit = historyPageSize}) async {
+    final response = await engineCall(() => _api.getMyGames(limit: limit));
+    return response.data?.games ?? const [];
+  }
+
+  /// One game's metadata and roster.
   ///
-  /// Returns the game ID.
+  /// Carries the immutable facts a game screen needs once - schema version,
+  /// config, timing - so they are fetched rather than streamed. The mutable
+  /// parts (status, seats) also arrive live over the socket.
+  Future<GameSummary> getGame(String gameId) async {
+    final response = await engineCall(() => _api.getGame(gameId: gameId));
+    return response.data!;
+  }
+
+  /// A player's finished public games - the replay list on their profile.
   ///
-  /// [turnSeconds] and [budgetSeconds] are mutually exclusive timing modes.
-  /// Passing both throws on the server.
+  /// Any player, human or bot. Public and finished only, so this exposes
+  /// nothing that was not already replayable by anyone holding the game's id.
+  Future<List<GameSummary>> getPlayerGames(String playerId, {int? limit}) async {
+    final response = await engineCall(
+      () => _players.getPlayerGames(playerId: playerId, limit: limit),
+    );
+    return response.data?.games ?? const [];
+  }
+
+  /// The bots available to seat, for this build's schema version.
+  Future<List<Bot>> getBots() async {
+    final response = await engineCall(() => _bots.getBots());
+    return response.data?.bots ?? const [];
+  }
+
+  // ── Creating and joining ───────────────────────────────────────────────────
+
+  /// Creates a game and returns its id and shareable short code.
   ///
   /// [rated] is a concrete assertion, not a preference: the caller computes it
-  /// from the rating rules (the Dart twin of `GameRules.ratingPool` (TS), plus the
-  /// guest check) and the server validates it, rejecting a mismatch rather than
-  /// silently coercing. Pass `false` whenever the config is ineligible or the
-  /// caller is a guest.
-  Future<String> createGame({
-    GameAccess access = GameAccess.public,
-    int? turnSeconds,
-    int? budgetSeconds,
-    int? incrementSeconds,
+  /// from the rules twin and the server validates it rather than coercing, so a
+  /// disagreement is a loud 422 instead of a silently unrated game.
+  Future<Created> createGame({
+    required GameAccess access,
+    required int schemaVersion,
+    required Object config,
     required int minPlayers,
     required int maxPlayers,
-    Map<String, dynamic> config = const {},
-    bool rated = true,
-    required int schemaVersion,
-  }) async {
-    final data = await _invokeEngine('create', {
-      'access': access.name,
-      'turn_seconds': ?turnSeconds,
-      'budget_seconds': ?budgetSeconds,
-      'increment_seconds': ?incrementSeconds,
-      'min_players': minPlayers,
-      'max_players': maxPlayers,
-      'config': config,
-      'rated': rated,
-      'schema_version': schemaVersion,
-    });
-    return (data as Map<String, dynamic>)['game_id'] as String;
-  }
-
-  /// Joins a game via RPC.
-  ///
-  /// [clientSchemaVersion] is the running build's highest supported game schema
-  /// ([GameModule.latestSchemaVersion]); the server refuses to seat the caller in a
-  /// game whose `schema_version` exceeds it, so the client never becomes a
-  /// participant in a game it cannot render.
-  ///
-  /// Returns the participant ID.
-  Future<String> joinGame(
-    String gameId, {
-    required int clientSchemaVersion,
-  }) async {
-    final result = await dbGuard(
-      () => _client.rpc(
-        'app_join_game',
-        params: {
-          'p_game_id': gameId,
-          'p_client_schema_version': clientSchemaVersion,
-        },
-      ),
-    );
-    return result as String;
-  }
-
-  /// Joins a game by short code via RPC.
-  ///
-  /// [clientSchemaVersion] gates the join exactly as in [joinGame] — the
-  /// by-code and deep-link paths cannot inspect the game before joining, so the
-  /// server enforces the schema check before seating the caller.
-  ///
-  /// Returns the game ID.
-  Future<String> joinGameByCode(
-    String code, {
-    required int clientSchemaVersion,
-  }) async {
-    final result = await dbGuard(
-      () => _client.rpc(
-        'app_join_game_by_code',
-        params: {
-          'p_code': code,
-          'p_client_schema_version': clientSchemaVersion,
-        },
-      ),
-    );
-    return result as String;
-  }
-
-  /// Starts a game via the engine function (host only). The function computes
-  /// the initial state + observation slices in TS and commits them.
-  Future<void> startGame(String gameId) async {
-    await _invokeEngine('start', {'game_id': gameId});
-  }
-
-  /// Submits an action via RPC.
-  ///
-  /// Returns as soon as the server accepts the action. The response carries
-  /// the caller's committed observation frame, which is fed into any live
-  /// [observationStream] pipeline for the game — the own-move frame renders
-  /// off the HTTP response (typically ahead of the Realtime event, whose
-  /// duplicate the pipeline then drops by version). State still flows to the
-  /// UI exclusively through the stream; the response body is never a second
-  /// state channel.
-  ///
-  /// On an optimistic-lock conflict the server raises a `Stale state` error,
-  /// which the UI surfaces as a humanized "the game updated — try again" message.
-  Future<void> submitAction({
-    required String gameId,
-    required Map<String, dynamic> actionData,
-    required int expectedVersion,
-  }) async {
-    final data = await _invokeEngine('action', {
-      'game_id': gameId,
-      'data': actionData,
-      'expected_version': expectedVersion,
-    });
-    _injectOwnFrame(gameId, data);
-  }
-
-  /// Feeds the committed frame from an action response into the game's live
-  /// observation pipelines, if any.
-  ///
-  /// A malformed frame is logged and dropped rather than thrown: the action
-  /// itself committed, and the Realtime path still delivers the frame — a
-  /// failure of this latency shortcut must not surface as a submit failure.
-  void _injectOwnFrame(String gameId, dynamic responseData) {
-    final injectors = _observationInjectors[gameId];
-    if (injectors == null || injectors.isEmpty) return;
-    final json = responseData is Map<String, dynamic>
-        ? responseData['observation']
-        : null;
-    if (json is! Map<String, dynamic>) return;
-    try {
-      final observation = Observation.fromJson(json);
-      for (final inject in [...injectors]) {
-        inject(observation);
-      }
-    } catch (e, s) {
-      developer.log(
-        'Failed to parse action-response observation frame',
-        name: 'eigen_engine.game_repository',
-        level: 900,
-        error: e,
-        stackTrace: s,
-      );
-    }
-  }
-
-  /// Fetches the outcomes for a completed game.
-  ///
-  /// Returns one [GameOutcome] per participant. Empty for games that are not
-  /// yet finished. Call this once when [Game.status] transitions to finished.
-  Future<List<GameOutcome>> getGameOutcomes(String gameId) async {
-    final response = await dbGuard(
-      () => _client
-          .from('game_outcomes')
-          .select()
-          .eq('game_id', gameId)
-          .order('player_index'),
-    );
-    return response.map((json) => GameOutcome.fromJson(json)).toList();
-  }
-
-  /// Gets public games that are open for joining (lobby).
-  ///
-  /// Delegates to the [app_lobby_games] RPC, which filters full games via a
-  /// SQL [HAVING] clause on the participant count — an aggregate comparison
-  /// that PostgREST cannot express as a plain [WHERE] filter.
-  ///
-  /// Returns both [GameStatus.waiting] and [GameStatus.ready] games so that
-  /// variable-player games (e.g. poker) remain visible after reaching their
-  /// minimum player count, as long as slots remain.
-  ///
-  /// Includes the current user's own games so they can cancel them.
-  /// Pass [cursor] to fetch games older than a given [DateTime] for pagination.
-  ///
-  /// Each entry includes participant details (user IDs and indices) so the
-  /// lobby screen can resolve player identities via the cached
-  /// [playerInfoCacheProvider] without extra queries.
-  Future<
-    List<({Game game, List<Participant> participants, bool isParticipant})>
-  >
-  getLobbyGames({DateTime? cursor}) =>
-      _getJoinableGames('app_lobby_games', cursor);
-
-  /// Gets friends-access games that are open for joining, including the
-  /// current user's own rooms.
-  Future<
-    List<({Game game, List<Participant> participants, bool isParticipant})>
-  >
-  getFriendsGames({DateTime? cursor}) =>
-      _getJoinableGames('app_friends_games', cursor);
-
-  /// Shared fetch/parse for the two lobby RPCs, which return identical shapes.
-  Future<
-    List<({Game game, List<Participant> participants, bool isParticipant})>
-  >
-  _getJoinableGames(String rpcName, DateTime? cursor) async {
-    final response = await dbGuard(
-      () => _client.rpc(
-        rpcName,
-        params: {
-          if (cursor != null) 'p_cursor': cursor.toIso8601String(),
-          'p_limit': lobbyPageSize,
-        },
-      ),
-    );
-
-    return (response as List<dynamic>).map((item) {
-      final json = item as Map<String, dynamic>;
-      final participantsJson = (json['participants'] as List<dynamic>?) ?? [];
-      final participants = participantsJson
-          .cast<Map<String, dynamic>>()
-          .map((p) => Participant.fromJson(p))
-          .toList();
-      final isParticipant = json['is_participant'] as bool;
-      return (
-        game: Game.fromJson(json),
-        participants: participants,
-        isParticipant: isParticipant,
-      );
-    }).toList();
-  }
-
-  /// Triggers expiry of the current turn for a timed game.
-  ///
-  /// Call this when the client detects [Observation.turnDeadline] has passed.
-  /// The server re-validates under a row lock, so duplicate calls from the
-  /// client and the pg_cron job are both safe.
-  Future<void> triggerTurnExpiry(String gameId) async {
-    await _invokeEngine('expire', {'game_id': gameId});
-  }
-
-  /// Leaves a waiting or ready game (non-creator participants only).
-  ///
-  /// The creator cannot leave — use [cancelGame] instead.
-  Future<void> leaveGame(String gameId) async {
-    await dbGuard(
-      () => _client.rpc('app_leave_game', params: {'p_game_id': gameId}),
-    );
-  }
-
-  /// Cancels a waiting game (creator only).
-  Future<void> cancelGame(String gameId) async {
-    await dbGuard(
-      () => _client.rpc('app_cancel_game', params: {'p_game_id': gameId}),
-    );
-  }
-
-  /// Forfeits an active game.
-  ///
-  /// Any participant may forfeit regardless of whose turn it is. No version
-  /// check — forfeiting is an unconditional intent, and the server's row
-  /// lock already serialises it against concurrent actions.
-  Future<void> forfeitGame(String gameId) async {
-    await _invokeEngine('forfeit', {'game_id': gameId});
-  }
-
-  /// Fetches the current user's finished and aborted games for the history view.
-  ///
-  /// Embeds [game_outcomes] for the win/loss result and [rating_history] for
-  /// per-pool rating deltas. RLS on [rating_history] automatically filters the
-  /// embedded rows to the current user — no explicit filter needed.
-  ///
-  /// Returns entries ordered by [Game.finishedAt] descending. Pass [cursor] to
-  /// fetch games older than the given [DateTime] for cursor-based pagination.
-  Future<
-    List<({Game game, OutcomeResult? myResult, RatingChange? ratingChange})>
-  >
-  getHistoryGameEntries({DateTime? cursor}) async {
-    final userId = _client.auth.currentUser?.id;
-    if (userId == null) return [];
-
-    var query = _client
-        .from('games')
-        .select(
-          '*, '
-          'participants!inner(user_id, player_index), '
-          'game_outcomes(player_index, result), '
-          'rating_history(pool, display_before, display_after, display_change, created_at)',
-        )
-        .eq('participants.user_id', userId)
-        .inFilter('status', ['finished', 'aborted']);
-
-    if (cursor != null) {
-      query = query.lt('finished_at', cursor.toIso8601String());
-    }
-
-    final response = await dbGuard(
-      () => query.order('finished_at', ascending: false).limit(historyPageSize),
-    );
-
-    return response.map((j) {
-      final participant = (j['participants'] as List)
-          .cast<Map<String, dynamic>>()
-          .firstWhere((p) => p['user_id'] == userId);
-      final myPlayerIndex = participant['player_index'] as int;
-
-      final outcomes = (j['game_outcomes'] as List)
-          .cast<Map<String, dynamic>>();
-      final myOutcomeJson = outcomes
-          .where((o) => o['player_index'] == myPlayerIndex)
-          .firstOrNull;
-      final myResult = myOutcomeJson == null
-          ? null
-          : OutcomeResult.values.byName(myOutcomeJson['result'] as String);
-
-      final historyRows = (j['rating_history'] as List)
-          .cast<Map<String, dynamic>>();
-      final ratingChange = historyRows.isEmpty
-          ? null
-          : RatingChange.fromJson(historyRows.first);
-
-      return (
-        game: Game.fromJson(j),
-        myResult: myResult,
-        ratingChange: ratingChange,
-      );
-    }).toList();
-  }
-
-  /// Fetches a player's most recent public finished games, for the replay
-  /// list on their profile.
-  ///
-  /// Works for any player — the target need not be the caller. Existing RLS
-  /// (`can_read_game`) already exposes public games' rows, rosters, and
-  /// outcomes to any authenticated user, so no privileged read is needed;
-  /// private/friends games are simply invisible and never returned. [type]
-  /// selects the identity column (`user_id` for a human, `bot_id` for a bot).
-  /// Each entry carries the *target's* result. Pass [cursor] to page to games
-  /// finished before a given time.
-  Future<List<({Game game, OutcomeResult? result})>>
-  getPlayerPublicFinishedGames({
-    required String playerId,
-    required ParticipantType type,
-    DateTime? cursor,
-  }) async {
-    final identityColumn = type == ParticipantType.bot ? 'bot_id' : 'user_id';
-
-    var query = _client
-        .from('games')
-        .select(
-          '*, '
-          'participants!inner(user_id, bot_id, player_index), '
-          'game_outcomes(player_index, result)',
-        )
-        .eq('participants.$identityColumn', playerId)
-        .eq('access', 'public')
-        .eq('status', 'finished');
-
-    if (cursor != null) {
-      query = query.lt('finished_at', cursor.toIso8601String());
-    }
-
-    final response = await dbGuard(
-      () => query
-          .order('finished_at', ascending: false)
-          .limit(profileGamesPageSize),
-    );
-
-    return response.map((j) {
-      final participant = (j['participants'] as List)
-          .cast<Map<String, dynamic>>()
-          .firstWhere((p) => p[identityColumn] == playerId);
-      final targetPlayerIndex = participant['player_index'] as int;
-
-      final outcomeJson = (j['game_outcomes'] as List)
-          .cast<Map<String, dynamic>>()
-          .where((o) => o['player_index'] == targetPlayerIndex)
-          .firstOrNull;
-      final result = outcomeJson == null
-          ? null
-          : OutcomeResult.values.byName(outcomeJson['result'] as String);
-
-      return (game: Game.fromJson(j), result: result);
-    }).toList();
-  }
-
-  // ── Bots ───────────────────────────────────────────────────────────────────
-
-  /// Bots available for this deployment (display-safe columns), for the
-  /// solo play and "Add bot" pickers.
-  Future<List<BotInfo>> getBots() async {
-    final result = await dbGuard(() => _client.rpc('app_bots'));
-    return (result as List)
-        .cast<Map<String, dynamic>>()
-        .map(BotInfo.fromJson)
-        .toList();
-  }
-
-  /// Creates a solo game: the caller plus [botIds] (local and/or server, in seat
-  /// order), unrated. The EF gates each bot's config seatability
-  /// ([GameRules.botSeatable]) in TS, then `engine_create_solo_game` creates +
-  /// seats and leaves the game `ready`; the engine `start` route then computes the
-  /// initial state and begins play. Returns the game ID.
-  Future<String> createSoloGame({
-    required List<String> botIds,
-    required int schemaVersion,
+    bool? rated,
     int? turnSeconds,
     int? budgetSeconds,
     int? incrementSeconds,
-    Map<String, dynamic> config = const {},
   }) async {
-    final data = await _invokeEngine('create-solo', {
-      'bot_ids': botIds,
-      'schema_version': schemaVersion,
-      'turn_seconds': ?turnSeconds,
-      'budget_seconds': ?budgetSeconds,
-      'increment_seconds': ?incrementSeconds,
-      'config': config,
-    });
-    final gameId = (data as Map<String, dynamic>)['game_id'] as String;
-    await startGame(gameId);
-    return gameId;
+    final response = await engineCall(
+      () => _api.createGame(
+        createGame: CreateGame(
+          access: access,
+          schemaVersion: schemaVersion,
+          config: config,
+          minPlayers: minPlayers,
+          maxPlayers: maxPlayers,
+          rated: rated,
+          turnSeconds: turnSeconds,
+          budgetSeconds: budgetSeconds,
+          incrementSeconds: incrementSeconds,
+        ),
+      ),
+    );
+    return response.data!;
   }
 
-  /// Adds a server bot to a multiplayer waiting/ready game (creator only). The EF
-  /// gates config seatability ([GameRules.botSeatable]) before seating.
-  Future<void> addBotToGame({
-    required String gameId,
-    required String botId,
+  /// Creates a private game seated with the caller plus [botIds] and starts it,
+  /// in one call.
+  ///
+  /// Returns the caller's committed v0 frame alongside the ids: the game is
+  /// already running before any socket exists, so this response is the only
+  /// place that first frame can come from.
+  Future<SoloStarted> createSoloGame({
+    required int schemaVersion,
+    required Object config,
+    required int minPlayers,
+    required int maxPlayers,
+    required List<String> botIds,
+    bool? rated,
+    int? turnSeconds,
+    int? budgetSeconds,
+    int? incrementSeconds,
   }) async {
-    await _invokeEngine('add-bot', {'game_id': gameId, 'bot_id': botId});
-  }
-
-  /// Submits a local bot's move on its behalf (client-driven, solo games only).
-  ///
-  /// Keyed by [playerIndex] (the seat), so the same local bot may fill several
-  /// seats in one solo game.
-  Future<void> submitLocalBotAction({
-    required String gameId,
-    required int playerIndex,
-    required Map<String, dynamic> actionData,
-    required int expectedVersion,
-  }) async {
-    await _invokeEngine('local-bot-action', {
-      'game_id': gameId,
-      'player_index': playerIndex,
-      'data': actionData,
-      'expected_version': expectedVersion,
-    });
-  }
-
-  /// Fetches a bot seat's latest [Observation] for local play, server-gated to
-  /// the sole human of a solo game. The RPC returns `SETOF observations` — the
-  /// same shape as a human's own observation — already bounded to the seat's
-  /// latest frame (a bot acts on the current frame; it has no use for
-  /// history), so this reads it with [maybeSingle] exactly like
-  /// [getObservation]: null when no row exists yet.
-  Future<Observation?> getLocalBotObservation({
-    required String gameId,
-    required int playerIndex,
-  }) async {
-    final response = await dbGuard(
-      () => _client
-          .rpc(
-            'app_local_bot_observation',
-            params: {'p_game_id': gameId, 'p_player_index': playerIndex},
-          )
-          .maybeSingle(),
+    final response = await engineCall(
+      () => _api.createSoloGame(
+        createSolo: CreateSolo(
+          schemaVersion: schemaVersion,
+          config: config,
+          minPlayers: minPlayers,
+          maxPlayers: maxPlayers,
+          botIds: botIds,
+          rated: rated,
+          turnSeconds: turnSeconds,
+          budgetSeconds: budgetSeconds,
+          incrementSeconds: incrementSeconds,
+        ),
+      ),
     );
-
-    if (response == null) return null;
-    return Observation.fromJson(response);
+    return response.data!;
   }
 
-  /// Gets the participants of a game — ephemeral, per-game data (seat + identity
-  /// ids + type). RLS restricts rows to games the caller can see. A bot seat's
-  /// reference data (display via [PlayerInfo], capability/config via the cached
-  /// bot catalog) is resolved separately by id, not joined here.
-  Future<List<Participant>> getParticipants(String gameId) async {
-    final response = await dbGuard(
-      () => _client
-          .from('participants')
-          .select()
-          .eq('game_id', gameId)
-          .order('player_index'),
-    );
-    return response.map(Participant.fromJson).toList();
-  }
-
-  /// Gets the current user's latest observation frame for a game.
-  ///
-  /// Observations are append-only (one row per seat per state version), so
-  /// "the observation" means the highest-version row. RLS restricts results
-  /// to the authenticated user's rows, so no explicit user_id filter is
-  /// needed.
-  Future<Observation?> getObservation(String gameId) async {
-    final response = await dbGuard(
-      () => _client
-          .from('observations')
-          .select()
-          .eq('game_id', gameId)
-          .order('version', ascending: false)
-          .limit(1)
-          .maybeSingle(),
-    );
-
-    if (response == null) return null;
-    return Observation.fromJson(response);
-  }
-
-  /// Fetches every frame of a finished game for replay, ordered by version.
-  ///
-  /// Routes through the `game/replay` Edge Function (the raw history is
-  /// service-role). A participant receives their own seat's projection; a
-  /// non-participant may replay only a **public** finished game, and receives
-  /// the observer projection. The EF returns 400 for a non-finished game and
-  /// 403 for a non-participant of a private game — both surface as
-  /// [EngineException].
-  Future<List<ReplayFrame>> getReplay(String gameId) async {
-    final data = await _invokeEngine('replay', {'game_id': gameId});
-    return (data as List)
-        .cast<Map<String, dynamic>>()
-        .map(ReplayFrame.fromJson)
-        .toList();
-  }
-
-  /// Gets a game's current metadata row, or null when the row is not
-  /// visible to the caller (RLS) or does not exist.
-  ///
-  /// Used by [gameStream] as its fetch-on-subscribe snapshot.
-  Future<Game?> getGame(String gameId) async {
-    final response = await dbGuard(
-      () => _client.from('games').select().eq('id', gameId).maybeSingle(),
-    );
-    if (response == null) return null;
-    return Game.fromJson(response);
-  }
-
-  /// The caller's missed observation frames in `(after, before)` exclusive,
-  /// version-ascending — the gap-recovery fetch for [observationStream].
-  Future<List<Observation>> _fetchMissedObservations(
+  /// Takes a seat. [clientSchemaVersion] is the newest version this build ships
+  /// rules for - the server refuses rather than let an old build mis-parse a
+  /// newer game.
+  Future<Roster> joinGame(
     String gameId, {
-    required int after,
-    required int before,
+    required int clientSchemaVersion,
+    String? commandId,
   }) async {
-    final rows = await dbGuard(
-      () => _client
-          .from('observations')
-          .select()
-          .eq('game_id', gameId)
-          .gt('version', after)
-          .lt('version', before)
-          .order('version', ascending: true),
+    final response = await engineCall(
+      () => _api.joinGame(
+        gameId: gameId,
+        join: Join(
+          clientSchemaVersion: clientSchemaVersion,
+          commandId: commandId,
+        ),
+      ),
     );
-    return rows.map(Observation.fromJson).toList();
+    return response.data!.roster;
   }
 
-  /// Subscribes to the caller's observation frames for a game, delivered in
-  /// **version order with gaps recovered**.
-  ///
-  /// Frames arrive on the caller's private broadcast topic
-  /// `game:{gameId}:user:{userId}` (sent by a database trigger on
-  /// observation inserts; RLS on `realtime.messages` restricts who may join
-  /// the topic). Observations are append-only server-side (one row per seat
-  /// per state version), which is what makes this stream reliable: Realtime
-  /// can drop or reorder broadcast messages, but a version jump is detected
-  /// and the missing rows are fetched and emitted in order, so a live client
-  /// sees every transition and can animate through each one. Duplicates and
-  /// stale events are dropped.
-  ///
-  /// The first emission (on subscribe, and the re-fetch on every reconnect)
-  /// is the seat's *latest* frame — a cold load snaps to now rather than
-  /// replaying history; if the reconnect fetch reveals a gap, the missed
-  /// frames are emitted in order first. RLS restricts fetched rows to the
-  /// authenticated user's own.
-  Stream<Observation> observationStream({required String gameId}) {
-    final userId = _client.auth.currentUser?.id;
-    // Signed out (e.g. session expired mid-game) — emit nothing rather than
-    // crash; the auth redirect tears the screen down momentarily.
-    if (userId == null) return const Stream.empty();
+  /// Takes a seat using a shared short code rather than a game id.
+  Future<Roster> joinGameByCode(
+    String shortCode, {
+    required int clientSchemaVersion,
+    String? commandId,
+  }) async {
+    final response = await engineCall(
+      () => _api.joinGameByCode(
+        joinByCode: JoinByCode(
+          shortCode: shortCode,
+          clientSchemaVersion: clientSchemaVersion,
+          commandId: commandId,
+        ),
+      ),
+    );
+    return response.data!.roster;
+  }
 
-    late RealtimeChannel channel;
-    late StreamController<Observation> controller;
+  /// Gives up a seat before the game starts. The creator cancels instead.
+  Future<Roster> leaveGame(String gameId, {String? commandId}) async {
+    final response = await engineCall(
+      () => _api.leaveGame(
+        gameId: gameId,
+        lobbyCommand: LobbyCommand(commandId: commandId),
+      ),
+    );
+    return response.data!.roster;
+  }
+
+  /// Abandons a game that has not started. Creator only.
+  Future<Roster> cancelGame(String gameId, {String? commandId}) async {
+    final response = await engineCall(
+      () => _api.cancelGame(
+        gameId: gameId,
+        lobbyCommand: LobbyCommand(commandId: commandId),
+      ),
+    );
+    return response.data!.roster;
+  }
+
+  /// Seats a bot alongside the humans. Creator only, pre-start.
+  Future<Roster> addBot(
+    String gameId, {
+    required String botId,
+    String? commandId,
+  }) async {
+    final response = await engineCall(
+      () => _api.addBot(
+        gameId: gameId,
+        addBot: AddBot(botId: botId, commandId: commandId),
+      ),
+    );
+    return response.data!.roster;
+  }
+
+  /// Starts a ready game. Creator only.
+  ///
+  /// Returns the committed version; the opening frames reach every seat over
+  /// their own socket, since a start has no single acting seat.
+  Future<int> startGame(String gameId, {String? commandId}) async {
+    final response = await engineCall(
+      () => _api.startGame(
+        gameId: gameId,
+        lobbyCommand: LobbyCommand(commandId: commandId),
+      ),
+    );
+    return response.data!.version;
+  }
+
+  // ── Playing ────────────────────────────────────────────────────────────────
+
+  /// Submits a move for [seat] against [expectedVersion].
+  ///
+  /// [seat] is the caller's own index, verified against the roster server-side.
+  /// [expectedVersion] is the optimistic lock: if the board moved on in a way
+  /// this seat could see, the move is refused with [ErrorCode.stateUpdated]
+  /// rather than applied to a state the player never saw.
+  ///
+  /// Reusing a [commandId] replays the stored response instead of re-executing,
+  /// so a resubmitted move cannot land twice.
+  ///
+  /// The returned [CommandAccepted.frame] is this seat's own committed view.
+  /// Feed it to [frames] so the move renders without waiting on the socket -
+  /// see that method for why both paths carry it.
+  Future<CommandAccepted> submitAction({
+    required String gameId,
+    required int seat,
+    required int expectedVersion,
+    required Object? data,
+    String? commandId,
+  }) async {
+    final response = await engineCall(
+      () => _api.submitAction(
+        gameId: gameId,
+        action: Action(
+          seat: seat,
+          data: data,
+          expectedVersion: expectedVersion,
+          commandId: commandId,
+        ),
+      ),
+    );
+    return response.data!;
+  }
+
+  /// Resigns [seat] from a live game.
+  Future<CommandAccepted> forfeitGame({
+    required String gameId,
+    required int seat,
+    String? commandId,
+  }) async {
+    final response = await engineCall(
+      () => _api.forfeitGame(
+        gameId: gameId,
+        forfeit: Forfeit(seat: seat, commandId: commandId),
+      ),
+    );
+    return response.data!;
+  }
+
+  /// Frames in `[from, to]` for the caller's seat, version-ascending.
+  ///
+  /// Backs both gap recovery and replay. A non-participant may read a finished
+  /// public game, which is what makes spectating a replay possible.
+  Future<List<Frame>> getFrames(
+    String gameId, {
+    int from = 0,
+    int? to,
+  }) async {
+    final response = await engineCall(
+      () => _api.getFrames(gameId: gameId, from: from, to: to),
+    );
+    return response.data?.frames ?? const [];
+  }
+
+  // ── The live feed ──────────────────────────────────────────────────────────
+
+  /// The game's live events: roster snapshots pre-game, then frames in strict
+  /// version order with any gaps filled.
+  ///
+  /// Frames are append-only server-side, one per seat per version, which is
+  /// what makes this recoverable: a socket may drop or a reconnect may miss
+  /// events, but a version jump is detected here and the missing frames are
+  /// fetched and emitted in order first. A game therefore always animates
+  /// through every transition rather than snapping past one.
+  ///
+  /// Duplicates and stale frames are dropped, which is what lets the same frame
+  /// arrive twice safely. That matters because it does: a move's own frame
+  /// rides the [submitAction] response *and* fans out over the socket. Pass the
+  /// response's frame to [inject] and whichever copy arrives second is
+  /// discarded by version. On the socket-less paths - a freshly created solo
+  /// game, or a move made while the socket is mid-reconnect - the injected copy
+  /// is the only one, which is why the response carries it at all.
+  ///
+  /// The first frame seen is emitted as-is: a cold load snaps to the present
+  /// rather than replaying the whole game.
+  Stream<GameSocketEvent> events(
+    String gameId, {
+    Stream<Frame>? inject,
+  }) {
+    late StreamController<GameSocketEvent> controller;
     int? lastVersion;
-    // Serialises frame handling (a gap fetch is async) so emissions stay in
-    // version order no matter how bursts of events interleave with fetches.
+    StreamSubscription<GameSocketEvent>? socketSub;
+    StreamSubscription<Frame>? injectSub;
+
+    // Serialises handling so emissions stay in version order however bursts of
+    // socket events interleave with the async gap fetches they trigger.
     var pipeline = Future<void>.value();
 
-    Future<void> handle(Observation obs) async {
+    void emit(Frame frame) {
+      lastVersion = frame.version;
+      controller.add(GameSocketFrame(frame));
+    }
+
+    Future<void> handleFrame(Frame frame) async {
       if (controller.isClosed) return;
       final last = lastVersion;
       if (last == null) {
-        // Cold baseline: the first frame seen is emitted as-is (no history
-        // replay); everything after it is ordered and gap-filled.
-        lastVersion = obs.version;
-        controller.add(obs);
+        emit(frame);
         return;
       }
-      if (obs.version <= last) return;
-      if (obs.version > last + 1) {
-        final missed = await _fetchMissedObservations(
+      if (frame.version <= last) return;
+      if (frame.version > last + 1) {
+        final missed = await getFrames(
           gameId,
-          after: last,
-          before: obs.version,
+          from: last + 1,
+          to: frame.version - 1,
         );
-        for (final frame in missed) {
+        for (final gap in missed) {
           if (controller.isClosed) return;
-          if (frame.version > lastVersion!) {
-            lastVersion = frame.version;
-            controller.add(frame);
-          }
+          if (gap.version > lastVersion!) emit(gap);
         }
       }
       if (controller.isClosed) return;
-      if (obs.version > lastVersion!) {
-        lastVersion = obs.version;
-        controller.add(obs);
+      if (frame.version > lastVersion!) emit(frame);
+    }
+
+    /// After a reconnect, ask for everything past the cursor. Any real gap is
+    /// then filled by [handleFrame] exactly as a live jump would be.
+    Future<void> resync() async {
+      final cursor = lastVersion;
+      if (cursor == null || controller.isClosed) return;
+      for (final frame in await getFrames(gameId, from: cursor + 1)) {
+        if (controller.isClosed) return;
+        if (frame.version > lastVersion!) emit(frame);
       }
     }
 
-    void enqueue(Observation obs) {
-      pipeline = pipeline.then((_) => handle(obs)).catchError((Object e) {
-        if (!controller.isClosed) controller.addError(e);
+    void enqueue(Future<void> Function() work) {
+      pipeline = pipeline.then((_) => work()).catchError((Object error) {
+        if (!controller.isClosed) controller.addError(error);
       });
     }
 
-    // Registered so submitAction can inject the caller's own committed frame
-    // (from the action response) into this same pipeline — see
-    // [_observationInjectors].
-    final injectors = _observationInjectors.putIfAbsent(gameId, () => {});
-    injectors.add(enqueue);
+    controller = StreamController<GameSocketEvent>(
+      onListen: () {
+        socketSub = _socket.connect(gameId).listen((event) {
+          switch (event) {
+            case GameSocketConnected():
+              controller.add(event);
+              enqueue(resync);
+            case GameSocketRoster():
+              // Unversioned and idempotent - pass straight through.
+              controller.add(event);
+            case GameSocketFrame(:final frame):
+              enqueue(() => handleFrame(frame));
+          }
+        }, onError: controller.addError);
 
-    void fetchLatest() {
-      getObservation(gameId).then(
-        (obs) {
-          if (obs != null) enqueue(obs);
-        },
-        onError: (Object e) {
-          if (!controller.isClosed) controller.addError(e);
-        },
-      );
-    }
-
-    controller = StreamController<Observation>(
-      onCancel: () {
-        injectors.remove(enqueue);
-        if (injectors.isEmpty) _observationInjectors.remove(gameId);
-        channel.unsubscribe();
+        injectSub = inject?.listen(
+          (frame) => enqueue(() => handleFrame(frame)),
+          onError: controller.addError,
+        );
+      },
+      onCancel: () async {
+        await socketSub?.cancel();
+        await injectSub?.cancel();
       },
     );
 
-    channel =
-        _client.channel(
-            'game:$gameId:user:$userId',
-            opts: const RealtimeChannelConfig(private: true),
-          )
-          ..onBroadcast(
-            event: 'observation',
-            callback: (payload) {
-              if (controller.isClosed) return;
-              final record = payload['payload'];
-              if (record is Map) {
-                try {
-                  enqueue(
-                    Observation.fromJson(Map<String, dynamic>.from(record)),
-                  );
-                } on Object {
-                  // Undecodable frame (e.g. a future slim/oversize fallback
-                  // payload): treat it as a wake-up and fetch instead; the
-                  // pipeline orders and gap-fills as usual.
-                  fetchLatest();
-                }
-              }
-            },
-          )
-          ..subscribe((status, error) {
-            switch (status) {
-              case RealtimeSubscribeStatus.subscribed:
-                // Initial connect and every reconnect: fetch the latest frame so
-                // nothing stays missed while disconnected (a gap it reveals is
-                // back-filled by the pipeline).
-                fetchLatest();
-              case RealtimeSubscribeStatus.channelError:
-              case RealtimeSubscribeStatus.timedOut:
-                if (!controller.isClosed) {
-                  controller.addError(
-                    error ?? Exception('Realtime subscription failed'),
-                  );
-                }
-              case RealtimeSubscribeStatus.closed:
-                break;
-            }
-          });
-
     return controller.stream;
-  }
-
-  /// Subscribes to game metadata updates on the private broadcast topic
-  /// `game:{gameId}` (sent by a database trigger on games UPDATEs — all of
-  /// which are lifecycle transitions such as opponents joining or the game
-  /// ending).
-  ///
-  /// Emits the current game on subscribe and re-fetches on every reconnect;
-  /// channel errors propagate as stream errors so Riverpod's retry mechanism
-  /// can schedule a reconnect with exponential backoff. Latest-state snapshot
-  /// semantics are all this needs, unlike [observationStream], which must
-  /// deliver every frame and therefore orders and gap-fills.
-  ///
-  /// An empty snapshot (row not visible yet, or deleted) is skipped rather
-  /// than emitted as an error — the stream simply keeps its last value.
-  Stream<Game> gameStream(String gameId) {
-    late RealtimeChannel channel;
-    late StreamController<Game> controller;
-
-    void fetchCurrent() {
-      getGame(gameId).then(
-        (game) {
-          if (game != null && !controller.isClosed) controller.add(game);
-        },
-        onError: (Object e) {
-          if (!controller.isClosed) controller.addError(e);
-        },
-      );
-    }
-
-    controller = StreamController<Game>(onCancel: () => channel.unsubscribe());
-
-    channel =
-        _client.channel(
-            'game:$gameId',
-            opts: const RealtimeChannelConfig(private: true),
-          )
-          ..onBroadcast(
-            event: 'game',
-            callback: (payload) {
-              if (controller.isClosed) return;
-              final record = payload['payload'];
-              if (record is Map) {
-                controller.add(
-                  Game.fromJson(Map<String, dynamic>.from(record)),
-                );
-              }
-            },
-          )
-          ..subscribe((status, error) {
-            switch (status) {
-              case RealtimeSubscribeStatus.subscribed:
-                fetchCurrent();
-              case RealtimeSubscribeStatus.channelError:
-              case RealtimeSubscribeStatus.timedOut:
-                if (!controller.isClosed) {
-                  controller.addError(
-                    error ?? Exception('Realtime subscription failed'),
-                  );
-                }
-              case RealtimeSubscribeStatus.closed:
-                break;
-            }
-          });
-
-    return controller.stream;
-  }
-
-  /// Fetches the current user's waiting/ready/active games with the
-  /// structural data needed to derive turn info client-side.
-  ///
-  /// Single PostgREST query embedding:
-  /// - `participants!inner(player_index)` — inner-joined and filtered to
-  ///   the current user's row, so `player_index` is this user's slot in
-  ///   that game.
-  /// - `observations(pending_players, turn_deadline)` — narrowed to the
-  ///   latest frame (observations are append-only); empty embed for
-  ///   waiting/ready games (no observation row exists yet).
-  ///
-  /// Callers compute "is my turn" as
-  /// `entry.pendingPlayers?.contains(entry.myPlayerIndex)`.
-  Future<
-    List<
-      ({
-        Game game,
-        int myPlayerIndex,
-        List<int>? pendingPlayers,
-        DateTime? turnDeadline,
-      })
-    >
-  >
-  getActiveGameEntries() async {
-    final userId = _client.auth.currentUser?.id;
-    if (userId == null) return [];
-
-    final response = await dbGuard(
-      () => _client
-          .from('games')
-          .select(
-            '*, participants!inner(user_id, player_index), '
-            'observations(pending_players, turn_deadline)',
-          )
-          .eq('participants.user_id', userId)
-          .inFilter('status', ['waiting', 'ready', 'active'])
-          .order('version', referencedTable: 'observations', ascending: false)
-          .limit(1, referencedTable: 'observations')
-          .order('updated_at', ascending: false),
-    );
-
-    return response.map((j) {
-      // The .eq('participants.user_id', userId) filter both (a) drives the
-      // !inner outer selectivity (only games I'm in) and (b) narrows the
-      // embedded array to my row. firstWhere makes that intent explicit
-      // instead of relying on the narrowed array's ordering.
-      final participant = (j['participants'] as List)
-          .cast<Map<String, dynamic>>()
-          .firstWhere((p) => p['user_id'] == userId);
-      final myPlayerIndex = participant['player_index'] as int;
-
-      final observations = j['observations'] as List;
-      final pendingPlayers = observations.isEmpty
-          ? null
-          : ((observations.first as Map<String, dynamic>)['pending_players']
-                    as List)
-                .cast<int>();
-      final deadlineStr = observations.isEmpty
-          ? null
-          : (observations.first as Map<String, dynamic>)['turn_deadline']
-                as String?;
-
-      return (
-        game: Game.fromJson(j),
-        myPlayerIndex: myPlayerIndex,
-        pendingPlayers: pendingPlayers,
-        turnDeadline: deadlineStr != null ? DateTime.parse(deadlineStr) : null,
-      );
-    }).toList();
   }
 }

@@ -3,6 +3,7 @@
 //
 
 // ignore_for_file: unused_element
+import 'package:eigen_api/src/model/game_access.dart';
 import 'package:copy_with_extension/copy_with_extension.dart';
 import 'package:json_annotation/json_annotation.dart';
 
@@ -47,7 +48,7 @@ class CreateGame {
   )
 
 
-  final CreateGameAccessEnum access;
+  final GameAccess access;
 
 
 
@@ -71,7 +72,7 @@ class CreateGame {
   )
 
 
-  final Map<String, Object> config;
+  final Object config;
 
 
 
@@ -185,22 +186,4 @@ class CreateGame {
   }
 
 }
-
-
-enum CreateGameAccessEnum {
-@JsonValue(r'public')
-public(r'public'),
-@JsonValue(r'private')
-private(r'private'),
-@JsonValue(r'friends')
-friends(r'friends');
-
-const CreateGameAccessEnum(this.value);
-
-final String value;
-
-@override
-String toString() => value;
-}
-
 
