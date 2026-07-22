@@ -81,6 +81,7 @@ Class | Method | HTTP request | Description
 [*GamesApi*](doc/GamesApi.md) | [**leaveGame**](doc/GamesApi.md#leavegame) | **POST** /api/engine/games/{gameId}/leave | 
 [*GamesApi*](doc/GamesApi.md) | [**startGame**](doc/GamesApi.md#startgame) | **POST** /api/engine/games/{gameId}/start | 
 [*GamesApi*](doc/GamesApi.md) | [**submitAction**](doc/GamesApi.md#submitaction) | **POST** /api/engine/games/{gameId}/action | 
+[*HealthApi*](doc/HealthApi.md) | [**getHealth**](doc/HealthApi.md#gethealth) | **GET** /health | Liveness probe
 [*MeApi*](doc/MeApi.md) | [**deleteAccount**](doc/MeApi.md#deleteaccount) | **DELETE** /api/engine/me | 
 [*MeApi*](doc/MeApi.md) | [**getMyRatingHistory**](doc/MeApi.md#getmyratinghistory) | **GET** /api/engine/me/rating-history | 
 [*MeApi*](doc/MeApi.md) | [**getMyRatings**](doc/MeApi.md#getmyratings) | **GET** /api/engine/me/ratings | 
@@ -132,6 +133,7 @@ Class | Method | HTTP request | Description
  - [GameAccess](doc/GameAccess.md)
  - [GameStatus](doc/GameStatus.md)
  - [GameSummary](doc/GameSummary.md)
+ - [Health](doc/Health.md)
  - [Join](doc/Join.md)
  - [JoinByCode](doc/JoinByCode.md)
  - [Joined](doc/Joined.md)

@@ -51,11 +51,28 @@ openapi-generator generate \
   --additional-properties=pubName=eigen_api,pubLibrary=eigen_api,serializationLibrary=json_serializable \
   --global-property=modelTests=false,apiTests=false,modelDocs=true,apiDocs=true
 
-# 3) Build eigen_api's built_value serializers (its own resolution supplies the
-#    dev deps), then refresh the workspace that path-depends on it.
+# 3) Build eigen_api's serializers (its own resolution supplies the dev deps),
+#    then refresh the workspace that path-depends on it.
 echo "==> build_runner (eigen_api) + workspace pub get"
 ( cd "$OUT" && dart pub get && dart run build_runner build --delete-conflicting-outputs )
 ( cd "$ROOT" && flutter pub get )
+
+# 4) Format the generated sources. openapi-generator's output is NOT
+#    dart-format clean, and eigen_api's lib/ is committed — so without this
+#    every regeneration would fail the repo's `dart format
+#    --set-exit-if-changed` gate and leave ~65 tracked files of whitespace
+#    noise to fix by hand.
+#
+#    Formatting rather than excluding is deliberate. `dart format` honours no
+#    ignore file (it does not read analysis_options' `analyzer: exclude`, which
+#    already lists this package), so excluding would mean encoding a second
+#    copy of "what is generated" as a path filter in CI, free to drift from
+#    analysis_options. Formatting here keeps that knowledge in the script that
+#    owns the artifact, and — because the formatter is deterministic — it also
+#    normalises away generator reflow, so a generator upgrade diffs as real
+#    changes instead of line-breaking churn.
+echo "==> dart format (generated sources)"
+( cd "$OUT" && dart format lib >/dev/null )
 
 echo "==> done. Review packages/eigen_api and commit the refreshed sources."
 echo "    (*.g.dart, pubspec.lock, .dart_tool are gitignored + rebuilt; not committed.)"

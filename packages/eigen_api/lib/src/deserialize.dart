@@ -22,6 +22,7 @@ import 'package:eigen_api/src/model/friend_target.dart';
 import 'package:eigen_api/src/model/friends.dart';
 import 'package:eigen_api/src/model/friends_games.dart';
 import 'package:eigen_api/src/model/game_summary.dart';
+import 'package:eigen_api/src/model/health.dart';
 import 'package:eigen_api/src/model/join.dart';
 import 'package:eigen_api/src/model/join_by_code.dart';
 import 'package:eigen_api/src/model/joined.dart';
@@ -128,6 +129,8 @@ ReturnType deserialize<ReturnType, BaseType>(
     case 'GameStatus':
     case 'GameSummary':
       return GameSummary.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'Health':
+      return Health.fromJson(value as Map<String, dynamic>) as ReturnType;
     case 'Join':
       return Join.fromJson(value as Map<String, dynamic>) as ReturnType;
     case 'JoinByCode':

@@ -32,6 +32,8 @@ doc/GameAccess.md
 doc/GameStatus.md
 doc/GameSummary.md
 doc/GamesApi.md
+doc/Health.md
+doc/HealthApi.md
 doc/Join.md
 doc/JoinByCode.md
 doc/Joined.md
@@ -64,6 +66,7 @@ lib/src/api.dart
 lib/src/api/bot_webhook_api.dart
 lib/src/api/bots_api.dart
 lib/src/api/games_api.dart
+lib/src/api/health_api.dart
 lib/src/api/me_api.dart
 lib/src/api/players_api.dart
 lib/src/api/social_api.dart
@@ -100,6 +103,7 @@ lib/src/model/friends_games.dart
 lib/src/model/game_access.dart
 lib/src/model/game_status.dart
 lib/src/model/game_summary.dart
+lib/src/model/health.dart
 lib/src/model/join.dart
 lib/src/model/join_by_code.dart
 lib/src/model/joined.dart
