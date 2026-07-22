@@ -9,13 +9,9 @@ and everything involved in shipping a real app. Its companions live in the
 authoritative TypeScript rules contract). Read those for the server; read this
 for the client.
 
-> **Status: as-built.** The migration to the Cloudflare-native server has
-> landed — the client compiles, its tests pass, and Supabase is gone from the
-> Dart code and the pubspec. What remains before cutover is platform
-> configuration and end-to-end verification against a deployed Worker; the
-> single tracker for that is `docs/todo.md` in the `eigen-server` repo. Exact
-> widget/provider APIs live in the code; this captures the design, the
-> contracts, and the setup that isn't discoverable from the code.
+This describes the client **as built**. Exact widget and provider signatures
+live in the code and are not repeated here; what this captures is the design,
+the contracts, and the setup that isn't discoverable by reading the source.
 
 The client is one Flutter package, **`eigen_flutter`** — transport, state, and
 presentation — layered by directory rather than by pubspec. It consumes
