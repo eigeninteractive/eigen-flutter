@@ -27,8 +27,8 @@ enum ActionSubmitResult {
 
   /// The submission failed in transit and the outcome is unknown — the
   /// server may still have committed it. Revert optimistic rendering; if the
-  /// action did commit, its frame arrives over Realtime and re-applies the
-  /// move.
+  /// action did commit, its frame arrives over the game socket and re-applies
+  /// the move.
   unconfirmed,
 }
 
@@ -352,7 +352,7 @@ abstract class GameModule {
   ///
   /// Override when valid player counts depend on a config choice made at
   /// creation time (e.g. a game supporting 4 or 6 players lets the host pick
-  /// upfront, then sets min = max = chosen count so [app_join_game] flips to
+  /// upfront, then sets min = max = chosen count so joining flips the game to
   /// `ready` at exactly the right threshold).
   ///
   /// The default returns [creationSpec.minPlayers] and [creationSpec.maxPlayers].
@@ -365,7 +365,8 @@ abstract class GameModule {
   ///
   /// [onChanged] is called whenever the player adjusts a setting. The dialog
   /// stores the latest value in a plain field (not state — it is never
-  /// displayed in the UI) and passes it to [create_game] at submit time.
+  /// displayed in the UI) and sends it with the create-game request at submit
+  /// time.
   Widget? buildCreationConfig({
     required ValueChanged<Map<String, dynamic>> onChanged,
   });

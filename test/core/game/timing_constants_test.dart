@@ -35,13 +35,5 @@ void main() {
           ..isGreaterOrEqual(0);
       }
     });
-
-    test('the expiry trigger delay sits past the server grace window', () {
-      // The client must nudge after the server stops abstaining, or the
-      // timeout slips to the next pg_cron sweep.
-      check(
-        kExpiryTriggerDelay.inMilliseconds,
-      ).isGreaterThan(kServerDeadlineGrace.inMilliseconds);
-    });
   });
 }

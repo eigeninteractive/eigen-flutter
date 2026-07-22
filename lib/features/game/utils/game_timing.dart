@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:eigen_api/eigen_api.dart';
 
-
 /// Returns the icon that best represents a game's timing mode.
 IconData gameTimingIcon(GameSummary game) {
   if (game.budgetSeconds != null) return Icons.av_timer;

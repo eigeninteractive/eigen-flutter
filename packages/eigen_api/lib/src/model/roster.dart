@@ -10,7 +10,6 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'roster.g.dart';
 
-
 @CopyWith()
 @JsonSerializable(
   checked: true,
@@ -20,64 +19,27 @@ part 'roster.g.dart';
 )
 class Roster {
   /// Returns a new [Roster] instance.
-  Roster({
+  Roster({required this.type, required this.status, required this.players});
 
-    required  this.type,
-
-    required  this.status,
-
-    required  this.players,
-  });
-
-  @JsonKey(
-    
-    name: r'type',
-    required: true,
-    includeIfNull: false,
-  )
-
-
+  @JsonKey(name: r'type', required: true, includeIfNull: false)
   final RosterTypeEnum type;
 
-
-
-  @JsonKey(
-    
-    name: r'status',
-    required: true,
-    includeIfNull: false,
-  )
-
-
+  @JsonKey(name: r'status', required: true, includeIfNull: false)
   final GameStatus status;
 
-
-
-  @JsonKey(
-    
-    name: r'players',
-    required: true,
-    includeIfNull: false,
-  )
-
-
+  @JsonKey(name: r'players', required: true, includeIfNull: false)
   final List<Seat> players;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Roster &&
+          other.type == type &&
+          other.status == status &&
+          other.players == players;
 
-
-
-
-    @override
-    bool operator ==(Object other) => identical(this, other) || other is Roster &&
-      other.type == type &&
-      other.status == status &&
-      other.players == players;
-
-    @override
-    int get hashCode =>
-        type.hashCode +
-        status.hashCode +
-        players.hashCode;
+  @override
+  int get hashCode => type.hashCode + status.hashCode + players.hashCode;
 
   factory Roster.fromJson(Map<String, dynamic> json) => _$RosterFromJson(json);
 
@@ -87,20 +49,16 @@ class Roster {
   String toString() {
     return toJson().toString();
   }
-
 }
-
 
 enum RosterTypeEnum {
-@JsonValue(r'roster')
-roster(r'roster');
+  @JsonValue(r'roster')
+  roster(r'roster');
 
-const RosterTypeEnum(this.value);
+  const RosterTypeEnum(this.value);
 
-final String value;
+  final String value;
 
-@override
-String toString() => value;
+  @override
+  String toString() => value;
 }
-
-

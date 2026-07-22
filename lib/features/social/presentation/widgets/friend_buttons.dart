@@ -246,9 +246,8 @@ class _RemoveFriendButtonState extends ConsumerState<RemoveFriendButton> {
       Friends.remove(widget.playerId)
           .run(
             ref,
-            (tsx) async => tsx
-                .get(friendsProvider.notifier)
-                .removeFriend(widget.playerId),
+            (tsx) async =>
+                tsx.get(friendsProvider.notifier).removeFriend(widget.playerId),
           )
           .ignore();
     } finally {

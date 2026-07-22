@@ -84,7 +84,10 @@ class GameRepository {
   ///
   /// Any player, human or bot. Public and finished only, so this exposes
   /// nothing that was not already replayable by anyone holding the game's id.
-  Future<List<GameSummary>> getPlayerGames(String playerId, {int? limit}) async {
+  Future<List<GameSummary>> getPlayerGames(
+    String playerId, {
+    int? limit,
+  }) async {
     final response = await engineCall(
       () => _players.getPlayerGames(playerId: playerId, limit: limit),
     );
@@ -319,11 +322,7 @@ class GameRepository {
   ///
   /// Backs both gap recovery and replay. A non-participant may read a finished
   /// public game, which is what makes spectating a replay possible.
-  Future<List<Frame>> getFrames(
-    String gameId, {
-    int from = 0,
-    int? to,
-  }) async {
+  Future<List<Frame>> getFrames(String gameId, {int from = 0, int? to}) async {
     final response = await engineCall(
       () => _api.getFrames(gameId: gameId, from: from, to: to),
     );
@@ -353,10 +352,7 @@ class GameRepository {
   /// rather than replaying the whole game. Opening mid-game is exactly that
   /// case - the server reports its current version on connect, and only that
   /// frame is fetched.
-  Stream<GameSocketEvent> events(
-    String gameId, {
-    Stream<Frame>? inject,
-  }) {
+  Stream<GameSocketEvent> events(String gameId, {Stream<Frame>? inject}) {
     late StreamController<GameSocketEvent> controller;
     int? lastVersion;
     StreamSubscription<GameSocketEvent>? socketSub;
@@ -410,7 +406,11 @@ class GameRepository {
       final cursor = lastVersion;
 
       if (cursor == null) {
-        for (final frame in await getFrames(gameId, from: version, to: version)) {
+        for (final frame in await getFrames(
+          gameId,
+          from: version,
+          to: version,
+        )) {
           if (controller.isClosed) return;
           emit(frame);
         }
@@ -418,7 +418,11 @@ class GameRepository {
       }
 
       if (version <= cursor) return;
-      for (final frame in await getFrames(gameId, from: cursor + 1, to: version)) {
+      for (final frame in await getFrames(
+        gameId,
+        from: cursor + 1,
+        to: version,
+      )) {
         if (controller.isClosed) return;
         if (frame.version > lastVersion!) emit(frame);
       }

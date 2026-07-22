@@ -13,16 +13,15 @@ import 'package:eigen_api/src/model/bot_action.dart';
 import 'package:eigen_api/src/model/error_response.dart';
 
 class BotWebhookApi {
-
   final Dio _dio;
 
   const BotWebhookApi(this._dio);
 
   /// botAction
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [botAction] 
+  /// * [botAction]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -32,7 +31,7 @@ class BotWebhookApi {
   ///
   /// Returns a [Future]
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<void>> botAction({ 
+  Future<Response<void>> botAction({
     required BotAction botAction,
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
@@ -44,9 +43,7 @@ class BotWebhookApi {
     final _path = r'/api/bot/action';
     final _options = Options(
       method: r'POST',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
           {
@@ -65,13 +62,10 @@ class BotWebhookApi {
     dynamic _bodyData;
 
     try {
-_bodyData=jsonEncode(botAction);
-    } catch(error, stackTrace) {
+      _bodyData = jsonEncode(botAction);
+    } catch (error, stackTrace) {
       throw DioException(
-         requestOptions: _options.compose(
-          _dio.options,
-          _path,
-        ),
+        requestOptions: _options.compose(_dio.options, _path),
         type: DioExceptionType.unknown,
         error: error,
         stackTrace: stackTrace,
@@ -89,5 +83,4 @@ _bodyData=jsonEncode(botAction);
 
     return _response;
   }
-
 }

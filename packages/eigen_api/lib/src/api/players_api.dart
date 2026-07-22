@@ -15,18 +15,17 @@ import 'package:eigen_api/src/model/players.dart';
 import 'package:eigen_api/src/model/ratings.dart';
 
 class PlayersApi {
-
   final Dio _dio;
 
   const PlayersApi(this._dio);
 
   /// getPlayerGames
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [playerId] 
-  /// * [limit] 
-  /// * [cursor] 
+  /// * [playerId]
+  /// * [limit]
+  /// * [cursor]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -36,7 +35,7 @@ class PlayersApi {
   ///
   /// Returns a [Future] containing a [Response] with a [PlayerGames] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<PlayerGames>> getPlayerGames({ 
+  Future<Response<PlayerGames>> getPlayerGames({
     required String playerId,
     int? limit = 20,
     int? cursor,
@@ -47,19 +46,18 @@ class PlayersApi {
     ProgressCallback? onSendProgress,
     ProgressCallback? onReceiveProgress,
   }) async {
-    final _path = r'/api/engine/players/{playerId}/games'.replaceAll('{' r'playerId' '}', playerId.toString());
+    final _path = r'/api/engine/players/{playerId}/games'.replaceAll(
+      '{'
+      r'playerId'
+      '}',
+      playerId.toString(),
+    );
     final _options = Options(
       method: r'GET',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -83,9 +81,14 @@ class PlayersApi {
     PlayerGames? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<PlayerGames, PlayerGames>(rawData, 'PlayerGames', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<PlayerGames, PlayerGames>(
+              rawData,
+              'PlayerGames',
+              growable: true,
+            );
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -109,10 +112,10 @@ _responseData = rawData == null ? null : deserialize<PlayerGames, PlayerGames>(r
   }
 
   /// getPlayerRatings
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [playerId] 
+  /// * [playerId]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -122,7 +125,7 @@ _responseData = rawData == null ? null : deserialize<PlayerGames, PlayerGames>(r
   ///
   /// Returns a [Future] containing a [Response] with a [Ratings] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<Ratings>> getPlayerRatings({ 
+  Future<Response<Ratings>> getPlayerRatings({
     required String playerId,
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
@@ -131,19 +134,18 @@ _responseData = rawData == null ? null : deserialize<PlayerGames, PlayerGames>(r
     ProgressCallback? onSendProgress,
     ProgressCallback? onReceiveProgress,
   }) async {
-    final _path = r'/api/engine/players/{playerId}/ratings'.replaceAll('{' r'playerId' '}', playerId.toString());
+    final _path = r'/api/engine/players/{playerId}/ratings'.replaceAll(
+      '{'
+      r'playerId'
+      '}',
+      playerId.toString(),
+    );
     final _options = Options(
       method: r'GET',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -161,9 +163,10 @@ _responseData = rawData == null ? null : deserialize<PlayerGames, PlayerGames>(r
     Ratings? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<Ratings, Ratings>(rawData, 'Ratings', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<Ratings, Ratings>(rawData, 'Ratings', growable: true);
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -187,10 +190,10 @@ _responseData = rawData == null ? null : deserialize<Ratings, Ratings>(rawData, 
   }
 
   /// getPlayers
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [ids] 
+  /// * [ids]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -200,7 +203,7 @@ _responseData = rawData == null ? null : deserialize<Ratings, Ratings>(rawData, 
   ///
   /// Returns a [Future] containing a [Response] with a [Players] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<Players>> getPlayers({ 
+  Future<Response<Players>> getPlayers({
     required String ids,
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
@@ -212,25 +215,17 @@ _responseData = rawData == null ? null : deserialize<Ratings, Ratings>(rawData, 
     final _path = r'/api/engine/players';
     final _options = Options(
       method: r'GET',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
       validateStatus: validateStatus,
     );
 
-    final _queryParameters = <String, dynamic>{
-      r'ids': ids,
-    };
+    final _queryParameters = <String, dynamic>{r'ids': ids};
 
     final _response = await _dio.request<Object>(
       _path,
@@ -244,9 +239,10 @@ _responseData = rawData == null ? null : deserialize<Ratings, Ratings>(rawData, 
     Players? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<Players, Players>(rawData, 'Players', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<Players, Players>(rawData, 'Players', growable: true);
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -268,5 +264,4 @@ _responseData = rawData == null ? null : deserialize<Players, Players>(rawData, 
       extra: _response.extra,
     );
   }
-
 }

@@ -8,7 +8,6 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'rating_identity.g.dart';
 
-
 @CopyWith()
 @JsonSerializable(
   checked: true,
@@ -18,50 +17,26 @@ part 'rating_identity.g.dart';
 )
 class RatingIdentity {
   /// Returns a new [RatingIdentity] instance.
-  RatingIdentity({
+  RatingIdentity({required this.userId, required this.botId});
 
-    required  this.userId,
-
-    required  this.botId,
-  });
-
-  @JsonKey(
-    
-    name: r'user_id',
-    required: true,
-    includeIfNull: true,
-  )
-
-
+  @JsonKey(name: r'user_id', required: true, includeIfNull: true)
   final String? userId;
 
-
-
-  @JsonKey(
-    
-    name: r'bot_id',
-    required: true,
-    includeIfNull: true,
-  )
-
-
+  @JsonKey(name: r'bot_id', required: true, includeIfNull: true)
   final String? botId;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RatingIdentity && other.userId == userId && other.botId == botId;
 
+  @override
+  int get hashCode =>
+      (userId == null ? 0 : userId.hashCode) +
+      (botId == null ? 0 : botId.hashCode);
 
-
-
-    @override
-    bool operator ==(Object other) => identical(this, other) || other is RatingIdentity &&
-      other.userId == userId &&
-      other.botId == botId;
-
-    @override
-    int get hashCode =>
-        (userId == null ? 0 : userId.hashCode) +
-        (botId == null ? 0 : botId.hashCode);
-
-  factory RatingIdentity.fromJson(Map<String, dynamic> json) => _$RatingIdentityFromJson(json);
+  factory RatingIdentity.fromJson(Map<String, dynamic> json) =>
+      _$RatingIdentityFromJson(json);
 
   Map<String, dynamic> toJson() => _$RatingIdentityToJson(this);
 
@@ -69,6 +44,4 @@ class RatingIdentity {
   String toString() {
     return toJson().toString();
   }
-
 }
-

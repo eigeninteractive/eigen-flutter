@@ -20,13 +20,12 @@ import 'package:eigen_api/src/model/username_update.dart';
 import 'package:eigen_api/src/model/username_updated.dart';
 
 class MeApi {
-
   final Dio _dio;
 
   const MeApi(this._dio);
 
   /// deleteAccount
-  /// 
+  ///
   ///
   /// Parameters:
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
@@ -38,7 +37,7 @@ class MeApi {
   ///
   /// Returns a [Future]
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<void>> deleteAccount({ 
+  Future<Response<void>> deleteAccount({
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
     Map<String, dynamic>? extra,
@@ -49,16 +48,10 @@ class MeApi {
     final _path = r'/api/engine/me';
     final _options = Options(
       method: r'DELETE',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -77,11 +70,11 @@ class MeApi {
   }
 
   /// getMyRatingHistory
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [pool] 
-  /// * [limit] 
+  /// * [pool]
+  /// * [limit]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -91,7 +84,7 @@ class MeApi {
   ///
   /// Returns a [Future] containing a [Response] with a [RatingHistory] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<RatingHistory>> getMyRatingHistory({ 
+  Future<Response<RatingHistory>> getMyRatingHistory({
     String? pool,
     int? limit = 20,
     CancelToken? cancelToken,
@@ -104,16 +97,10 @@ class MeApi {
     final _path = r'/api/engine/me/rating-history';
     final _options = Options(
       method: r'GET',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -137,9 +124,14 @@ class MeApi {
     RatingHistory? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<RatingHistory, RatingHistory>(rawData, 'RatingHistory', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<RatingHistory, RatingHistory>(
+              rawData,
+              'RatingHistory',
+              growable: true,
+            );
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -163,7 +155,7 @@ _responseData = rawData == null ? null : deserialize<RatingHistory, RatingHistor
   }
 
   /// getMyRatings
-  /// 
+  ///
   ///
   /// Parameters:
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
@@ -175,7 +167,7 @@ _responseData = rawData == null ? null : deserialize<RatingHistory, RatingHistor
   ///
   /// Returns a [Future] containing a [Response] with a [Ratings] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<Ratings>> getMyRatings({ 
+  Future<Response<Ratings>> getMyRatings({
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
     Map<String, dynamic>? extra,
@@ -186,16 +178,10 @@ _responseData = rawData == null ? null : deserialize<RatingHistory, RatingHistor
     final _path = r'/api/engine/me/ratings';
     final _options = Options(
       method: r'GET',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -213,9 +199,10 @@ _responseData = rawData == null ? null : deserialize<RatingHistory, RatingHistor
     Ratings? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<Ratings, Ratings>(rawData, 'Ratings', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<Ratings, Ratings>(rawData, 'Ratings', growable: true);
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -239,7 +226,7 @@ _responseData = rawData == null ? null : deserialize<Ratings, Ratings>(rawData, 
   }
 
   /// getProfile
-  /// 
+  ///
   ///
   /// Parameters:
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
@@ -251,7 +238,7 @@ _responseData = rawData == null ? null : deserialize<Ratings, Ratings>(rawData, 
   ///
   /// Returns a [Future] containing a [Response] with a [Profile] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<Profile>> getProfile({ 
+  Future<Response<Profile>> getProfile({
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
     Map<String, dynamic>? extra,
@@ -262,16 +249,10 @@ _responseData = rawData == null ? null : deserialize<Ratings, Ratings>(rawData, 
     final _path = r'/api/engine/me';
     final _options = Options(
       method: r'GET',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -289,9 +270,10 @@ _responseData = rawData == null ? null : deserialize<Ratings, Ratings>(rawData, 
     Profile? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<Profile, Profile>(rawData, 'Profile', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<Profile, Profile>(rawData, 'Profile', growable: true);
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -315,10 +297,10 @@ _responseData = rawData == null ? null : deserialize<Profile, Profile>(rawData, 
   }
 
   /// registerDevice
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [deviceRegistration] 
+  /// * [deviceRegistration]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -328,7 +310,7 @@ _responseData = rawData == null ? null : deserialize<Profile, Profile>(rawData, 
   ///
   /// Returns a [Future]
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<void>> registerDevice({ 
+  Future<Response<void>> registerDevice({
     required DeviceRegistration deviceRegistration,
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
@@ -340,16 +322,10 @@ _responseData = rawData == null ? null : deserialize<Profile, Profile>(rawData, 
     final _path = r'/api/engine/me/devices';
     final _options = Options(
       method: r'PUT',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -360,13 +336,10 @@ _responseData = rawData == null ? null : deserialize<Profile, Profile>(rawData, 
     dynamic _bodyData;
 
     try {
-_bodyData=jsonEncode(deviceRegistration);
-    } catch(error, stackTrace) {
+      _bodyData = jsonEncode(deviceRegistration);
+    } catch (error, stackTrace) {
       throw DioException(
-         requestOptions: _options.compose(
-          _dio.options,
-          _path,
-        ),
+        requestOptions: _options.compose(_dio.options, _path),
         type: DioExceptionType.unknown,
         error: error,
         stackTrace: stackTrace,
@@ -386,10 +359,10 @@ _bodyData=jsonEncode(deviceRegistration);
   }
 
   /// unregisterDevice
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [fid] 
+  /// * [fid]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -399,7 +372,7 @@ _bodyData=jsonEncode(deviceRegistration);
   ///
   /// Returns a [Future]
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<void>> unregisterDevice({ 
+  Future<Response<void>> unregisterDevice({
     required String fid,
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
@@ -408,19 +381,18 @@ _bodyData=jsonEncode(deviceRegistration);
     ProgressCallback? onSendProgress,
     ProgressCallback? onReceiveProgress,
   }) async {
-    final _path = r'/api/engine/me/devices/{fid}'.replaceAll('{' r'fid' '}', fid.toString());
+    final _path = r'/api/engine/me/devices/{fid}'.replaceAll(
+      '{'
+      r'fid'
+      '}',
+      fid.toString(),
+    );
     final _options = Options(
       method: r'DELETE',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -439,10 +411,10 @@ _bodyData=jsonEncode(deviceRegistration);
   }
 
   /// updateDisplayName
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [displayNameUpdate] 
+  /// * [displayNameUpdate]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -452,7 +424,7 @@ _bodyData=jsonEncode(deviceRegistration);
   ///
   /// Returns a [Future] containing a [Response] with a [DisplayNameUpdated] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<DisplayNameUpdated>> updateDisplayName({ 
+  Future<Response<DisplayNameUpdated>> updateDisplayName({
     required DisplayNameUpdate displayNameUpdate,
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
@@ -464,16 +436,10 @@ _bodyData=jsonEncode(deviceRegistration);
     final _path = r'/api/engine/me/display-name';
     final _options = Options(
       method: r'PUT',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -484,13 +450,10 @@ _bodyData=jsonEncode(deviceRegistration);
     dynamic _bodyData;
 
     try {
-_bodyData=jsonEncode(displayNameUpdate);
-    } catch(error, stackTrace) {
+      _bodyData = jsonEncode(displayNameUpdate);
+    } catch (error, stackTrace) {
       throw DioException(
-         requestOptions: _options.compose(
-          _dio.options,
-          _path,
-        ),
+        requestOptions: _options.compose(_dio.options, _path),
         type: DioExceptionType.unknown,
         error: error,
         stackTrace: stackTrace,
@@ -509,9 +472,14 @@ _bodyData=jsonEncode(displayNameUpdate);
     DisplayNameUpdated? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<DisplayNameUpdated, DisplayNameUpdated>(rawData, 'DisplayNameUpdated', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<DisplayNameUpdated, DisplayNameUpdated>(
+              rawData,
+              'DisplayNameUpdated',
+              growable: true,
+            );
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -535,10 +503,10 @@ _responseData = rawData == null ? null : deserialize<DisplayNameUpdated, Display
   }
 
   /// updateUsername
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [usernameUpdate] 
+  /// * [usernameUpdate]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -548,7 +516,7 @@ _responseData = rawData == null ? null : deserialize<DisplayNameUpdated, Display
   ///
   /// Returns a [Future] containing a [Response] with a [UsernameUpdated] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<UsernameUpdated>> updateUsername({ 
+  Future<Response<UsernameUpdated>> updateUsername({
     required UsernameUpdate usernameUpdate,
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
@@ -560,16 +528,10 @@ _responseData = rawData == null ? null : deserialize<DisplayNameUpdated, Display
     final _path = r'/api/engine/me/username';
     final _options = Options(
       method: r'PUT',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -580,13 +542,10 @@ _responseData = rawData == null ? null : deserialize<DisplayNameUpdated, Display
     dynamic _bodyData;
 
     try {
-_bodyData=jsonEncode(usernameUpdate);
-    } catch(error, stackTrace) {
+      _bodyData = jsonEncode(usernameUpdate);
+    } catch (error, stackTrace) {
       throw DioException(
-         requestOptions: _options.compose(
-          _dio.options,
-          _path,
-        ),
+        requestOptions: _options.compose(_dio.options, _path),
         type: DioExceptionType.unknown,
         error: error,
         stackTrace: stackTrace,
@@ -605,9 +564,14 @@ _bodyData=jsonEncode(usernameUpdate);
     UsernameUpdated? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<UsernameUpdated, UsernameUpdated>(rawData, 'UsernameUpdated', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<UsernameUpdated, UsernameUpdated>(
+              rawData,
+              'UsernameUpdated',
+              growable: true,
+            );
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -629,5 +593,4 @@ _responseData = rawData == null ? null : deserialize<UsernameUpdated, UsernameUp
       extra: _response.extra,
     );
   }
-
 }

@@ -1,9 +1,5 @@
 {
   "mcpServers": {
-    "supabase": {
-      "type": "http",
-      "url": "http://localhost:54321/mcp"
-    },
     "dart": {
       "command": "dart",
       "args": [

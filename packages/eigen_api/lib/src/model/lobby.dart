@@ -9,7 +9,6 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'lobby.g.dart';
 
-
 @CopyWith()
 @JsonSerializable(
   checked: true,
@@ -19,32 +18,17 @@ part 'lobby.g.dart';
 )
 class Lobby {
   /// Returns a new [Lobby] instance.
-  Lobby({
+  Lobby({required this.games});
 
-    required  this.games,
-  });
-
-  @JsonKey(
-    
-    name: r'games',
-    required: true,
-    includeIfNull: false,
-  )
-
-
+  @JsonKey(name: r'games', required: true, includeIfNull: false)
   final List<GameSummary> games;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is Lobby && other.games == games;
 
-
-
-
-    @override
-    bool operator ==(Object other) => identical(this, other) || other is Lobby &&
-      other.games == games;
-
-    @override
-    int get hashCode =>
-        games.hashCode;
+  @override
+  int get hashCode => games.hashCode;
 
   factory Lobby.fromJson(Map<String, dynamic> json) => _$LobbyFromJson(json);
 
@@ -54,6 +38,4 @@ class Lobby {
   String toString() {
     return toJson().toString();
   }
-
 }
-

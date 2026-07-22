@@ -3,8 +3,8 @@
 # Regenerates the eigen_api Dart REST client from the OpenAPI spec.
 #
 # eigen_api is the dart-dio client for the Eigen server — a generated artifact
-# that eigen_sdk consumes as a plain path dependency (declared in
-# eigen_sdk/pubspec.yaml). This script regenerates only the GENERATED CODE
+# that eigen_flutter consumes as a plain path dependency (declared in the root
+# pubspec.yaml). This script regenerates only the GENERATED CODE
 # (lib/, doc/). packages/eigen_api/pubspec.yaml is hand/CLI-owned and protected
 # from the generator by .openapi-generator-ignore (a generator bug stamps too
 # low an SDK constraint — see the pubspec header + #21815), so nothing here

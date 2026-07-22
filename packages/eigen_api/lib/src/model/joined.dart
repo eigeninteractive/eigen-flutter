@@ -9,7 +9,6 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'joined.g.dart';
 
-
 @CopyWith()
 @JsonSerializable(
   checked: true,
@@ -19,48 +18,21 @@ part 'joined.g.dart';
 )
 class Joined {
   /// Returns a new [Joined] instance.
-  Joined({
+  Joined({required this.gameId, required this.roster});
 
-    required  this.gameId,
-
-    required  this.roster,
-  });
-
-  @JsonKey(
-    
-    name: r'game_id',
-    required: true,
-    includeIfNull: false,
-  )
-
-
+  @JsonKey(name: r'game_id', required: true, includeIfNull: false)
   final String gameId;
 
-
-
-  @JsonKey(
-    
-    name: r'roster',
-    required: true,
-    includeIfNull: false,
-  )
-
-
+  @JsonKey(name: r'roster', required: true, includeIfNull: false)
   final Roster roster;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Joined && other.gameId == gameId && other.roster == roster;
 
-
-
-
-    @override
-    bool operator ==(Object other) => identical(this, other) || other is Joined &&
-      other.gameId == gameId &&
-      other.roster == roster;
-
-    @override
-    int get hashCode =>
-        gameId.hashCode +
-        roster.hashCode;
+  @override
+  int get hashCode => gameId.hashCode + roster.hashCode;
 
   factory Joined.fromJson(Map<String, dynamic> json) => _$JoinedFromJson(json);
 
@@ -70,6 +42,4 @@ class Joined {
   String toString() {
     return toJson().toString();
   }
-
 }
-

@@ -8,7 +8,6 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'join.g.dart';
 
-
 @CopyWith()
 @JsonSerializable(
   checked: true,
@@ -18,48 +17,23 @@ part 'join.g.dart';
 )
 class Join {
   /// Returns a new [Join] instance.
-  Join({
+  Join({required this.clientSchemaVersion, this.commandId});
 
-    required  this.clientSchemaVersion,
-
-     this.commandId,
-  });
-
-  @JsonKey(
-    
-    name: r'client_schema_version',
-    required: true,
-    includeIfNull: false,
-  )
-
-
+  @JsonKey(name: r'client_schema_version', required: true, includeIfNull: false)
   final int clientSchemaVersion;
 
-
-
-  @JsonKey(
-    
-    name: r'command_id',
-    required: false,
-    includeIfNull: false,
-  )
-
-
+  @JsonKey(name: r'command_id', required: false, includeIfNull: false)
   final String? commandId;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Join &&
+          other.clientSchemaVersion == clientSchemaVersion &&
+          other.commandId == commandId;
 
-
-
-
-    @override
-    bool operator ==(Object other) => identical(this, other) || other is Join &&
-      other.clientSchemaVersion == clientSchemaVersion &&
-      other.commandId == commandId;
-
-    @override
-    int get hashCode =>
-        clientSchemaVersion.hashCode +
-        commandId.hashCode;
+  @override
+  int get hashCode => clientSchemaVersion.hashCode + commandId.hashCode;
 
   factory Join.fromJson(Map<String, dynamic> json) => _$JoinFromJson(json);
 
@@ -69,6 +43,4 @@ class Join {
   String toString() {
     return toJson().toString();
   }
-
 }
-

@@ -6,7 +6,6 @@ import 'package:eigen_flutter/core/errors/error_messages.dart';
 import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
 import 'package:eigen_flutter/features/game/data/game_repository.dart';
 
-
 import 'package:eigen_flutter/features/game/providers/game_providers.dart';
 import 'package:eigen_flutter/features/game/utils/game_timing.dart';
 import 'package:eigen_flutter/features/game/presentation/widgets/new_game_dialog.dart';
@@ -289,7 +288,10 @@ class _GameCardState extends ConsumerState<_GameCard> {
       if (playerId == null) continue;
       final info = ref.watch(playerInfoCacheProvider(id: playerId));
       if (info.value case final value?) {
-        avatars.add((avatarUrl: value.avatarUrl, isBot: p.type == SeatTypeEnum.bot));
+        avatars.add((
+          avatarUrl: value.avatarUrl,
+          isBot: p.type == SeatTypeEnum.bot,
+        ));
       }
     }
 

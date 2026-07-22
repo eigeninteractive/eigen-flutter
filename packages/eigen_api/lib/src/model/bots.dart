@@ -9,7 +9,6 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'bots.g.dart';
 
-
 @CopyWith()
 @JsonSerializable(
   checked: true,
@@ -19,32 +18,17 @@ part 'bots.g.dart';
 )
 class Bots {
   /// Returns a new [Bots] instance.
-  Bots({
+  Bots({required this.bots});
 
-    required  this.bots,
-  });
-
-  @JsonKey(
-    
-    name: r'bots',
-    required: true,
-    includeIfNull: false,
-  )
-
-
+  @JsonKey(name: r'bots', required: true, includeIfNull: false)
   final List<Bot> bots;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is Bots && other.bots == bots;
 
-
-
-
-    @override
-    bool operator ==(Object other) => identical(this, other) || other is Bots &&
-      other.bots == bots;
-
-    @override
-    int get hashCode =>
-        bots.hashCode;
+  @override
+  int get hashCode => bots.hashCode;
 
   factory Bots.fromJson(Map<String, dynamic> json) => _$BotsFromJson(json);
 
@@ -54,6 +38,4 @@ class Bots {
   String toString() {
     return toJson().toString();
   }
-
 }
-

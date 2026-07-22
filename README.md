@@ -1,248 +1,186 @@
-# Eigen Engine
+# Eigen Flutter
 
-A Flutter + Supabase **whitelabel engine** for turn-based multiplayer games
-(auth, realtime, timing, ratings, social, notifications). A game plugs in as a
-single Dart `GameModule` plus a handful of SQL hooks; an app boots with
-`runEngineApp(...)`.
+The **client half** of the Eigen engine — a whitelabel Flutter package for
+turn-based multiplayer games (auth, the game socket, timing, ratings, social,
+notifications, the whole app shell). A game plugs in as a single Dart
+`GameModule`; an app boots with `runEngineApp(...)`.
+
+The **server half** lives in the sibling [`eigen-server`](https://github.com/seenu-k/eigen-server)
+repo — a Cloudflare Worker (Durable Objects + D1). This package talks to it over
+a generated REST client plus one WebSocket per game.
 
 This is a **standalone package** with no bundled example game. An app depends on
-it and supplies a `GameModule`. Until the engine is published to pub.dev, clone
-it as a **sibling** of your app and depend on it by **path**:
+it and supplies a `GameModule`. [`seenu-k/strategy`](https://github.com/seenu-k/strategy)
+is the reference app.
 
-```yaml
-# in your app's pubspec.yaml
-dependencies:
-   eigen_engine:
-      path: ../eigen_engine
-```
+## Documentation
 
-The engine's generated code (`*.g.dart`, `*.freezed.dart`) is **not committed**,
-so after cloning, generate it once — and again in CI before building the app:
-
-```bash
-cd eigen_engine && flutter pub get && dart run build_runner build
-```
-
-See [`docs/game_implementation_guide.md`](docs/game_implementation_guide.md).
-[`seenu-k/strategy`](https://github.com/seenu-k/strategy) is the reference app
-built on this engine.
+| Doc | What it is |
+|---|---|
+| [`docs/client_reference.md`](docs/client_reference.md) | **Start here.** The client: transport and the frame stream, the Dart rules contract, the app shell, and everything involved in shipping an app (Firebase, assets, deep links, CI, store release). |
+| `docs/architecture.md` in `eigen-server` | How the server works, end to end. |
+| `docs/building_a_game.md` in `eigen-server` | The authoritative TypeScript rules contract — the other half of a game. |
+| `docs/todo.md` in `eigen-server` | The single tracker for what's left, across both repos. |
 
 ## Layout
 
 ```
-eigen_engine/
+eigen-flutter/
 ├── lib/
-│   ├── eigen_engine.dart   # Public barrel (runEngineApp, AppConfig, GameModule, …)
-│   ├── app_runner.dart     # runEngineApp(...) entry point + root MyApp
-│   ├── core/               # config, game contract, navigation, notifications, theme, storage, …
-│   ├── features/           # auth, game, home, profile, rating, settings, social
-│   └── shared/             # shared widgets
-├── bin/
-│   └── sync_supabase.dart # CLI: vendors the engine backend into an app
-├── supabase/                # the engine backend (canonical):
-│   ├── migrations/          #   framework/infra schema + RPCs
-│   ├── functions/           #   the single `game` edge function (engine harness +
-│   │                        #   _engine framework + example game.ts)
-│   ├── seed.sql             #   engine app_config + serverless-secret seed
-│   └── config.toml          #   reference config (apps base theirs on it)
-└── docs/                    # engine_architecture.md, game_implementation_guide.md
+│   ├── eigen_flutter.dart   # the public barrel — the ONLY thing an app imports
+│   ├── app_runner.dart      # runEngineApp(...) entry point + root MyApp
+│   ├── core/                # api (Dio + socket + clock), config, the game
+│   │                        #   contract, navigation, notifications, analytics,
+│   │                        #   storage, theme, connectivity, errors
+│   ├── features/            # about auth game home profile rating settings social
+│   ├── shared/              # shared widgets, providers, data
+│   └── testing/             # the Dart half of the twin-fixture runner
+├── openapi/openapi.json     # vendored snapshot of the server's spec
+├── packages/eigen_api/      # GENERATED REST client — never hand-edited
+├── tool/generate_api.sh     # regenerates eigen_api from the spec
+└── docs/client_reference.md
 ```
 
 ## Using the engine in an app
 
-1. Add the `eigen_engine` dependency (above) to your app.
-2. Implement a `GameModule` (rules engine + content widget + models) under
-   `lib/game/`; register it in `main.dart` via
-   `runEngineApp(module: const MyGameModule(), config: AppConfig(…), …)`.
-3. Vendor the engine backend (migrations + functions + seed) into your committed
-   `supabase/`: `dart run eigen_engine:sync_supabase`.
-4. Implement your game's rules. All six hooks are
-   **TypeScript** in the vendored `engine` edge function — you edit only
-   `supabase/functions/_lib/game.ts` (the sync scaffolds it once; everything
-   else in that function is engine-owned). Add a `[functions.engine]` block to
-   your `config.toml` (it is per-app, not vendored).
+Until this package is published to pub.dev, clone it as a **sibling** of your app
+and depend on it by **path** — the same in local and CI:
 
-The full walkthrough — project structure, the `GameModule` contract, the SQL
-hooks, timing, ratings, deep links — is in
-[`docs/game_implementation_guide.md`](docs/game_implementation_guide.md).
-[`docs/engine_architecture.md`](docs/engine_architecture.md) explains how the
-engine works internally; the [Versioning & backward
-compatibility](#versioning--backward-compatibility) section below covers how the
-engine and apps evolve in production.
+```yaml
+# in your app's pubspec.yaml
+dependencies:
+  eigen_flutter:
+    path: ../eigen-flutter
+```
+
+Generated code (`*.g.dart`, `*.freezed.dart`) is **not committed**, so generate
+it once after cloning — and again in CI before building the app:
+
+```bash
+cd eigen-flutter && flutter pub get && dart run build_runner build
+```
+
+Then:
+
+1. Implement a **Dart `GameModule`** (per-version `GameRules` units + the
+   creation/about UI) under `lib/game/`, and register it in `main.dart` via
+   `runEngineApp(module: const MyGameModule(), config: AppConfig(…), …)`.
+2. Implement the matching **TypeScript `GameModule`** in your Worker — that is
+   the authoritative half. Keep the two honest with shared twin fixtures.
+3. Configure the app: `.env` (`API_BASE_URL` and friends), `flutterfire
+   configure`, branding assets, deep-link host.
+
+Full walkthrough in [`docs/client_reference.md`](docs/client_reference.md) —
+Part II for the game contract, Part IV for shipping.
+
+### One dependency, one import
+
+An app depends on **`eigen_flutter` alone** and imports **only its barrel**:
+
+```dart
+import 'package:eigen_flutter/eigen_flutter.dart';
+```
+
+Never `package:eigen_api/...` (a build artifact `generate_api.sh` rewrites
+wholesale) and never a deep path into `lib/`. The barrel re-exports the wire
+types a game renders from — `GameStatus`, `Outcome`, `Player`, `Seat`, `Frame`,
+… — while keeping the generated `*Api` classes and Dio out of your namespace:
+**naming a type is part of the contract, calling the server is not.**
+`test/core/architecture/api_isolation_test.dart` enforces both halves.
+
+## Dev setup on a new machine
+
+**Prerequisites**
+
+| Tool | Version | Needed for |
+|---|---|---|
+| Flutter | 3.44.0 (stable) — matches CI | Everything |
+| Dart SDK | ^3.9.2 (ships with Flutter) | Everything |
+| JDK | 17 (Temurin) | Android builds |
+| Xcode | latest | iOS builds (macOS only) |
+| Java + `openapi_generator_cli` | — | Only when regenerating `eigen_api` |
+
+No backend tooling is required to work on this package: it has no Docker
+dependency, no local database, and no cloud account. It reads no config of its
+own — an app injects everything at runtime.
+
+```bash
+git clone git@github.com:seenu-k/eigen-flutter.git
+cd eigen-flutter
+flutter pub get
+dart run build_runner build   # generated code isn't committed — do this first
+flutter analyze
+flutter test
+```
+
+`dart run build_runner build` is not optional after a fresh clone. `*.g.dart`
+and `*.freezed.dart` are deliberately not committed, so analysis fails loudly
+until you generate them. Re-run it after touching any annotated class, or leave
+`dart run build_runner watch` going.
+
+To work on an **app** against a local checkout of the engine, clone them as
+siblings and run `build_runner` in the engine once (see the next section).
 
 ## Development
 
-```bash
-dart pub get
-dart run build_runner build
-flutter analyze
+CI runs exactly what you can run locally, in this order — `dart format
+--set-exit-if-changed`, `build_runner build`, `dart fix --apply` followed by
+`git diff --exit-code`, `flutter analyze`, `flutter test`. There are no secrets
+and no Firebase config in this repo's workflow, because the package reads none.
 
-# Edge functions (TypeScript) — same checks CI runs:
-deno fmt --check supabase/functions
-deno lint supabase/functions
-```
+### Regenerating the API client
 
-## Versioning & backward compatibility
-
-How the engine and the apps built on it evolve once both are in production with
-real users. The engine and each app are **separate, long-lived repos**, and
-every app runs its **own Supabase project**. Three contracts can break across
-versions, each at a different layer:
-
-1. **Engine Dart API** — the `eigen_engine.dart` barrel, `runEngineApp`, the
-   config/module/engine types, and exported providers. Breaks at **compile
-   time**.
-2. **Engine SQL** — the infra schema, RPCs, and triggers in
-   `supabase/migrations/`. Breaks at **runtime**, against live databases *and*
-   app binaries already installed on users' devices.
-3. **Game state / observation JSONB** — the per-game payload. Breaks
-   **in-flight games**.
-
-For the deep-dive on contract 3 — client caches and the client↔server version
-gate that bounds how long old clients must be supported — see
-[`docs/engine_architecture.md`](docs/engine_architecture.md) §24 (Backward
-Compatibility). This section is the high-level policy.
-
-### Versioning scheme (semver, via `cider`)
-
-The engine's **public API = the Dart barrel + the SQL migration set**.
-
-- **0.y.z (current).** API is still evolving — breaking changes may land in a
-  **MINOR** bump. Stay here until the API has proven itself across a couple of
-  real games.
-- **≥ 1.0.0.** **MAJOR** = a breaking Dart API change *or* a breaking SQL
-  contract change; **MINOR** = additive (new API, additive migrations);
-  **PATCH** = fixes.
-
-Each **app** carries its own, independent semver and records the engine version
-it was built against (in its CHANGELOG). Engine releases are **git tags**
-`vX.Y.Z`.
-
-### How an app depends on the engine
-
-**Until the engine is published to pub.dev**, an app depends on it by **path**,
-cloned as a sibling (see the top of this README) — the same in local and CI.
-
-- **Generated code is not committed** (`*.g.dart`, `*.freezed.dart` are
-  git-ignored), so after cloning the engine you must run `dart run
-  build_runner build` in it before the app can analyze/build. CI does the same
-  (checkout engine as a sibling → generate its code → build the app).
-- **Commit `pubspec.lock`.** With a path dependency the lock records the engine
-  as `path`, consistent between local and CI (both resolve the same sibling), so
-  it commits cleanly and pins the pub.dev deps.
-
-**Future (pub.dev):** once published, apps switch to a hosted dependency
-(`eigen_engine: ^X.Y.Z`) with generated code shipped in the archive — at which
-point the semver rules above become the contract.
-
-### SQL + live users — the hard part (expand / contract)
-
-Once an app's Supabase project is **in production**:
-
-- **Migrations are append-only and forward-only.** Never edit a migration that
-  has been applied to a production database; ship every change as a new,
-  later-timestamped migration. (The early-dev habit of editing migrations in
-  place ends at the first production deploy.)
-- **Mobile update lag is the core constraint.** After you ship app `v(n+1)`,
-  users on `v(n)` keep calling the *same production database* with old
-  expectations for days or weeks. So every **client-visible** DB change (an RPC
-  signature or behaviour, or a table shape clients read over realtime) must stay
-  **backward-compatible with every app version still in the wild**.
-- **Use expand/contract (parallel change):** (1) **expand** — add the new column
-  / new RPC (or a `_v2` RPC) *additively*, leaving the old one working; (2)
-  **ship** — the new app uses the new shape, old apps keep using the old shape
-  against the same DB; (3) **contract** — drop the old shape *only after* old app
-  versions are retired.
-- **Forced-update floor.** Maintain a minimum-supported-app-version gate (the
-  engine already integrates `in_app_update` on Android and knows the running
-  version): below the floor the app blocks until updated. This bounds how long
-  the DB must serve old clients, so you can *contract* sooner.
-- **Deploy order.** The DB *expand* migration ships **before or with** the app
-  version that needs it — never an app version that requires a column or RPC the
-  production DB does not yet have.
-
-### Game state / observation JSONB (in-flight games)
-
-Game state is opaque JSONB, and games can be long-running — a `Daily`-timed game
-can span days and survive an app/engine upgrade mid-game. Therefore:
-
-- `ObservationData` / state `fromJson` must **tolerate older shapes** — default
-  any newly added fields so a game created under `vN` still parses under `vN+1`.
-- For larger changes, **version the game type** (the `games.schema_version`
-  column, threaded to the hooks as `p_schema_version` and surfaced on
-  `Game`/`BaseEngine`) and branch on it on both server and client. See
-  [`docs/engine_architecture.md`](docs/engine_architecture.md) §24 for the full
-  scheme, including the drain-query + force-update-floor retirement gate.
-- `game_states` is append-only, so an in-flight game's earlier rows were written
-  under the old shape; the `apply_action` hook must handle every shape a
-  still-running game could have been started under, until those games finish.
-
-### Per-app rollout (N apps, N Supabase projects)
-
-An engine SQL change must be **vendored** into each app (`dart run
-eigen_engine:sync_supabase`) and applied to each app's Supabase project.
-Sequence per project: apply the *expand* migration, then ship the app update.
-Production migrations are forward-only, so prefer **additive** changes (a bad app
-release is then fixed by shipping a new app version, with no database rollback),
-and if a migration itself is wrong, ship a **compensating forward migration**
-rather than rolling back.
-
-### Checklists
-
-**Engine change**
-- Dart API changed? → bump semver, note it in `CHANGELOG.md`.
-- SQL changed? → make it additive; apply expand/contract; ask "does this break a
-  client version still in the wild?" If yes, keep the old path until the
-  forced-update floor passes.
-- `cider bump` → commit → `git tag vX.Y.Z` → `git push --tags`.
-
-**App release**
-- Pin the engine tag (git dep); re-vendor migrations.
-- Apply the *expand* migration to the production DB **first**.
-- Ship the app; record the engine version in the app CHANGELOG.
-- *Contract* the old DB shape in a later release once old app versions retire.
-
-### Tooling — `cider`
-
-The engine is versioned with [`cider`](https://pub.dev/packages/cider)
-(`CHANGELOG.md` + `pubspec.yaml`):
+After **any** server wire change, re-emit the spec in `eigen-server`
+(`pnpm openapi`) and regenerate here, in the same change:
 
 ```bash
-dart pub global activate cider          # once
-# as you work, in eigen_engine/:
-cider log added   "…"
-cider log changed "…"
-cider log fixed   "…"
-# cut a release:
-cider bump minor                        # or patch; major only once ≥ 1.0
-git commit -am "chore: release $(cider version)"
-git tag "v$(cider version)" && git push --tags
+dart pub global activate openapi_generator_cli   # once (needs Java)
+./tool/generate_api.sh                           # re-vendors the spec + regenerates
 ```
 
-## Running the engine backend locally
+The script refreshes `openapi/openapi.json` from the sibling `eigen-server`
+checkout when present, then rewrites `packages/eigen_api/lib` and `doc`
+wholesale. Review and commit the result.
 
-The local Supabase stack needs two git-ignored files that aren't committed (a
-JWT signing key and edge-function secrets). After a fresh clone, create them
-once, then start the stack (requires Docker):
+**Fix wire awkwardness at the source.** A shape the generated client consumes
+badly gets fixed in the server's zod schemas and regenerated — never patched
+around in Dart.
+
+**Wire enums are closed sets.** Generated enums carry no `unknown` sentinel and
+parse strictly, so adding a member to any enum on the wire is a breaking change
+needing a schema-version bump and a coordinated release. That is deliberate: it
+turns a silent runtime failure into a loud build failure.
+`test/shared/api_contract_test.dart` pins the sets.
+
+## Versioning
+
+This package and each app carry independent semvers; the engine is released as
+git tags `vX.Y.Z` and versioned with [`cider`](https://pub.dev/packages/cider)
+(`CHANGELOG.md` + `pubspec.yaml`).
 
 ```bash
-./bin/setup_local.sh          # creates supabase/signing_keys.json + functions/.env.local
-supabase start                # applies migrations, boots Postgres/Auth/Realtime
-supabase functions serve      # optional: run the edge functions locally
+cider log added "…"   # as you work
+cider bump minor      # cut a release (major only once ≥ 1.0)
+git commit -am "chore: release $(cider version)" \
+  && git tag "v$(cider version)" && git push --tags
 ```
 
-`setup_local.sh` is idempotent — it won't clobber existing files. The signing
-key is a JWK array (config.toml's `[auth] signing_keys_path`); without it
-`supabase start` fails.
+While at **0.y.z** the API is still evolving and breaking changes may land in a
+MINOR bump. At **≥ 1.0.0**, MAJOR = a breaking Dart API or wire-contract change.
 
-The edge-function TypeScript derives its DB enums from
-`supabase/functions/_types/database.types.ts`, which is **generated from the
-engine schema**. Regenerate it whenever you change a migration (the committed
-file ships as an enums-only baseline until first generated):
+Three contracts can break across versions, each at a different layer:
 
-```bash
-supabase start && ./bin/generate_db_types.sh   # writes _types/database.types.ts from the local DB
-```
+1. **The Dart API** (the barrel, `runEngineApp`, the `GameModule`/`GameRules`
+   contract) — breaks at **compile time**.
+2. **The wire** (`openapi.json`, the closed enums, the socket protocol) — breaks
+   at **runtime**, against server deployments *and* app binaries already on
+   users' devices.
+3. **Game payloads** (config / state / observation / action) — breaks
+   **in-flight games**, and is handled by the per-`schema_version` `GameRules`
+   units rather than in-place edits.
 
-CI regenerates the same file and fails on any diff, so migrations and types
-can't drift — commit the regenerated file alongside the migration change.
+**Mobile update lag is the core constraint**: after you ship `v(n+1)`, users on
+`v(n)` keep calling the same server for days or weeks. `client_reference.md` §25
+covers the full policy — the three version axes, why draining gates the write
+path while replay gates the read path, and the "I want to change the game"
+checklist.

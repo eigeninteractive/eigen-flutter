@@ -8,7 +8,6 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'seat.g.dart';
 
-
 @CopyWith()
 @JsonSerializable(
   checked: true,
@@ -19,79 +18,42 @@ part 'seat.g.dart';
 class Seat {
   /// Returns a new [Seat] instance.
   Seat({
+    required this.playerIndex,
 
-    required  this.playerIndex,
+    required this.userId,
 
-    required  this.userId,
+    required this.botId,
 
-    required  this.botId,
-
-    required  this.type,
+    required this.type,
   });
 
-  @JsonKey(
-    
-    name: r'player_index',
-    required: true,
-    includeIfNull: false,
-  )
-
-
+  @JsonKey(name: r'player_index', required: true, includeIfNull: false)
   final int playerIndex;
 
-
-
-  @JsonKey(
-    
-    name: r'user_id',
-    required: true,
-    includeIfNull: true,
-  )
-
-
+  @JsonKey(name: r'user_id', required: true, includeIfNull: true)
   final String? userId;
 
-
-
-  @JsonKey(
-    
-    name: r'bot_id',
-    required: true,
-    includeIfNull: true,
-  )
-
-
+  @JsonKey(name: r'bot_id', required: true, includeIfNull: true)
   final String? botId;
 
-
-
-  @JsonKey(
-    
-    name: r'type',
-    required: true,
-    includeIfNull: false,
-  )
-
-
+  @JsonKey(name: r'type', required: true, includeIfNull: false)
   final SeatTypeEnum type;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Seat &&
+          other.playerIndex == playerIndex &&
+          other.userId == userId &&
+          other.botId == botId &&
+          other.type == type;
 
-
-
-
-    @override
-    bool operator ==(Object other) => identical(this, other) || other is Seat &&
-      other.playerIndex == playerIndex &&
-      other.userId == userId &&
-      other.botId == botId &&
-      other.type == type;
-
-    @override
-    int get hashCode =>
-        playerIndex.hashCode +
-        (userId == null ? 0 : userId.hashCode) +
-        (botId == null ? 0 : botId.hashCode) +
-        type.hashCode;
+  @override
+  int get hashCode =>
+      playerIndex.hashCode +
+      (userId == null ? 0 : userId.hashCode) +
+      (botId == null ? 0 : botId.hashCode) +
+      type.hashCode;
 
   factory Seat.fromJson(Map<String, dynamic> json) => _$SeatFromJson(json);
 
@@ -101,22 +63,18 @@ class Seat {
   String toString() {
     return toJson().toString();
   }
-
 }
-
 
 enum SeatTypeEnum {
-@JsonValue(r'human')
-human(r'human'),
-@JsonValue(r'bot')
-bot(r'bot');
+  @JsonValue(r'human')
+  human(r'human'),
+  @JsonValue(r'bot')
+  bot(r'bot');
 
-const SeatTypeEnum(this.value);
+  const SeatTypeEnum(this.value);
 
-final String value;
+  final String value;
 
-@override
-String toString() => value;
+  @override
+  String toString() => value;
 }
-
-

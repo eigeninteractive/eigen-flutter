@@ -13,13 +13,12 @@ import 'package:eigen_api/src/model/bots.dart';
 import 'package:eigen_api/src/model/error_response.dart';
 
 class BotsApi {
-
   final Dio _dio;
 
   const BotsApi(this._dio);
 
   /// getBots
-  /// 
+  ///
   ///
   /// Parameters:
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
@@ -31,7 +30,7 @@ class BotsApi {
   ///
   /// Returns a [Future] containing a [Response] with a [Bots] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<Bots>> getBots({ 
+  Future<Response<Bots>> getBots({
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
     Map<String, dynamic>? extra,
@@ -42,16 +41,10 @@ class BotsApi {
     final _path = r'/api/engine/bots';
     final _options = Options(
       method: r'GET',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -69,9 +62,10 @@ class BotsApi {
     Bots? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<Bots, Bots>(rawData, 'Bots', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<Bots, Bots>(rawData, 'Bots', growable: true);
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -93,5 +87,4 @@ _responseData = rawData == null ? null : deserialize<Bots, Bots>(rawData, 'Bots'
       extra: _response.extra,
     );
   }
-
 }

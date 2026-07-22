@@ -8,7 +8,6 @@ export 'package:eigen_api/src/auth/basic_auth.dart';
 export 'package:eigen_api/src/auth/bearer_auth.dart';
 export 'package:eigen_api/src/auth/oauth.dart';
 
-
 export 'package:eigen_api/src/api/bot_webhook_api.dart';
 export 'package:eigen_api/src/api/bots_api.dart';
 export 'package:eigen_api/src/api/games_api.dart';
@@ -67,4 +66,3 @@ export 'package:eigen_api/src/model/solo_started.dart';
 export 'package:eigen_api/src/model/user_search.dart';
 export 'package:eigen_api/src/model/username_update.dart';
 export 'package:eigen_api/src/model/username_updated.dart';
-

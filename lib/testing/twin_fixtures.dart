@@ -1,15 +1,15 @@
 /// Twin-drift fixture runner — the Dart half of the shared JSON fixtures
 /// that keep a version unit's TS and Dart [GameRules] twins in sync.
 ///
-/// One fixture file per concern lives beside the TS version units at
-/// `supabase/functions/_lib/game/fixtures/v<N>/*.json` and is consumed by
-/// BOTH sides: the vendored `_engine/twin-fixtures.ts` runs each case against
-/// the TS unit (schemas + `applyAction` + `computeObservation` + the two
-/// predicates), while this library runs the same file against the Dart twin
-/// (the payload codec, [GameRules.isValidAction], [GameRules.previewAction],
-/// and the predicate twins). A behavioral divergence then fails one side's
-/// tests instead of degrading UX in production. The fixture file format is
-/// documented in `_engine/twin-fixtures.ts`, the TS half.
+/// One fixture file per concern lives under `fixtures/v<N>/*.json` and is
+/// consumed by BOTH sides: `@eigen/testkit`'s runner runs each case against
+/// the TS unit in the game's Worker (schemas + `applyAction` +
+/// `computeObservation` + the two predicates), while this library runs the
+/// same file against the Dart twin (the payload codec,
+/// [GameRules.isValidAction], [GameRules.previewAction], and the predicate
+/// twins). A behavioral divergence then fails one side's tests instead of
+/// degrading UX in production. The fixture file format is documented in
+/// `@eigen/testkit`'s `twin-fixtures.ts`, the TS half.
 ///
 /// Framework-free on purpose (no `flutter_test` import), so it can live in
 /// `lib/` and be consumed by any app's test suite:
@@ -17,7 +17,7 @@
 /// ```dart
 /// void main() {
 ///   const module = MyGameModule();
-///   final root = 'supabase/functions/_lib/game/fixtures';
+///   final root = 'test/fixtures/game';
 ///   for (final suite in loadTwinFixtureSuites(root)) {
 ///     final rules = module.versions[suite.schemaVersion];
 ///     group('twin fixtures v${suite.schemaVersion}', () {

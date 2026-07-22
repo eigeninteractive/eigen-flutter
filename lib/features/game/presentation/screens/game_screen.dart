@@ -17,11 +17,9 @@ import 'package:eigen_flutter/core/errors/error_messages.dart';
 import 'package:eigen_flutter/core/game/game_module.dart';
 import 'package:eigen_flutter/core/game/players_context.dart';
 import 'package:eigen_flutter/core/game/my_seat.dart';
-import 'package:eigen_flutter/core/game/timing_constants.dart';
 import 'package:eigen_flutter/core/game/timing_context.dart';
 import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
 import 'package:eigen_api/eigen_api.dart';
-
 
 import 'package:eigen_flutter/features/game/presentation/widgets/budget_clock.dart';
 import 'package:eigen_flutter/features/game/presentation/widgets/turn_countdown.dart';
@@ -228,8 +226,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     _invalidateStreams();
   }
 
-  /// Re-subscribes both Realtime streams immediately, bypassing Riverpod's
-  /// retry backoff.
+  /// Re-subscribes both live streams immediately, bypassing Riverpod's retry
+  /// backoff.
   void _invalidateStreams() {
     ref.invalidate(gameRosterProvider(gameId: widget.gameId));
     ref.invalidate(gameEventsProvider(gameId: widget.gameId));
@@ -266,18 +264,6 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     _lifecycleListener.dispose();
     super.dispose();
   }
-
-  /// Schedules (or cancels) a timer that fires [kExpiryTriggerDelay] *after*
-  /// the [deadline], then calls `GameRepository.triggerTurnExpiry` so the server
-  /// can process
-  /// the timeout before the pg_cron job runs. Replaces any previously scheduled
-  /// timer.
-  ///
-  /// The delay sits past the server's grace window
-  /// ([kServerDeadlineGrace]) on purpose: nudging at exactly the deadline would
-  /// hit the server while it is still abstaining, the nudge would no-op, and the
-  /// timeout would slip to the next (every-minute) pg_cron sweep.
-
 
   @override
   Widget build(BuildContext context) {

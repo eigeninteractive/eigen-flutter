@@ -109,7 +109,7 @@ class GameCreationSpec {
   /// ([PerActionConfig] 3600–86400 s) as distinct named options.
   final Map<String, TimingModeConfig> timingConfigs;
 
-  /// Initial value for the game-specific config map passed to `create_game`.
+  /// Initial value for the game-specific config map sent when creating a game.
   ///
   /// Seeded before the player interacts with [GameModule.buildCreationConfig].
   final Map<String, dynamic> defaultConfig;

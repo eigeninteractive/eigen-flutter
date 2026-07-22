@@ -9,6 +9,6 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 /// Most engine providers need no override. Only graphs reaching
 /// `appConfigProvider` or `currentGameModuleProvider` (which throw by default)
 /// require one — prefer overriding the *immediate* dependency a test reads
-/// (e.g. `friendshipsProvider`) rather than the whole Supabase/auth chain.
+/// (e.g. `friendshipsProvider`) rather than the whole api/auth chain.
 ProviderContainer makeContainer({List<Override> overrides = const []}) =>
     ProviderContainer.test(overrides: overrides);

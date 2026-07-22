@@ -9,7 +9,6 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'user_search.g.dart';
 
-
 @CopyWith()
 @JsonSerializable(
   checked: true,
@@ -19,34 +18,20 @@ part 'user_search.g.dart';
 )
 class UserSearch {
   /// Returns a new [UserSearch] instance.
-  UserSearch({
+  UserSearch({required this.users});
 
-    required  this.users,
-  });
-
-  @JsonKey(
-    
-    name: r'users',
-    required: true,
-    includeIfNull: false,
-  )
-
-
+  @JsonKey(name: r'users', required: true, includeIfNull: false)
   final List<Player> users;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is UserSearch && other.users == users;
 
+  @override
+  int get hashCode => users.hashCode;
 
-
-
-    @override
-    bool operator ==(Object other) => identical(this, other) || other is UserSearch &&
-      other.users == users;
-
-    @override
-    int get hashCode =>
-        users.hashCode;
-
-  factory UserSearch.fromJson(Map<String, dynamic> json) => _$UserSearchFromJson(json);
+  factory UserSearch.fromJson(Map<String, dynamic> json) =>
+      _$UserSearchFromJson(json);
 
   Map<String, dynamic> toJson() => _$UserSearchToJson(this);
 
@@ -54,6 +39,4 @@ class UserSearch {
   String toString() {
     return toJson().toString();
   }
-
 }
-

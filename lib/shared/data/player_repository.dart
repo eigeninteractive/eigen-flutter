@@ -46,7 +46,9 @@ class PlayerRepository {
   /// empty [ids] resolves without a request.
   Future<List<Player>> getPlayers(List<String> ids) async {
     if (ids.isEmpty) return const [];
-    final response = await engineCall(() => _api.getPlayers(ids: ids.join(',')));
+    final response = await engineCall(
+      () => _api.getPlayers(ids: ids.join(',')),
+    );
     return response.data?.players ?? const [];
   }
 }

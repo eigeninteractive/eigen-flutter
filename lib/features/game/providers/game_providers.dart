@@ -135,12 +135,11 @@ Future<List<GameSummary>> activeGames(Ref ref) async {
 
   // The secondary key is explicit because List.sort is not stable, so relying
   // on the server's order to survive the sort would be fragile.
-  return games.toList()
-    ..sort((a, b) {
-      final aMine = isMyTurn(a);
-      if (aMine != isMyTurn(b)) return aMine ? -1 : 1;
-      return b.updatedAt.compareTo(a.updatedAt);
-    });
+  return games.toList()..sort((a, b) {
+    final aMine = isMyTurn(a);
+    if (aMine != isMyTurn(b)) return aMine ? -1 : 1;
+    return b.updatedAt.compareTo(a.updatedAt);
+  });
 }
 
 /// One game's metadata: schema version, config, timing, access.

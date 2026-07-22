@@ -18,16 +18,15 @@ import 'package:eigen_api/src/model/friends_games.dart';
 import 'package:eigen_api/src/model/user_search.dart';
 
 class SocialApi {
-
   final Dio _dio;
 
   const SocialApi(this._dio);
 
   /// acceptFriendRequest
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [userId] 
+  /// * [userId]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -37,7 +36,7 @@ class SocialApi {
   ///
   /// Returns a [Future]
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<void>> acceptFriendRequest({ 
+  Future<Response<void>> acceptFriendRequest({
     required String userId,
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
@@ -46,19 +45,18 @@ class SocialApi {
     ProgressCallback? onSendProgress,
     ProgressCallback? onReceiveProgress,
   }) async {
-    final _path = r'/api/engine/friends/requests/{userId}/accept'.replaceAll('{' r'userId' '}', userId.toString());
+    final _path = r'/api/engine/friends/requests/{userId}/accept'.replaceAll(
+      '{'
+      r'userId'
+      '}',
+      userId.toString(),
+    );
     final _options = Options(
       method: r'POST',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -77,10 +75,10 @@ class SocialApi {
   }
 
   /// blockUser
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [userId] 
+  /// * [userId]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -90,7 +88,7 @@ class SocialApi {
   ///
   /// Returns a [Future]
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<void>> blockUser({ 
+  Future<Response<void>> blockUser({
     required String userId,
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
@@ -99,19 +97,18 @@ class SocialApi {
     ProgressCallback? onSendProgress,
     ProgressCallback? onReceiveProgress,
   }) async {
-    final _path = r'/api/engine/friends/{userId}/block'.replaceAll('{' r'userId' '}', userId.toString());
+    final _path = r'/api/engine/friends/{userId}/block'.replaceAll(
+      '{'
+      r'userId'
+      '}',
+      userId.toString(),
+    );
     final _options = Options(
       method: r'POST',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -130,11 +127,11 @@ class SocialApi {
   }
 
   /// getFriendsGames
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [limit] 
-  /// * [cursor] 
+  /// * [limit]
+  /// * [cursor]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -144,7 +141,7 @@ class SocialApi {
   ///
   /// Returns a [Future] containing a [Response] with a [FriendsGames] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<FriendsGames>> getFriendsGames({ 
+  Future<Response<FriendsGames>> getFriendsGames({
     int? limit = 20,
     int? cursor,
     CancelToken? cancelToken,
@@ -157,16 +154,10 @@ class SocialApi {
     final _path = r'/api/engine/friends/games';
     final _options = Options(
       method: r'GET',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -190,9 +181,14 @@ class SocialApi {
     FriendsGames? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<FriendsGames, FriendsGames>(rawData, 'FriendsGames', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<FriendsGames, FriendsGames>(
+              rawData,
+              'FriendsGames',
+              growable: true,
+            );
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -216,7 +212,7 @@ _responseData = rawData == null ? null : deserialize<FriendsGames, FriendsGames>
   }
 
   /// listFriendRequests
-  /// 
+  ///
   ///
   /// Parameters:
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
@@ -228,7 +224,7 @@ _responseData = rawData == null ? null : deserialize<FriendsGames, FriendsGames>
   ///
   /// Returns a [Future] containing a [Response] with a [FriendRequests] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<FriendRequests>> listFriendRequests({ 
+  Future<Response<FriendRequests>> listFriendRequests({
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
     Map<String, dynamic>? extra,
@@ -239,16 +235,10 @@ _responseData = rawData == null ? null : deserialize<FriendsGames, FriendsGames>
     final _path = r'/api/engine/friends/requests';
     final _options = Options(
       method: r'GET',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -266,9 +256,14 @@ _responseData = rawData == null ? null : deserialize<FriendsGames, FriendsGames>
     FriendRequests? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<FriendRequests, FriendRequests>(rawData, 'FriendRequests', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<FriendRequests, FriendRequests>(
+              rawData,
+              'FriendRequests',
+              growable: true,
+            );
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -292,7 +287,7 @@ _responseData = rawData == null ? null : deserialize<FriendRequests, FriendReque
   }
 
   /// listFriends
-  /// 
+  ///
   ///
   /// Parameters:
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
@@ -304,7 +299,7 @@ _responseData = rawData == null ? null : deserialize<FriendRequests, FriendReque
   ///
   /// Returns a [Future] containing a [Response] with a [Friends] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<Friends>> listFriends({ 
+  Future<Response<Friends>> listFriends({
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
     Map<String, dynamic>? extra,
@@ -315,16 +310,10 @@ _responseData = rawData == null ? null : deserialize<FriendRequests, FriendReque
     final _path = r'/api/engine/friends';
     final _options = Options(
       method: r'GET',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -342,9 +331,10 @@ _responseData = rawData == null ? null : deserialize<FriendRequests, FriendReque
     Friends? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<Friends, Friends>(rawData, 'Friends', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<Friends, Friends>(rawData, 'Friends', growable: true);
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -368,10 +358,10 @@ _responseData = rawData == null ? null : deserialize<Friends, Friends>(rawData, 
   }
 
   /// removeFriend
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [userId] 
+  /// * [userId]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -381,7 +371,7 @@ _responseData = rawData == null ? null : deserialize<Friends, Friends>(rawData, 
   ///
   /// Returns a [Future]
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<void>> removeFriend({ 
+  Future<Response<void>> removeFriend({
     required String userId,
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
@@ -390,19 +380,18 @@ _responseData = rawData == null ? null : deserialize<Friends, Friends>(rawData, 
     ProgressCallback? onSendProgress,
     ProgressCallback? onReceiveProgress,
   }) async {
-    final _path = r'/api/engine/friends/{userId}'.replaceAll('{' r'userId' '}', userId.toString());
+    final _path = r'/api/engine/friends/{userId}'.replaceAll(
+      '{'
+      r'userId'
+      '}',
+      userId.toString(),
+    );
     final _options = Options(
       method: r'DELETE',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -421,11 +410,11 @@ _responseData = rawData == null ? null : deserialize<Friends, Friends>(rawData, 
   }
 
   /// searchUsers
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [q] 
-  /// * [limit] 
+  /// * [q]
+  /// * [limit]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -435,7 +424,7 @@ _responseData = rawData == null ? null : deserialize<Friends, Friends>(rawData, 
   ///
   /// Returns a [Future] containing a [Response] with a [UserSearch] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<UserSearch>> searchUsers({ 
+  Future<Response<UserSearch>> searchUsers({
     required String q,
     int? limit = 20,
     CancelToken? cancelToken,
@@ -448,16 +437,10 @@ _responseData = rawData == null ? null : deserialize<Friends, Friends>(rawData, 
     final _path = r'/api/engine/users/search';
     final _options = Options(
       method: r'GET',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -481,9 +464,14 @@ _responseData = rawData == null ? null : deserialize<Friends, Friends>(rawData, 
     UserSearch? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<UserSearch, UserSearch>(rawData, 'UserSearch', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<UserSearch, UserSearch>(
+              rawData,
+              'UserSearch',
+              growable: true,
+            );
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -507,10 +495,10 @@ _responseData = rawData == null ? null : deserialize<UserSearch, UserSearch>(raw
   }
 
   /// sendFriendRequest
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [friendTarget] 
+  /// * [friendTarget]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -520,7 +508,7 @@ _responseData = rawData == null ? null : deserialize<UserSearch, UserSearch>(raw
   ///
   /// Returns a [Future] containing a [Response] with a [FriendRequestResult] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<FriendRequestResult>> sendFriendRequest({ 
+  Future<Response<FriendRequestResult>> sendFriendRequest({
     required FriendTarget friendTarget,
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
@@ -532,16 +520,10 @@ _responseData = rawData == null ? null : deserialize<UserSearch, UserSearch>(raw
     final _path = r'/api/engine/friends/requests';
     final _options = Options(
       method: r'POST',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -552,13 +534,10 @@ _responseData = rawData == null ? null : deserialize<UserSearch, UserSearch>(raw
     dynamic _bodyData;
 
     try {
-_bodyData=jsonEncode(friendTarget);
-    } catch(error, stackTrace) {
+      _bodyData = jsonEncode(friendTarget);
+    } catch (error, stackTrace) {
       throw DioException(
-         requestOptions: _options.compose(
-          _dio.options,
-          _path,
-        ),
+        requestOptions: _options.compose(_dio.options, _path),
         type: DioExceptionType.unknown,
         error: error,
         stackTrace: stackTrace,
@@ -577,9 +556,14 @@ _bodyData=jsonEncode(friendTarget);
     FriendRequestResult? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<FriendRequestResult, FriendRequestResult>(rawData, 'FriendRequestResult', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<FriendRequestResult, FriendRequestResult>(
+              rawData,
+              'FriendRequestResult',
+              growable: true,
+            );
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -603,10 +587,10 @@ _responseData = rawData == null ? null : deserialize<FriendRequestResult, Friend
   }
 
   /// unblockUser
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [userId] 
+  /// * [userId]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -616,7 +600,7 @@ _responseData = rawData == null ? null : deserialize<FriendRequestResult, Friend
   ///
   /// Returns a [Future]
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<void>> unblockUser({ 
+  Future<Response<void>> unblockUser({
     required String userId,
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
@@ -625,19 +609,18 @@ _responseData = rawData == null ? null : deserialize<FriendRequestResult, Friend
     ProgressCallback? onSendProgress,
     ProgressCallback? onReceiveProgress,
   }) async {
-    final _path = r'/api/engine/friends/{userId}/block'.replaceAll('{' r'userId' '}', userId.toString());
+    final _path = r'/api/engine/friends/{userId}/block'.replaceAll(
+      '{'
+      r'userId'
+      '}',
+      userId.toString(),
+    );
     final _options = Options(
       method: r'DELETE',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -654,5 +637,4 @@ _responseData = rawData == null ? null : deserialize<FriendRequestResult, Friend
 
     return _response;
   }
-
 }

@@ -4,7 +4,7 @@ import 'package:eigen_flutter/core/game/timing_context.dart';
 ///
 /// The per-event view of everything that *changes* as a game progresses: the
 /// parsed observation, the optimistic-lock version, the players whose turn is
-/// active, and the turn timing. Rebuilt on every Realtime observation event.
+/// active, and the turn timing. Rebuilt on every frame the game socket emits.
 ///
 /// The parsed game config is deliberately not part of the frame. It is parsed
 /// once from the immutable game config and lives for the whole game, so it is
@@ -13,8 +13,8 @@ import 'package:eigen_flutter/core/game/timing_context.dart';
 /// re-bundled into every snapshot.
 ///
 /// Frames arrive as an ordered, gap-recovered stream (observations are
-/// append-only server-side; the repository fetches any versions Realtime
-/// skipped), so a game may animate the transition between consecutive frames
+/// append-only server-side, and a reconnect replays whatever versions the
+/// socket missed), so a game may animate the transition between consecutive frames
 /// and trust that it sees every one — falling back to a snap only after a
 /// cold (re)load, where no predecessor was rendered.
 class GameFrame {
@@ -32,8 +32,8 @@ class GameFrame {
   /// Current pending players from the infra observation row.
   final List<int> pendingPlayers;
 
-  /// Mirrored from [game_states.version] via the observation row. Passed back
-  /// to `engine_commit_action` as the optimistic lock key.
+  /// The game state's version, carried on the observation. Passed back when
+  /// submitting an action as the optimistic lock key.
   final int version;
 
   /// Timing metadata for the current turn, derived from the observation row.

@@ -1,11 +1,10 @@
-/// The Dart twin of the engine's TS example rules unit
-/// (`supabase/functions/_lib/game/v1.ts`): the trivial one-move game where
-/// player 0 acts once and wins.
+/// A minimal Dart [GameRules] unit: the trivial one-move game where player 0
+/// acts once and wins.
 ///
-/// Exists so the engine can dogfood its own twin-fixture pipeline
-/// (`_lib/game/fixtures/v1/`) end to end — the TS side runs the fixtures via
-/// `_engine/twin-fixtures.ts`, this unit runs them via
-/// `lib/testing/twin_fixtures.dart`.
+/// Exists so the engine can dogfood its own twin-fixture pipeline end to end —
+/// this unit runs `test/fixtures/game/v1/` through
+/// `lib/testing/twin_fixtures.dart`, exercising the same path a real game's
+/// Dart twin takes.
 library;
 
 import 'package:flutter/widgets.dart';

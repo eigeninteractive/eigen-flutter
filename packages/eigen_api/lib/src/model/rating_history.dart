@@ -9,7 +9,6 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'rating_history.g.dart';
 
-
 @CopyWith()
 @JsonSerializable(
   checked: true,
@@ -19,34 +18,21 @@ part 'rating_history.g.dart';
 )
 class RatingHistory {
   /// Returns a new [RatingHistory] instance.
-  RatingHistory({
+  RatingHistory({required this.history});
 
-    required  this.history,
-  });
-
-  @JsonKey(
-    
-    name: r'history',
-    required: true,
-    includeIfNull: false,
-  )
-
-
+  @JsonKey(name: r'history', required: true, includeIfNull: false)
   final List<RatingHistoryEntry> history;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RatingHistory && other.history == history;
 
+  @override
+  int get hashCode => history.hashCode;
 
-
-
-    @override
-    bool operator ==(Object other) => identical(this, other) || other is RatingHistory &&
-      other.history == history;
-
-    @override
-    int get hashCode =>
-        history.hashCode;
-
-  factory RatingHistory.fromJson(Map<String, dynamic> json) => _$RatingHistoryFromJson(json);
+  factory RatingHistory.fromJson(Map<String, dynamic> json) =>
+      _$RatingHistoryFromJson(json);
 
   Map<String, dynamic> toJson() => _$RatingHistoryToJson(this);
 
@@ -54,6 +40,4 @@ class RatingHistory {
   String toString() {
     return toJson().toString();
   }
-
 }
-

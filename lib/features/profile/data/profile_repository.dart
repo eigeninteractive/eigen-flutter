@@ -25,7 +25,9 @@ class ProfileRepository {
   /// failures to report generically.
   Future<String> updateUsername(String username) async {
     final response = await engineCall(
-      () => _api.updateUsername(usernameUpdate: UsernameUpdate(username: username)),
+      () => _api.updateUsername(
+        usernameUpdate: UsernameUpdate(username: username),
+      ),
     );
     return response.data!.username;
   }

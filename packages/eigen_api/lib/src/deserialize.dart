@@ -51,148 +51,181 @@ final _regList = RegExp(r'^List<(.*)>$');
 final _regSet = RegExp(r'^Set<(.*)>$');
 final _regMap = RegExp(r'^Map<String,(.*)>$');
 
-  ReturnType deserialize<ReturnType, BaseType>(dynamic value, String targetType, {bool growable= true}) {
-      switch (targetType) {
-        case 'String':
-          return '$value' as ReturnType;
-        case 'int':
-          return (value is int ? value : int.parse('$value')) as ReturnType;
-        case 'bool':
-          if (value is bool) {
-            return value as ReturnType;
-          }
-          final valueString = '$value'.toLowerCase();
-          return (valueString == 'true' || valueString == '1') as ReturnType;
-        case 'double':
-          return (value is double ? value : double.parse('$value')) as ReturnType;
-        case 'Action':
-          return Action.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'AddBot':
-          return AddBot.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'Bot':
-          return Bot.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'BotAction':
-          return BotAction.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'Bots':
-          return Bots.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'CommandAccepted':
-          return CommandAccepted.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'CreateGame':
-          return CreateGame.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'CreateSolo':
-          return CreateSolo.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'Created':
-          return Created.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'DeviceRegistration':
-          return DeviceRegistration.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'DisplayNameUpdate':
-          return DisplayNameUpdate.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'DisplayNameUpdated':
-          return DisplayNameUpdated.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'ErrorCode':
-          
-          
-        case 'ErrorResponse':
-          return ErrorResponse.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'Forfeit':
-          return Forfeit.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'Frame':
-          return Frame.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'Frames':
-          return Frames.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'Friend':
-          return Friend.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'FriendRequest':
-          return FriendRequest.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'FriendRequestResult':
-          return FriendRequestResult.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'FriendRequests':
-          return FriendRequests.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'FriendTarget':
-          return FriendTarget.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'Friends':
-          return Friends.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'FriendsGames':
-          return FriendsGames.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'GameAccess':
-          
-          
-        case 'GameStatus':
-          
-          
-        case 'GameSummary':
-          return GameSummary.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'Join':
-          return Join.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'JoinByCode':
-          return JoinByCode.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'Joined':
-          return Joined.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'Lobby':
-          return Lobby.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'LobbyAccepted':
-          return LobbyAccepted.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'LobbyCommand':
-          return LobbyCommand.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'MyGames':
-          return MyGames.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'Outcome':
-          return Outcome.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'Player':
-          return Player.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'PlayerGames':
-          return PlayerGames.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'Players':
-          return Players.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'Profile':
-          return Profile.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'Rating':
-          return Rating.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'RatingDelta':
-          return RatingDelta.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'RatingHistory':
-          return RatingHistory.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'RatingHistoryEntry':
-          return RatingHistoryEntry.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'RatingIdentity':
-          return RatingIdentity.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'Ratings':
-          return Ratings.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'Roster':
-          return Roster.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'Seat':
-          return Seat.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'SoloStarted':
-          return SoloStarted.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'UserSearch':
-          return UserSearch.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'UsernameUpdate':
-          return UsernameUpdate.fromJson(value as Map<String, dynamic>) as ReturnType;
-        case 'UsernameUpdated':
-          return UsernameUpdated.fromJson(value as Map<String, dynamic>) as ReturnType;
-        default:
-          RegExpMatch? match;
+ReturnType deserialize<ReturnType, BaseType>(
+  dynamic value,
+  String targetType, {
+  bool growable = true,
+}) {
+  switch (targetType) {
+    case 'String':
+      return '$value' as ReturnType;
+    case 'int':
+      return (value is int ? value : int.parse('$value')) as ReturnType;
+    case 'bool':
+      if (value is bool) {
+        return value as ReturnType;
+      }
+      final valueString = '$value'.toLowerCase();
+      return (valueString == 'true' || valueString == '1') as ReturnType;
+    case 'double':
+      return (value is double ? value : double.parse('$value')) as ReturnType;
+    case 'Action':
+      return Action.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'AddBot':
+      return AddBot.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'Bot':
+      return Bot.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'BotAction':
+      return BotAction.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'Bots':
+      return Bots.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'CommandAccepted':
+      return CommandAccepted.fromJson(value as Map<String, dynamic>)
+          as ReturnType;
+    case 'CreateGame':
+      return CreateGame.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'CreateSolo':
+      return CreateSolo.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'Created':
+      return Created.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'DeviceRegistration':
+      return DeviceRegistration.fromJson(value as Map<String, dynamic>)
+          as ReturnType;
+    case 'DisplayNameUpdate':
+      return DisplayNameUpdate.fromJson(value as Map<String, dynamic>)
+          as ReturnType;
+    case 'DisplayNameUpdated':
+      return DisplayNameUpdated.fromJson(value as Map<String, dynamic>)
+          as ReturnType;
+    case 'ErrorCode':
+    case 'ErrorResponse':
+      return ErrorResponse.fromJson(value as Map<String, dynamic>)
+          as ReturnType;
+    case 'Forfeit':
+      return Forfeit.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'Frame':
+      return Frame.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'Frames':
+      return Frames.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'Friend':
+      return Friend.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'FriendRequest':
+      return FriendRequest.fromJson(value as Map<String, dynamic>)
+          as ReturnType;
+    case 'FriendRequestResult':
+      return FriendRequestResult.fromJson(value as Map<String, dynamic>)
+          as ReturnType;
+    case 'FriendRequests':
+      return FriendRequests.fromJson(value as Map<String, dynamic>)
+          as ReturnType;
+    case 'FriendTarget':
+      return FriendTarget.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'Friends':
+      return Friends.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'FriendsGames':
+      return FriendsGames.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'GameAccess':
+    case 'GameStatus':
+    case 'GameSummary':
+      return GameSummary.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'Join':
+      return Join.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'JoinByCode':
+      return JoinByCode.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'Joined':
+      return Joined.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'Lobby':
+      return Lobby.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'LobbyAccepted':
+      return LobbyAccepted.fromJson(value as Map<String, dynamic>)
+          as ReturnType;
+    case 'LobbyCommand':
+      return LobbyCommand.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'MyGames':
+      return MyGames.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'Outcome':
+      return Outcome.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'Player':
+      return Player.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'PlayerGames':
+      return PlayerGames.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'Players':
+      return Players.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'Profile':
+      return Profile.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'Rating':
+      return Rating.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'RatingDelta':
+      return RatingDelta.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'RatingHistory':
+      return RatingHistory.fromJson(value as Map<String, dynamic>)
+          as ReturnType;
+    case 'RatingHistoryEntry':
+      return RatingHistoryEntry.fromJson(value as Map<String, dynamic>)
+          as ReturnType;
+    case 'RatingIdentity':
+      return RatingIdentity.fromJson(value as Map<String, dynamic>)
+          as ReturnType;
+    case 'Ratings':
+      return Ratings.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'Roster':
+      return Roster.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'Seat':
+      return Seat.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'SoloStarted':
+      return SoloStarted.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'UserSearch':
+      return UserSearch.fromJson(value as Map<String, dynamic>) as ReturnType;
+    case 'UsernameUpdate':
+      return UsernameUpdate.fromJson(value as Map<String, dynamic>)
+          as ReturnType;
+    case 'UsernameUpdated':
+      return UsernameUpdated.fromJson(value as Map<String, dynamic>)
+          as ReturnType;
+    default:
+      RegExpMatch? match;
 
-          if (value is List && (match = _regList.firstMatch(targetType)) != null) {
-            targetType = match![1]!; // ignore: parameter_assignments
-            return value
-              .map<BaseType>((dynamic v) => deserialize<BaseType, BaseType>(v, targetType, growable: growable))
-              .toList(growable: growable) as ReturnType;
-          }
-          if (value is Set && (match = _regSet.firstMatch(targetType)) != null) {
-            targetType = match![1]!; // ignore: parameter_assignments
-            return value
-              .map<BaseType>((dynamic v) => deserialize<BaseType, BaseType>(v, targetType, growable: growable))
-              .toSet() as ReturnType;
-          }
-          if (value is Map && (match = _regMap.firstMatch(targetType)) != null) {
-            targetType = match![1]!.trim(); // ignore: parameter_assignments
-            return Map<String, BaseType>.fromIterables(
+      if (value is List && (match = _regList.firstMatch(targetType)) != null) {
+        targetType = match![1]!; // ignore: parameter_assignments
+        return value
+                .map<BaseType>(
+                  (dynamic v) => deserialize<BaseType, BaseType>(
+                    v,
+                    targetType,
+                    growable: growable,
+                  ),
+                )
+                .toList(growable: growable)
+            as ReturnType;
+      }
+      if (value is Set && (match = _regSet.firstMatch(targetType)) != null) {
+        targetType = match![1]!; // ignore: parameter_assignments
+        return value
+                .map<BaseType>(
+                  (dynamic v) => deserialize<BaseType, BaseType>(
+                    v,
+                    targetType,
+                    growable: growable,
+                  ),
+                )
+                .toSet()
+            as ReturnType;
+      }
+      if (value is Map && (match = _regMap.firstMatch(targetType)) != null) {
+        targetType = match![1]!.trim(); // ignore: parameter_assignments
+        return Map<String, BaseType>.fromIterables(
               value.keys as Iterable<String>,
-              value.values.map((dynamic v) => deserialize<BaseType, BaseType>(v, targetType, growable: growable)),
-            ) as ReturnType;
-          }
-          break;
-    }
-    throw Exception('Cannot deserialize');
+              value.values.map(
+                (dynamic v) => deserialize<BaseType, BaseType>(
+                  v,
+                  targetType,
+                  growable: growable,
+                ),
+              ),
+            )
+            as ReturnType;
+      }
+      break;
   }
+  throw Exception('Cannot deserialize');
+}

@@ -105,7 +105,7 @@ class _UnsupportedSchemaContent extends StatelessWidget {
 ///
 /// Disconnected means device-level offline, the observation stream is in
 /// [AsyncError], or the game stream itself is in [AsyncError] — covering
-/// transient Supabase blips where [isOfflineProvider] stays false. Uses
+/// transient socket blips where [isOfflineProvider] stays false. Uses
 /// [AsyncValue.value] to read stale status during error states. Isolated as a
 /// [ConsumerWidget] leaf so changes don't rebuild the entire game tree.
 class _ReconnectingBannerSlot extends ConsumerWidget {

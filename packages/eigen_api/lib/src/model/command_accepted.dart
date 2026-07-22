@@ -9,7 +9,6 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'command_accepted.g.dart';
 
-
 @CopyWith()
 @JsonSerializable(
   checked: true,
@@ -19,50 +18,26 @@ part 'command_accepted.g.dart';
 )
 class CommandAccepted {
   /// Returns a new [CommandAccepted] instance.
-  CommandAccepted({
+  CommandAccepted({required this.version, required this.frame});
 
-    required  this.version,
-
-    required  this.frame,
-  });
-
-  @JsonKey(
-    
-    name: r'version',
-    required: true,
-    includeIfNull: false,
-  )
-
-
+  @JsonKey(name: r'version', required: true, includeIfNull: false)
   final int version;
 
-
-
-  @JsonKey(
-    
-    name: r'frame',
-    required: true,
-    includeIfNull: false,
-  )
-
-
+  @JsonKey(name: r'frame', required: true, includeIfNull: false)
   final Frame frame;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CommandAccepted &&
+          other.version == version &&
+          other.frame == frame;
 
+  @override
+  int get hashCode => version.hashCode + frame.hashCode;
 
-
-
-    @override
-    bool operator ==(Object other) => identical(this, other) || other is CommandAccepted &&
-      other.version == version &&
-      other.frame == frame;
-
-    @override
-    int get hashCode =>
-        version.hashCode +
-        frame.hashCode;
-
-  factory CommandAccepted.fromJson(Map<String, dynamic> json) => _$CommandAcceptedFromJson(json);
+  factory CommandAccepted.fromJson(Map<String, dynamic> json) =>
+      _$CommandAcceptedFromJson(json);
 
   Map<String, dynamic> toJson() => _$CommandAcceptedToJson(this);
 
@@ -70,6 +45,4 @@ class CommandAccepted {
   String toString() {
     return toJson().toString();
   }
-
 }
-

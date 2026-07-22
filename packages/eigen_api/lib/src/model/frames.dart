@@ -9,7 +9,6 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'frames.g.dart';
 
-
 @CopyWith()
 @JsonSerializable(
   checked: true,
@@ -19,32 +18,17 @@ part 'frames.g.dart';
 )
 class Frames {
   /// Returns a new [Frames] instance.
-  Frames({
+  Frames({required this.frames});
 
-    required  this.frames,
-  });
-
-  @JsonKey(
-    
-    name: r'frames',
-    required: true,
-    includeIfNull: false,
-  )
-
-
+  @JsonKey(name: r'frames', required: true, includeIfNull: false)
   final List<Frame> frames;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is Frames && other.frames == frames;
 
-
-
-
-    @override
-    bool operator ==(Object other) => identical(this, other) || other is Frames &&
-      other.frames == frames;
-
-    @override
-    int get hashCode =>
-        frames.hashCode;
+  @override
+  int get hashCode => frames.hashCode;
 
   factory Frames.fromJson(Map<String, dynamic> json) => _$FramesFromJson(json);
 
@@ -54,6 +38,4 @@ class Frames {
   String toString() {
     return toJson().toString();
   }
-
 }
-

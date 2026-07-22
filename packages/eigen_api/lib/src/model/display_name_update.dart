@@ -8,7 +8,6 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'display_name_update.g.dart';
 
-
 @CopyWith()
 @JsonSerializable(
   checked: true,
@@ -18,34 +17,21 @@ part 'display_name_update.g.dart';
 )
 class DisplayNameUpdate {
   /// Returns a new [DisplayNameUpdate] instance.
-  DisplayNameUpdate({
+  DisplayNameUpdate({required this.displayName});
 
-    required  this.displayName,
-  });
-
-  @JsonKey(
-    
-    name: r'display_name',
-    required: true,
-    includeIfNull: false,
-  )
-
-
+  @JsonKey(name: r'display_name', required: true, includeIfNull: false)
   final String displayName;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DisplayNameUpdate && other.displayName == displayName;
 
+  @override
+  int get hashCode => displayName.hashCode;
 
-
-
-    @override
-    bool operator ==(Object other) => identical(this, other) || other is DisplayNameUpdate &&
-      other.displayName == displayName;
-
-    @override
-    int get hashCode =>
-        displayName.hashCode;
-
-  factory DisplayNameUpdate.fromJson(Map<String, dynamic> json) => _$DisplayNameUpdateFromJson(json);
+  factory DisplayNameUpdate.fromJson(Map<String, dynamic> json) =>
+      _$DisplayNameUpdateFromJson(json);
 
   Map<String, dynamic> toJson() => _$DisplayNameUpdateToJson(this);
 
@@ -53,6 +39,4 @@ class DisplayNameUpdate {
   String toString() {
     return toJson().toString();
   }
-
 }
-

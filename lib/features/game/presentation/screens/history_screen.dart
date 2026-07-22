@@ -24,9 +24,7 @@ typedef _HistoryEntry = ({
 /// same way [_myResult] picks out their outcome.
 RatingDelta? _myRatingChange(GameSummary game, String? myUserId) {
   if (myUserId == null) return null;
-  return game.ratings
-      ?.where((r) => r.identity.userId == myUserId)
-      .firstOrNull;
+  return game.ratings?.where((r) => r.identity.userId == myUserId).firstOrNull;
 }
 
 /// The caller's own result in a finished game, or null when there is none —

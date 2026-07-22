@@ -71,8 +71,7 @@ class _ScriptedSocket implements GameSocket {
   Stream<GameSocketEvent> connect(String gameId) => _controller.stream;
 
   @override
-  dynamic noSuchMethod(Invocation invocation) =>
-      super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 ({GameRepository repo, _ScriptedSocket socket, _FramesAdapter adapter}) _build({
@@ -164,11 +163,14 @@ void main() {
     final t = _build();
     final injected = StreamController<Frame>();
 
-    final seen = await _versions(t.repo.events('g', inject: injected.stream), () async {
-      injected.add(_frame(0));
-      await Future<void>.delayed(Duration.zero);
-      injected.add(_frame(1));
-    });
+    final seen = await _versions(
+      t.repo.events('g', inject: injected.stream),
+      () async {
+        injected.add(_frame(0));
+        await Future<void>.delayed(Duration.zero);
+        injected.add(_frame(1));
+      },
+    );
 
     check(seen).deepEquals([0, 1]);
     check(t.adapter.requests).isEmpty();
@@ -179,11 +181,14 @@ void main() {
     final t = _build();
     final injected = StreamController<Frame>();
 
-    final seen = await _versions(t.repo.events('g', inject: injected.stream), () async {
-      injected.add(_frame(2));
-      await Future<void>.delayed(Duration.zero);
-      t.socket.emit(GameSocketFrame(_frame(2)));
-    });
+    final seen = await _versions(
+      t.repo.events('g', inject: injected.stream),
+      () async {
+        injected.add(_frame(2));
+        await Future<void>.delayed(Duration.zero);
+        t.socket.emit(GameSocketFrame(_frame(2)));
+      },
+    );
 
     check(seen).deepEquals([2]);
     await injected.close();

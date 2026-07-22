@@ -59,8 +59,9 @@ class AuthService {
     return AuthEvent.userUpdated;
   }
 
-  AuthUser? _toAuthUser(User? user) =>
-      user == null ? null : AuthUser(id: user.uid, isAnonymous: user.isAnonymous);
+  AuthUser? _toAuthUser(User? user) => user == null
+      ? null
+      : AuthUser(id: user.uid, isAnonymous: user.isAnonymous);
 
   /// Runs the native Google Sign-In flow and builds a Firebase credential.
   ///

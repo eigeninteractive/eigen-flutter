@@ -8,7 +8,6 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'action.g.dart';
 
-
 @CopyWith()
 @JsonSerializable(
   checked: true,
@@ -19,81 +18,44 @@ part 'action.g.dart';
 class Action {
   /// Returns a new [Action] instance.
   Action({
+    required this.seat,
 
-    required  this.seat,
+    this.data,
 
-     this.data,
+    required this.expectedVersion,
 
-    required  this.expectedVersion,
-
-     this.commandId,
+    this.commandId,
   });
 
-          // minimum: 0
-  @JsonKey(
-    
-    name: r'seat',
-    required: true,
-    includeIfNull: false,
-  )
-
-
+  // minimum: 0
+  @JsonKey(name: r'seat', required: true, includeIfNull: false)
   final int seat;
 
-
-
-  @JsonKey(
-    
-    name: r'data',
-    required: false,
-    includeIfNull: false,
-  )
-
-
+  @JsonKey(name: r'data', required: false, includeIfNull: false)
   final Object? data;
 
-
-
-          // minimum: 0
-  @JsonKey(
-    
-    name: r'expected_version',
-    required: true,
-    includeIfNull: false,
-  )
-
-
+  // minimum: 0
+  @JsonKey(name: r'expected_version', required: true, includeIfNull: false)
   final int expectedVersion;
 
-
-
-  @JsonKey(
-    
-    name: r'command_id',
-    required: false,
-    includeIfNull: false,
-  )
-
-
+  @JsonKey(name: r'command_id', required: false, includeIfNull: false)
   final String? commandId;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Action &&
+          other.seat == seat &&
+          other.data == data &&
+          other.expectedVersion == expectedVersion &&
+          other.commandId == commandId;
 
-
-
-
-    @override
-    bool operator ==(Object other) => identical(this, other) || other is Action &&
-      other.seat == seat &&
-      other.data == data &&
-      other.expectedVersion == expectedVersion &&
-      other.commandId == commandId;
-
-    @override
-    int get hashCode =>
-        seat.hashCode +
-        (data == null ? 0 : data.hashCode) +
-        expectedVersion.hashCode +
-        commandId.hashCode;
+  @override
+  int get hashCode =>
+      seat.hashCode +
+      (data == null ? 0 : data.hashCode) +
+      expectedVersion.hashCode +
+      commandId.hashCode;
 
   factory Action.fromJson(Map<String, dynamic> json) => _$ActionFromJson(json);
 
@@ -103,6 +65,4 @@ class Action {
   String toString() {
     return toJson().toString();
   }
-
 }
-

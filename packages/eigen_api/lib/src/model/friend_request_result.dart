@@ -8,7 +8,6 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'friend_request_result.g.dart';
 
-
 @CopyWith()
 @JsonSerializable(
   checked: true,
@@ -18,34 +17,21 @@ part 'friend_request_result.g.dart';
 )
 class FriendRequestResult {
   /// Returns a new [FriendRequestResult] instance.
-  FriendRequestResult({
+  FriendRequestResult({required this.status});
 
-    required  this.status,
-  });
-
-  @JsonKey(
-    
-    name: r'status',
-    required: true,
-    includeIfNull: false,
-  )
-
-
+  @JsonKey(name: r'status', required: true, includeIfNull: false)
   final FriendRequestResultStatusEnum status;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FriendRequestResult && other.status == status;
 
+  @override
+  int get hashCode => status.hashCode;
 
-
-
-    @override
-    bool operator ==(Object other) => identical(this, other) || other is FriendRequestResult &&
-      other.status == status;
-
-    @override
-    int get hashCode =>
-        status.hashCode;
-
-  factory FriendRequestResult.fromJson(Map<String, dynamic> json) => _$FriendRequestResultFromJson(json);
+  factory FriendRequestResult.fromJson(Map<String, dynamic> json) =>
+      _$FriendRequestResultFromJson(json);
 
   Map<String, dynamic> toJson() => _$FriendRequestResultToJson(this);
 
@@ -53,22 +39,18 @@ class FriendRequestResult {
   String toString() {
     return toJson().toString();
   }
-
 }
-
 
 enum FriendRequestResultStatusEnum {
-@JsonValue(r'requested')
-requested(r'requested'),
-@JsonValue(r'accepted')
-accepted(r'accepted');
+  @JsonValue(r'requested')
+  requested(r'requested'),
+  @JsonValue(r'accepted')
+  accepted(r'accepted');
 
-const FriendRequestResultStatusEnum(this.value);
+  const FriendRequestResultStatusEnum(this.value);
 
-final String value;
+  final String value;
 
-@override
-String toString() => value;
+  @override
+  String toString() => value;
 }
-
-

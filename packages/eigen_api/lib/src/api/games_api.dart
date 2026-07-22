@@ -29,17 +29,16 @@ import 'package:eigen_api/src/model/my_games.dart';
 import 'package:eigen_api/src/model/solo_started.dart';
 
 class GamesApi {
-
   final Dio _dio;
 
   const GamesApi(this._dio);
 
   /// addBot
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [gameId] 
-  /// * [addBot] 
+  /// * [gameId]
+  /// * [addBot]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -49,7 +48,7 @@ class GamesApi {
   ///
   /// Returns a [Future] containing a [Response] with a [LobbyAccepted] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<LobbyAccepted>> addBot({ 
+  Future<Response<LobbyAccepted>> addBot({
     required String gameId,
     required AddBot addBot,
     CancelToken? cancelToken,
@@ -59,19 +58,18 @@ class GamesApi {
     ProgressCallback? onSendProgress,
     ProgressCallback? onReceiveProgress,
   }) async {
-    final _path = r'/api/engine/games/{gameId}/add-bot'.replaceAll('{' r'gameId' '}', gameId.toString());
+    final _path = r'/api/engine/games/{gameId}/add-bot'.replaceAll(
+      '{'
+      r'gameId'
+      '}',
+      gameId.toString(),
+    );
     final _options = Options(
       method: r'POST',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -82,13 +80,10 @@ class GamesApi {
     dynamic _bodyData;
 
     try {
-_bodyData=jsonEncode(addBot);
-    } catch(error, stackTrace) {
+      _bodyData = jsonEncode(addBot);
+    } catch (error, stackTrace) {
       throw DioException(
-         requestOptions: _options.compose(
-          _dio.options,
-          _path,
-        ),
+        requestOptions: _options.compose(_dio.options, _path),
         type: DioExceptionType.unknown,
         error: error,
         stackTrace: stackTrace,
@@ -107,9 +102,14 @@ _bodyData=jsonEncode(addBot);
     LobbyAccepted? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<LobbyAccepted, LobbyAccepted>(rawData, 'LobbyAccepted', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<LobbyAccepted, LobbyAccepted>(
+              rawData,
+              'LobbyAccepted',
+              growable: true,
+            );
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -133,11 +133,11 @@ _responseData = rawData == null ? null : deserialize<LobbyAccepted, LobbyAccepte
   }
 
   /// cancelGame
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [gameId] 
-  /// * [lobbyCommand] 
+  /// * [gameId]
+  /// * [lobbyCommand]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -147,7 +147,7 @@ _responseData = rawData == null ? null : deserialize<LobbyAccepted, LobbyAccepte
   ///
   /// Returns a [Future] containing a [Response] with a [LobbyAccepted] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<LobbyAccepted>> cancelGame({ 
+  Future<Response<LobbyAccepted>> cancelGame({
     required String gameId,
     required LobbyCommand lobbyCommand,
     CancelToken? cancelToken,
@@ -157,19 +157,18 @@ _responseData = rawData == null ? null : deserialize<LobbyAccepted, LobbyAccepte
     ProgressCallback? onSendProgress,
     ProgressCallback? onReceiveProgress,
   }) async {
-    final _path = r'/api/engine/games/{gameId}/cancel'.replaceAll('{' r'gameId' '}', gameId.toString());
+    final _path = r'/api/engine/games/{gameId}/cancel'.replaceAll(
+      '{'
+      r'gameId'
+      '}',
+      gameId.toString(),
+    );
     final _options = Options(
       method: r'POST',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -180,13 +179,10 @@ _responseData = rawData == null ? null : deserialize<LobbyAccepted, LobbyAccepte
     dynamic _bodyData;
 
     try {
-_bodyData=jsonEncode(lobbyCommand);
-    } catch(error, stackTrace) {
+      _bodyData = jsonEncode(lobbyCommand);
+    } catch (error, stackTrace) {
       throw DioException(
-         requestOptions: _options.compose(
-          _dio.options,
-          _path,
-        ),
+        requestOptions: _options.compose(_dio.options, _path),
         type: DioExceptionType.unknown,
         error: error,
         stackTrace: stackTrace,
@@ -205,9 +201,14 @@ _bodyData=jsonEncode(lobbyCommand);
     LobbyAccepted? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<LobbyAccepted, LobbyAccepted>(rawData, 'LobbyAccepted', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<LobbyAccepted, LobbyAccepted>(
+              rawData,
+              'LobbyAccepted',
+              growable: true,
+            );
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -231,10 +232,10 @@ _responseData = rawData == null ? null : deserialize<LobbyAccepted, LobbyAccepte
   }
 
   /// createGame
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [createGame] 
+  /// * [createGame]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -244,7 +245,7 @@ _responseData = rawData == null ? null : deserialize<LobbyAccepted, LobbyAccepte
   ///
   /// Returns a [Future] containing a [Response] with a [Created] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<Created>> createGame({ 
+  Future<Response<Created>> createGame({
     required CreateGame createGame,
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
@@ -256,16 +257,10 @@ _responseData = rawData == null ? null : deserialize<LobbyAccepted, LobbyAccepte
     final _path = r'/api/engine/games';
     final _options = Options(
       method: r'POST',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -276,13 +271,10 @@ _responseData = rawData == null ? null : deserialize<LobbyAccepted, LobbyAccepte
     dynamic _bodyData;
 
     try {
-_bodyData=jsonEncode(createGame);
-    } catch(error, stackTrace) {
+      _bodyData = jsonEncode(createGame);
+    } catch (error, stackTrace) {
       throw DioException(
-         requestOptions: _options.compose(
-          _dio.options,
-          _path,
-        ),
+        requestOptions: _options.compose(_dio.options, _path),
         type: DioExceptionType.unknown,
         error: error,
         stackTrace: stackTrace,
@@ -301,9 +293,10 @@ _bodyData=jsonEncode(createGame);
     Created? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<Created, Created>(rawData, 'Created', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<Created, Created>(rawData, 'Created', growable: true);
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -327,10 +320,10 @@ _responseData = rawData == null ? null : deserialize<Created, Created>(rawData, 
   }
 
   /// createSoloGame
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [createSolo] 
+  /// * [createSolo]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -340,7 +333,7 @@ _responseData = rawData == null ? null : deserialize<Created, Created>(rawData, 
   ///
   /// Returns a [Future] containing a [Response] with a [SoloStarted] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<SoloStarted>> createSoloGame({ 
+  Future<Response<SoloStarted>> createSoloGame({
     required CreateSolo createSolo,
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
@@ -352,16 +345,10 @@ _responseData = rawData == null ? null : deserialize<Created, Created>(rawData, 
     final _path = r'/api/engine/games/solo';
     final _options = Options(
       method: r'POST',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -372,13 +359,10 @@ _responseData = rawData == null ? null : deserialize<Created, Created>(rawData, 
     dynamic _bodyData;
 
     try {
-_bodyData=jsonEncode(createSolo);
-    } catch(error, stackTrace) {
+      _bodyData = jsonEncode(createSolo);
+    } catch (error, stackTrace) {
       throw DioException(
-         requestOptions: _options.compose(
-          _dio.options,
-          _path,
-        ),
+        requestOptions: _options.compose(_dio.options, _path),
         type: DioExceptionType.unknown,
         error: error,
         stackTrace: stackTrace,
@@ -397,9 +381,14 @@ _bodyData=jsonEncode(createSolo);
     SoloStarted? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<SoloStarted, SoloStarted>(rawData, 'SoloStarted', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<SoloStarted, SoloStarted>(
+              rawData,
+              'SoloStarted',
+              growable: true,
+            );
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -423,11 +412,11 @@ _responseData = rawData == null ? null : deserialize<SoloStarted, SoloStarted>(r
   }
 
   /// forfeitGame
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [gameId] 
-  /// * [forfeit] 
+  /// * [gameId]
+  /// * [forfeit]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -437,7 +426,7 @@ _responseData = rawData == null ? null : deserialize<SoloStarted, SoloStarted>(r
   ///
   /// Returns a [Future] containing a [Response] with a [CommandAccepted] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<CommandAccepted>> forfeitGame({ 
+  Future<Response<CommandAccepted>> forfeitGame({
     required String gameId,
     required Forfeit forfeit,
     CancelToken? cancelToken,
@@ -447,19 +436,18 @@ _responseData = rawData == null ? null : deserialize<SoloStarted, SoloStarted>(r
     ProgressCallback? onSendProgress,
     ProgressCallback? onReceiveProgress,
   }) async {
-    final _path = r'/api/engine/games/{gameId}/forfeit'.replaceAll('{' r'gameId' '}', gameId.toString());
+    final _path = r'/api/engine/games/{gameId}/forfeit'.replaceAll(
+      '{'
+      r'gameId'
+      '}',
+      gameId.toString(),
+    );
     final _options = Options(
       method: r'POST',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -470,13 +458,10 @@ _responseData = rawData == null ? null : deserialize<SoloStarted, SoloStarted>(r
     dynamic _bodyData;
 
     try {
-_bodyData=jsonEncode(forfeit);
-    } catch(error, stackTrace) {
+      _bodyData = jsonEncode(forfeit);
+    } catch (error, stackTrace) {
       throw DioException(
-         requestOptions: _options.compose(
-          _dio.options,
-          _path,
-        ),
+        requestOptions: _options.compose(_dio.options, _path),
         type: DioExceptionType.unknown,
         error: error,
         stackTrace: stackTrace,
@@ -495,9 +480,14 @@ _bodyData=jsonEncode(forfeit);
     CommandAccepted? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<CommandAccepted, CommandAccepted>(rawData, 'CommandAccepted', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<CommandAccepted, CommandAccepted>(
+              rawData,
+              'CommandAccepted',
+              growable: true,
+            );
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -521,12 +511,12 @@ _responseData = rawData == null ? null : deserialize<CommandAccepted, CommandAcc
   }
 
   /// getFrames
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [gameId] 
-  /// * [from] 
-  /// * [to] 
+  /// * [gameId]
+  /// * [from]
+  /// * [to]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -536,7 +526,7 @@ _responseData = rawData == null ? null : deserialize<CommandAccepted, CommandAcc
   ///
   /// Returns a [Future] containing a [Response] with a [Frames] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<Frames>> getFrames({ 
+  Future<Response<Frames>> getFrames({
     required String gameId,
     int? from = 0,
     int? to,
@@ -547,29 +537,25 @@ _responseData = rawData == null ? null : deserialize<CommandAccepted, CommandAcc
     ProgressCallback? onSendProgress,
     ProgressCallback? onReceiveProgress,
   }) async {
-    final _path = r'/api/engine/games/{gameId}/frames'.replaceAll('{' r'gameId' '}', gameId.toString());
+    final _path = r'/api/engine/games/{gameId}/frames'.replaceAll(
+      '{'
+      r'gameId'
+      '}',
+      gameId.toString(),
+    );
     final _options = Options(
       method: r'GET',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
       validateStatus: validateStatus,
     );
 
-    final _queryParameters = <String, dynamic>{
-      r'from': from,
-      r'to': to,
-    };
+    final _queryParameters = <String, dynamic>{r'from': from, r'to': to};
 
     final _response = await _dio.request<Object>(
       _path,
@@ -583,9 +569,10 @@ _responseData = rawData == null ? null : deserialize<CommandAccepted, CommandAcc
     Frames? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<Frames, Frames>(rawData, 'Frames', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<Frames, Frames>(rawData, 'Frames', growable: true);
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -609,10 +596,10 @@ _responseData = rawData == null ? null : deserialize<Frames, Frames>(rawData, 'F
   }
 
   /// getGame
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [gameId] 
+  /// * [gameId]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -622,7 +609,7 @@ _responseData = rawData == null ? null : deserialize<Frames, Frames>(rawData, 'F
   ///
   /// Returns a [Future] containing a [Response] with a [GameSummary] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<GameSummary>> getGame({ 
+  Future<Response<GameSummary>> getGame({
     required String gameId,
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
@@ -631,19 +618,18 @@ _responseData = rawData == null ? null : deserialize<Frames, Frames>(rawData, 'F
     ProgressCallback? onSendProgress,
     ProgressCallback? onReceiveProgress,
   }) async {
-    final _path = r'/api/engine/games/{gameId}'.replaceAll('{' r'gameId' '}', gameId.toString());
+    final _path = r'/api/engine/games/{gameId}'.replaceAll(
+      '{'
+      r'gameId'
+      '}',
+      gameId.toString(),
+    );
     final _options = Options(
       method: r'GET',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -661,9 +647,14 @@ _responseData = rawData == null ? null : deserialize<Frames, Frames>(rawData, 'F
     GameSummary? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<GameSummary, GameSummary>(rawData, 'GameSummary', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<GameSummary, GameSummary>(
+              rawData,
+              'GameSummary',
+              growable: true,
+            );
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -687,11 +678,11 @@ _responseData = rawData == null ? null : deserialize<GameSummary, GameSummary>(r
   }
 
   /// getLobby
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [limit] 
-  /// * [cursor] 
+  /// * [limit]
+  /// * [cursor]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -701,7 +692,7 @@ _responseData = rawData == null ? null : deserialize<GameSummary, GameSummary>(r
   ///
   /// Returns a [Future] containing a [Response] with a [Lobby] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<Lobby>> getLobby({ 
+  Future<Response<Lobby>> getLobby({
     int? limit = 20,
     int? cursor,
     CancelToken? cancelToken,
@@ -714,16 +705,10 @@ _responseData = rawData == null ? null : deserialize<GameSummary, GameSummary>(r
     final _path = r'/api/engine/lobby';
     final _options = Options(
       method: r'GET',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -747,9 +732,10 @@ _responseData = rawData == null ? null : deserialize<GameSummary, GameSummary>(r
     Lobby? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<Lobby, Lobby>(rawData, 'Lobby', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<Lobby, Lobby>(rawData, 'Lobby', growable: true);
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -773,12 +759,12 @@ _responseData = rawData == null ? null : deserialize<Lobby, Lobby>(rawData, 'Lob
   }
 
   /// getMyGames
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [bucket] 
-  /// * [limit] 
-  /// * [cursor] 
+  /// * [bucket]
+  /// * [limit]
+  /// * [cursor]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -788,7 +774,7 @@ _responseData = rawData == null ? null : deserialize<Lobby, Lobby>(rawData, 'Lob
   ///
   /// Returns a [Future] containing a [Response] with a [MyGames] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<MyGames>> getMyGames({ 
+  Future<Response<MyGames>> getMyGames({
     String? bucket = 'active',
     int? limit = 20,
     int? cursor,
@@ -802,16 +788,10 @@ _responseData = rawData == null ? null : deserialize<Lobby, Lobby>(rawData, 'Lob
     final _path = r'/api/engine/games/mine';
     final _options = Options(
       method: r'GET',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -836,9 +816,10 @@ _responseData = rawData == null ? null : deserialize<Lobby, Lobby>(rawData, 'Lob
     MyGames? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<MyGames, MyGames>(rawData, 'MyGames', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<MyGames, MyGames>(rawData, 'MyGames', growable: true);
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -862,11 +843,11 @@ _responseData = rawData == null ? null : deserialize<MyGames, MyGames>(rawData, 
   }
 
   /// joinGame
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [gameId] 
-  /// * [join] 
+  /// * [gameId]
+  /// * [join]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -876,7 +857,7 @@ _responseData = rawData == null ? null : deserialize<MyGames, MyGames>(rawData, 
   ///
   /// Returns a [Future] containing a [Response] with a [Joined] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<Joined>> joinGame({ 
+  Future<Response<Joined>> joinGame({
     required String gameId,
     required Join join,
     CancelToken? cancelToken,
@@ -886,19 +867,18 @@ _responseData = rawData == null ? null : deserialize<MyGames, MyGames>(rawData, 
     ProgressCallback? onSendProgress,
     ProgressCallback? onReceiveProgress,
   }) async {
-    final _path = r'/api/engine/games/{gameId}/join'.replaceAll('{' r'gameId' '}', gameId.toString());
+    final _path = r'/api/engine/games/{gameId}/join'.replaceAll(
+      '{'
+      r'gameId'
+      '}',
+      gameId.toString(),
+    );
     final _options = Options(
       method: r'POST',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -909,13 +889,10 @@ _responseData = rawData == null ? null : deserialize<MyGames, MyGames>(rawData, 
     dynamic _bodyData;
 
     try {
-_bodyData=jsonEncode(join);
-    } catch(error, stackTrace) {
+      _bodyData = jsonEncode(join);
+    } catch (error, stackTrace) {
       throw DioException(
-         requestOptions: _options.compose(
-          _dio.options,
-          _path,
-        ),
+        requestOptions: _options.compose(_dio.options, _path),
         type: DioExceptionType.unknown,
         error: error,
         stackTrace: stackTrace,
@@ -934,9 +911,10 @@ _bodyData=jsonEncode(join);
     Joined? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<Joined, Joined>(rawData, 'Joined', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<Joined, Joined>(rawData, 'Joined', growable: true);
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -960,10 +938,10 @@ _responseData = rawData == null ? null : deserialize<Joined, Joined>(rawData, 'J
   }
 
   /// joinGameByCode
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [joinByCode] 
+  /// * [joinByCode]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -973,7 +951,7 @@ _responseData = rawData == null ? null : deserialize<Joined, Joined>(rawData, 'J
   ///
   /// Returns a [Future] containing a [Response] with a [Joined] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<Joined>> joinGameByCode({ 
+  Future<Response<Joined>> joinGameByCode({
     required JoinByCode joinByCode,
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
@@ -985,16 +963,10 @@ _responseData = rawData == null ? null : deserialize<Joined, Joined>(rawData, 'J
     final _path = r'/api/engine/games/join-by-code';
     final _options = Options(
       method: r'POST',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -1005,13 +977,10 @@ _responseData = rawData == null ? null : deserialize<Joined, Joined>(rawData, 'J
     dynamic _bodyData;
 
     try {
-_bodyData=jsonEncode(joinByCode);
-    } catch(error, stackTrace) {
+      _bodyData = jsonEncode(joinByCode);
+    } catch (error, stackTrace) {
       throw DioException(
-         requestOptions: _options.compose(
-          _dio.options,
-          _path,
-        ),
+        requestOptions: _options.compose(_dio.options, _path),
         type: DioExceptionType.unknown,
         error: error,
         stackTrace: stackTrace,
@@ -1030,9 +999,10 @@ _bodyData=jsonEncode(joinByCode);
     Joined? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<Joined, Joined>(rawData, 'Joined', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<Joined, Joined>(rawData, 'Joined', growable: true);
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -1056,11 +1026,11 @@ _responseData = rawData == null ? null : deserialize<Joined, Joined>(rawData, 'J
   }
 
   /// leaveGame
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [gameId] 
-  /// * [lobbyCommand] 
+  /// * [gameId]
+  /// * [lobbyCommand]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -1070,7 +1040,7 @@ _responseData = rawData == null ? null : deserialize<Joined, Joined>(rawData, 'J
   ///
   /// Returns a [Future] containing a [Response] with a [LobbyAccepted] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<LobbyAccepted>> leaveGame({ 
+  Future<Response<LobbyAccepted>> leaveGame({
     required String gameId,
     required LobbyCommand lobbyCommand,
     CancelToken? cancelToken,
@@ -1080,19 +1050,18 @@ _responseData = rawData == null ? null : deserialize<Joined, Joined>(rawData, 'J
     ProgressCallback? onSendProgress,
     ProgressCallback? onReceiveProgress,
   }) async {
-    final _path = r'/api/engine/games/{gameId}/leave'.replaceAll('{' r'gameId' '}', gameId.toString());
+    final _path = r'/api/engine/games/{gameId}/leave'.replaceAll(
+      '{'
+      r'gameId'
+      '}',
+      gameId.toString(),
+    );
     final _options = Options(
       method: r'POST',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -1103,13 +1072,10 @@ _responseData = rawData == null ? null : deserialize<Joined, Joined>(rawData, 'J
     dynamic _bodyData;
 
     try {
-_bodyData=jsonEncode(lobbyCommand);
-    } catch(error, stackTrace) {
+      _bodyData = jsonEncode(lobbyCommand);
+    } catch (error, stackTrace) {
       throw DioException(
-         requestOptions: _options.compose(
-          _dio.options,
-          _path,
-        ),
+        requestOptions: _options.compose(_dio.options, _path),
         type: DioExceptionType.unknown,
         error: error,
         stackTrace: stackTrace,
@@ -1128,9 +1094,14 @@ _bodyData=jsonEncode(lobbyCommand);
     LobbyAccepted? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<LobbyAccepted, LobbyAccepted>(rawData, 'LobbyAccepted', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<LobbyAccepted, LobbyAccepted>(
+              rawData,
+              'LobbyAccepted',
+              growable: true,
+            );
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -1154,11 +1125,11 @@ _responseData = rawData == null ? null : deserialize<LobbyAccepted, LobbyAccepte
   }
 
   /// startGame
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [gameId] 
-  /// * [lobbyCommand] 
+  /// * [gameId]
+  /// * [lobbyCommand]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -1168,7 +1139,7 @@ _responseData = rawData == null ? null : deserialize<LobbyAccepted, LobbyAccepte
   ///
   /// Returns a [Future] containing a [Response] with a [CommandAccepted] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<CommandAccepted>> startGame({ 
+  Future<Response<CommandAccepted>> startGame({
     required String gameId,
     required LobbyCommand lobbyCommand,
     CancelToken? cancelToken,
@@ -1178,19 +1149,18 @@ _responseData = rawData == null ? null : deserialize<LobbyAccepted, LobbyAccepte
     ProgressCallback? onSendProgress,
     ProgressCallback? onReceiveProgress,
   }) async {
-    final _path = r'/api/engine/games/{gameId}/start'.replaceAll('{' r'gameId' '}', gameId.toString());
+    final _path = r'/api/engine/games/{gameId}/start'.replaceAll(
+      '{'
+      r'gameId'
+      '}',
+      gameId.toString(),
+    );
     final _options = Options(
       method: r'POST',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -1201,13 +1171,10 @@ _responseData = rawData == null ? null : deserialize<LobbyAccepted, LobbyAccepte
     dynamic _bodyData;
 
     try {
-_bodyData=jsonEncode(lobbyCommand);
-    } catch(error, stackTrace) {
+      _bodyData = jsonEncode(lobbyCommand);
+    } catch (error, stackTrace) {
       throw DioException(
-         requestOptions: _options.compose(
-          _dio.options,
-          _path,
-        ),
+        requestOptions: _options.compose(_dio.options, _path),
         type: DioExceptionType.unknown,
         error: error,
         stackTrace: stackTrace,
@@ -1226,9 +1193,14 @@ _bodyData=jsonEncode(lobbyCommand);
     CommandAccepted? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<CommandAccepted, CommandAccepted>(rawData, 'CommandAccepted', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<CommandAccepted, CommandAccepted>(
+              rawData,
+              'CommandAccepted',
+              growable: true,
+            );
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -1252,11 +1224,11 @@ _responseData = rawData == null ? null : deserialize<CommandAccepted, CommandAcc
   }
 
   /// submitAction
-  /// 
+  ///
   ///
   /// Parameters:
-  /// * [gameId] 
-  /// * [action] 
+  /// * [gameId]
+  /// * [action]
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -1266,7 +1238,7 @@ _responseData = rawData == null ? null : deserialize<CommandAccepted, CommandAcc
   ///
   /// Returns a [Future] containing a [Response] with a [CommandAccepted] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<CommandAccepted>> submitAction({ 
+  Future<Response<CommandAccepted>> submitAction({
     required String gameId,
     required Action action,
     CancelToken? cancelToken,
@@ -1276,19 +1248,18 @@ _responseData = rawData == null ? null : deserialize<CommandAccepted, CommandAcc
     ProgressCallback? onSendProgress,
     ProgressCallback? onReceiveProgress,
   }) async {
-    final _path = r'/api/engine/games/{gameId}/action'.replaceAll('{' r'gameId' '}', gameId.toString());
+    final _path = r'/api/engine/games/{gameId}/action'.replaceAll(
+      '{'
+      r'gameId'
+      '}',
+      gameId.toString(),
+    );
     final _options = Options(
       method: r'POST',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
+      headers: <String, dynamic>{...?headers},
       extra: <String, dynamic>{
         'secure': <Map<String, String>>[
-          {
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'firebase',
-          },
+          {'type': 'http', 'scheme': 'bearer', 'name': 'firebase'},
         ],
         ...?extra,
       },
@@ -1299,13 +1270,10 @@ _responseData = rawData == null ? null : deserialize<CommandAccepted, CommandAcc
     dynamic _bodyData;
 
     try {
-_bodyData=jsonEncode(action);
-    } catch(error, stackTrace) {
+      _bodyData = jsonEncode(action);
+    } catch (error, stackTrace) {
       throw DioException(
-         requestOptions: _options.compose(
-          _dio.options,
-          _path,
-        ),
+        requestOptions: _options.compose(_dio.options, _path),
         type: DioExceptionType.unknown,
         error: error,
         stackTrace: stackTrace,
@@ -1324,9 +1292,14 @@ _bodyData=jsonEncode(action);
     CommandAccepted? _responseData;
 
     try {
-final rawData = _response.data;
-_responseData = rawData == null ? null : deserialize<CommandAccepted, CommandAccepted>(rawData, 'CommandAccepted', growable: true);
-
+      final rawData = _response.data;
+      _responseData = rawData == null
+          ? null
+          : deserialize<CommandAccepted, CommandAccepted>(
+              rawData,
+              'CommandAccepted',
+              growable: true,
+            );
     } catch (error, stackTrace) {
       throw DioException(
         requestOptions: _response.requestOptions,
@@ -1348,5 +1321,4 @@ _responseData = rawData == null ? null : deserialize<CommandAccepted, CommandAcc
       extra: _response.extra,
     );
   }
-
 }

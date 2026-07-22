@@ -4,30 +4,33 @@ import 'package:eigen_flutter/features/game/utils/game_timing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-GameSummary _game({int? turnSeconds, int? budgetSeconds, int? incrementSeconds}) =>
-    GameSummary(
-      id: 'g',
-      createdBy: null,
-      status: GameStatus.active,
-      access: GameAccess.public,
-      schemaVersion: 1,
-      config: const <String, dynamic>{},
-      turnSeconds: turnSeconds,
-      budgetSeconds: budgetSeconds,
-      incrementSeconds: incrementSeconds,
-      rated: false,
-      ratingPool: null,
-      minPlayers: 2,
-      maxPlayers: 2,
-      shortCode: 'ABC123',
-      pendingPlayers: null,
-      turnDeadline: null,
-      outcomes: null,
-      finishedAt: null,
-      createdAt: 0,
-      updatedAt: 0,
-      participants: const [],
-    );
+GameSummary _game({
+  int? turnSeconds,
+  int? budgetSeconds,
+  int? incrementSeconds,
+}) => GameSummary(
+  id: 'g',
+  createdBy: null,
+  status: GameStatus.active,
+  access: GameAccess.public,
+  schemaVersion: 1,
+  config: const <String, dynamic>{},
+  turnSeconds: turnSeconds,
+  budgetSeconds: budgetSeconds,
+  incrementSeconds: incrementSeconds,
+  rated: false,
+  ratingPool: null,
+  minPlayers: 2,
+  maxPlayers: 2,
+  shortCode: 'ABC123',
+  pendingPlayers: null,
+  turnDeadline: null,
+  outcomes: null,
+  finishedAt: null,
+  createdAt: 0,
+  updatedAt: 0,
+  participants: const [],
+);
 
 void main() {
   group('gameTimingLabel', () {

@@ -227,6 +227,7 @@ class _AddBotDialog extends ConsumerStatefulWidget {
 
   final String gameId;
   final bool rated;
+
   /// The game's raw config payload, as it comes off the wire.
   final Object config;
 

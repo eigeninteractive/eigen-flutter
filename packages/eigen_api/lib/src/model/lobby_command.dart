@@ -8,7 +8,6 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'lobby_command.g.dart';
 
-
 @CopyWith()
 @JsonSerializable(
   checked: true,
@@ -18,34 +17,21 @@ part 'lobby_command.g.dart';
 )
 class LobbyCommand {
   /// Returns a new [LobbyCommand] instance.
-  LobbyCommand({
+  LobbyCommand({this.commandId});
 
-     this.commandId,
-  });
-
-  @JsonKey(
-    
-    name: r'command_id',
-    required: false,
-    includeIfNull: false,
-  )
-
-
+  @JsonKey(name: r'command_id', required: false, includeIfNull: false)
   final String? commandId;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LobbyCommand && other.commandId == commandId;
 
+  @override
+  int get hashCode => commandId.hashCode;
 
-
-
-    @override
-    bool operator ==(Object other) => identical(this, other) || other is LobbyCommand &&
-      other.commandId == commandId;
-
-    @override
-    int get hashCode =>
-        commandId.hashCode;
-
-  factory LobbyCommand.fromJson(Map<String, dynamic> json) => _$LobbyCommandFromJson(json);
+  factory LobbyCommand.fromJson(Map<String, dynamic> json) =>
+      _$LobbyCommandFromJson(json);
 
   Map<String, dynamic> toJson() => _$LobbyCommandToJson(this);
 
@@ -53,6 +39,4 @@ class LobbyCommand {
   String toString() {
     return toJson().toString();
   }
-
 }
-
