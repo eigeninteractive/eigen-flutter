@@ -1,7 +1,9 @@
 import 'package:dio/dio.dart';
+import 'package:dio_smart_retry/dio_smart_retry.dart';
 import 'package:eigen_api/eigen_api.dart';
 import 'package:eigen_flutter/core/api/auth_interceptor.dart';
 import 'package:eigen_flutter/core/api/game_socket.dart';
+import 'package:eigen_flutter/core/api/retry_policy.dart';
 import 'package:eigen_flutter/core/api/server_clock.dart';
 import 'package:eigen_flutter/core/config/app_config.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -37,6 +39,25 @@ Dio engineDio(Ref ref) {
   );
   dio.interceptors.add(AuthInterceptor(FirebaseAuth.instance));
   dio.interceptors.add(ref.watch(serverClockProvider).interceptor);
+  // Transport-level retry, idempotent reads only. Retries a GET whose failure
+  // carried no response — a dropped connection or a timeout, where the outcome
+  // is unknown — twice with short backoff. A write is never retried (a
+  // timed-out POST may have landed on the server), and any failure that carried
+  // a response is the server's decision, left untouched for `engineCall` to map
+  // (a 429 included — its Retry-After is respected, not auto-retried). The
+  // retry replays the whole interceptor chain, so `AuthInterceptor` re-attaches
+  // a fresh token each attempt; added last so it is the outermost handler.
+  dio.interceptors.add(
+    RetryInterceptor(
+      dio: dio,
+      retries: 2,
+      retryDelays: const [
+        Duration(milliseconds: 200),
+        Duration(milliseconds: 400),
+      ],
+      retryEvaluator: retryTransientGet,
+    ),
+  );
   ref.onDispose(dio.close);
   return dio;
 }

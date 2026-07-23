@@ -371,7 +371,8 @@
           "friends_only",
           "registration_required",
           "image_too_large",
-          "unsupported_image_type"
+          "unsupported_image_type",
+          "rate_limited"
         ],
         "description": "A stable machine code identifying why a request failed."
       },

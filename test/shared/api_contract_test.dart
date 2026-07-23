@@ -40,6 +40,8 @@ void main() {
         'registration_required',
         'image_too_large',
         'unsupported_image_type',
+        // Per-user write rate limiting (429).
+        'rate_limited',
       });
     });
 

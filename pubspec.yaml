@@ -45,6 +45,7 @@ dependencies:
   eigen_api:
     path: packages/eigen_api
   dio: ^5.10.0
+  dio_smart_retry: ^7.0.1
   firebase_auth: ^6.5.6
   web_socket_channel: ^3.0.3
 

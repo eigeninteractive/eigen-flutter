@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:eigen_flutter/core/api/retry_policy.dart';
 import 'package:eigen_flutter/core/config/app_config.dart';
 import 'package:eigen_flutter/core/game/game_module.dart';
 import 'package:eigen_flutter/core/navigation/providers/navigation_providers.dart';
@@ -57,6 +58,9 @@ Future<void> runEngineApp({
 
   runApp(
     ProviderScope(
+      // Narrows Riverpod's over-eager default retry to transport failures only
+      // — a server-reported error is never re-run. See [engineProviderRetry].
+      retry: engineProviderRetry,
       overrides: [
         currentGameModuleProvider.overrideWithValue(module),
         appConfigProvider.overrideWithValue(config),

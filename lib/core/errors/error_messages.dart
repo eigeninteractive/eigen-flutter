@@ -54,6 +54,8 @@ String messageForCode(ErrorCode code) => switch (code) {
   ErrorCode.registrationRequired => 'Create an account to do that.',
   ErrorCode.imageTooLarge => 'That image is too large. Try a smaller one.',
   ErrorCode.unsupportedImageType => 'Use a JPEG, PNG, or WebP image.',
+  ErrorCode.rateLimited =>
+    "You're doing that too quickly. Wait a moment and try again.",
 };
 
 const _offline = "Can't reach the server. Check your connection.";

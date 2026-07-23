@@ -89,7 +89,11 @@ enum ErrorCode {
 
   /// A stable machine code identifying why a request failed.
   @JsonValue(r'unsupported_image_type')
-  unsupportedImageType(r'unsupported_image_type');
+  unsupportedImageType(r'unsupported_image_type'),
+
+  /// A stable machine code identifying why a request failed.
+  @JsonValue(r'rate_limited')
+  rateLimited(r'rate_limited');
 
   const ErrorCode(this.value);
 

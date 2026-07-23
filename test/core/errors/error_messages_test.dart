@@ -21,6 +21,11 @@ void main() {
           ),
         ),
       ).equals('The game updated — try again.');
+      check(
+        humanize(
+          const EngineException('slow down', code: ErrorCode.rateLimited),
+        ),
+      ).equals("You're doing that too quickly. Wait a moment and try again.");
     });
 
     test('dispatches on code, not message text', () {

@@ -11,10 +11,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 /// is deliberate — the engine has no anonymous surface, and a missing token is
 /// the same failure as a bad one.
 ///
-/// There is no refresh-and-retry on 401 (the engine ships no retry machinery in
-/// v1). Because `getIdToken()` already refreshes ahead of expiry, a 401 here
-/// means the session is genuinely gone, which the auth layer handles by signing
-/// the user out — not something a retry would fix.
+/// There is no refresh-and-retry on 401. The transport `RetryInterceptor`
+/// retries only idempotent GETs whose failure carried no response, so a 401 (a
+/// response, and on a request of any method) is never retried; and because
+/// `getIdToken()` already refreshes ahead of expiry, a 401 here means the
+/// session is genuinely gone, which the auth layer handles by signing the user
+/// out — not something a retry would fix.
 class AuthInterceptor extends Interceptor {
   const AuthInterceptor(this._auth);
 
