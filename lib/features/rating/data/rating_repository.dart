@@ -17,10 +17,10 @@ class RatingRepository {
   /// Works for humans and bots alike: a rating row is keyed by exactly one of
   /// the two, so the id alone is enough. Display ratings are public.
   Future<List<Rating>> getPlayerRatings(String playerId) async {
-    final response = await engineCall(
+    final body = await engineData(
       () => _players.getPlayerRatings(playerId: playerId),
     );
-    return response.data?.ratings ?? const [];
+    return body.ratings;
   }
 
   /// The caller's own ratings.
@@ -28,8 +28,8 @@ class RatingRepository {
   /// Distinct from [getPlayerRatings] only in that it needs no id — the token
   /// identifies the caller.
   Future<List<Rating>> getMyRatings() async {
-    final response = await engineCall(() => _me.getMyRatings());
-    return response.data?.ratings ?? const [];
+    final body = await engineData(() => _me.getMyRatings());
+    return body.ratings;
   }
 
   /// The caller's rating changes, newest first, optionally for one [pool].
@@ -37,9 +37,9 @@ class RatingRepository {
     String? pool,
     int? limit,
   }) async {
-    final response = await engineCall(
+    final body = await engineData(
       () => _me.getMyRatingHistory(pool: pool, limit: limit),
     );
-    return response.data?.history ?? const [];
+    return body.history;
   }
 }

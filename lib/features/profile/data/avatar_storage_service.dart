@@ -7,7 +7,7 @@ import 'package:eigen_flutter/core/api/engine_call.dart';
 ///
 /// Not part of the generated client: a raw binary body has no clean OpenAPI
 /// representation, so this is the one place that builds a request by hand. It
-/// still goes through [engineCall], so a rejection surfaces as the same
+/// still goes through [engineData], so a rejection surfaces as the same
 /// `EngineException` - with [ErrorCode.imageTooLarge] or
 /// [ErrorCode.unsupportedImageType] - that every other call produces.
 ///
@@ -34,7 +34,7 @@ class AvatarStorageService {
     Uint8List bytes, {
     String mimeType = 'image/jpeg',
   }) async {
-    final response = await engineCall(
+    final body = await engineData(
       () => _dio.put<Map<String, dynamic>>(
         '/api/engine/me/avatar',
         data: Stream.fromIterable([bytes]),
@@ -46,6 +46,6 @@ class AvatarStorageService {
         ),
       ),
     );
-    return response.data!['avatar_url'] as String;
+    return body['avatar_url'] as String;
   }
 }

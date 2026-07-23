@@ -48,10 +48,10 @@ class GameRepository {
     int limit = lobbyPageSize,
     int? cursor,
   }) async {
-    final response = await engineCall(
+    final body = await engineData(
       () => _api.getLobby(limit: limit, cursor: cursor),
     );
-    return response.data?.games ?? const [];
+    return body.games;
   }
 
   /// The caller's games in one bucket: `active` (still playable) or `finished`
@@ -64,10 +64,10 @@ class GameRepository {
     int limit = historyPageSize,
     int? cursor,
   }) async {
-    final response = await engineCall(
+    final body = await engineData(
       () => _api.getMyGames(bucket: bucket, limit: limit, cursor: cursor),
     );
-    return response.data?.games ?? const [];
+    return body.games;
   }
 
   /// One game's metadata and roster.
@@ -76,8 +76,7 @@ class GameRepository {
   /// config, timing - so they are fetched rather than streamed. The mutable
   /// parts (status, seats) also arrive live over the socket.
   Future<GameSummary> getGame(String gameId) async {
-    final response = await engineCall(() => _api.getGame(gameId: gameId));
-    return response.data!;
+    return engineData(() => _api.getGame(gameId: gameId));
   }
 
   /// A player's finished public games - the replay list on their profile.
@@ -88,16 +87,16 @@ class GameRepository {
     String playerId, {
     int? limit,
   }) async {
-    final response = await engineCall(
+    final body = await engineData(
       () => _players.getPlayerGames(playerId: playerId, limit: limit),
     );
-    return response.data?.games ?? const [];
+    return body.games;
   }
 
   /// The bots available to seat, for this build's schema version.
   Future<List<Bot>> getBots() async {
-    final response = await engineCall(() => _bots.getBots());
-    return response.data?.bots ?? const [];
+    final body = await engineData(() => _bots.getBots());
+    return body.bots;
   }
 
   // ── Creating and joining ───────────────────────────────────────────────────
@@ -118,7 +117,7 @@ class GameRepository {
     int? budgetSeconds,
     int? incrementSeconds,
   }) async {
-    final response = await engineCall(
+    return engineData(
       () => _api.createGame(
         createGame: CreateGame(
           access: access,
@@ -133,7 +132,6 @@ class GameRepository {
         ),
       ),
     );
-    return response.data!;
   }
 
   /// Creates a private game seated with the caller plus [botIds] and starts it,
@@ -153,7 +151,7 @@ class GameRepository {
     int? budgetSeconds,
     int? incrementSeconds,
   }) async {
-    final response = await engineCall(
+    return engineData(
       () => _api.createSoloGame(
         createSolo: CreateSolo(
           schemaVersion: schemaVersion,
@@ -168,7 +166,6 @@ class GameRepository {
         ),
       ),
     );
-    return response.data!;
   }
 
   /// Takes a seat. [clientSchemaVersion] is the newest version this build ships
@@ -183,7 +180,7 @@ class GameRepository {
     required int clientSchemaVersion,
     String? commandId,
   }) async {
-    final response = await engineCall(
+    return engineData(
       () => _api.joinGame(
         gameId: gameId,
         join: Join(
@@ -192,7 +189,6 @@ class GameRepository {
         ),
       ),
     );
-    return response.data!;
   }
 
   /// Takes a seat using a shared short code rather than a game id.
@@ -204,7 +200,7 @@ class GameRepository {
     required int clientSchemaVersion,
     String? commandId,
   }) async {
-    final response = await engineCall(
+    return engineData(
       () => _api.joinGameByCode(
         joinByCode: JoinByCode(
           shortCode: shortCode,
@@ -213,29 +209,28 @@ class GameRepository {
         ),
       ),
     );
-    return response.data!;
   }
 
   /// Gives up a seat before the game starts. The creator cancels instead.
   Future<Roster> leaveGame(String gameId, {String? commandId}) async {
-    final response = await engineCall(
+    final body = await engineData(
       () => _api.leaveGame(
         gameId: gameId,
         lobbyCommand: LobbyCommand(commandId: commandId),
       ),
     );
-    return response.data!.roster;
+    return body.roster;
   }
 
   /// Abandons a game that has not started. Creator only.
   Future<Roster> cancelGame(String gameId, {String? commandId}) async {
-    final response = await engineCall(
+    final body = await engineData(
       () => _api.cancelGame(
         gameId: gameId,
         lobbyCommand: LobbyCommand(commandId: commandId),
       ),
     );
-    return response.data!.roster;
+    return body.roster;
   }
 
   /// Seats a bot alongside the humans. Creator only, pre-start.
@@ -244,13 +239,13 @@ class GameRepository {
     required String botId,
     String? commandId,
   }) async {
-    final response = await engineCall(
+    final body = await engineData(
       () => _api.addBot(
         gameId: gameId,
         addBot: AddBot(botId: botId, commandId: commandId),
       ),
     );
-    return response.data!.roster;
+    return body.roster;
   }
 
   /// Starts a ready game. Creator only.
@@ -258,13 +253,13 @@ class GameRepository {
   /// Returns the committed version; the opening frames reach every seat over
   /// their own socket, since a start has no single acting seat.
   Future<int> startGame(String gameId, {String? commandId}) async {
-    final response = await engineCall(
+    final body = await engineData(
       () => _api.startGame(
         gameId: gameId,
         lobbyCommand: LobbyCommand(commandId: commandId),
       ),
     );
-    return response.data!.version;
+    return body.version;
   }
 
   // ── Playing ────────────────────────────────────────────────────────────────
@@ -289,7 +284,7 @@ class GameRepository {
     required Object? data,
     String? commandId,
   }) async {
-    final response = await engineCall(
+    return engineData(
       () => _api.submitAction(
         gameId: gameId,
         action: Action(
@@ -300,7 +295,6 @@ class GameRepository {
         ),
       ),
     );
-    return response.data!;
   }
 
   /// Resigns [seat] from a live game.
@@ -309,13 +303,12 @@ class GameRepository {
     required int seat,
     String? commandId,
   }) async {
-    final response = await engineCall(
+    return engineData(
       () => _api.forfeitGame(
         gameId: gameId,
         forfeit: Forfeit(seat: seat, commandId: commandId),
       ),
     );
-    return response.data!;
   }
 
   /// Frames in `[from, to]` for the caller's seat, version-ascending.
@@ -323,10 +316,10 @@ class GameRepository {
   /// Backs both gap recovery and replay. A non-participant may read a finished
   /// public game, which is what makes spectating a replay possible.
   Future<List<Frame>> getFrames(String gameId, {int from = 0, int? to}) async {
-    final response = await engineCall(
+    final body = await engineData(
       () => _api.getFrames(gameId: gameId, from: from, to: to),
     );
-    return response.data?.frames ?? const [];
+    return body.frames;
   }
 
   // ── The live feed ──────────────────────────────────────────────────────────

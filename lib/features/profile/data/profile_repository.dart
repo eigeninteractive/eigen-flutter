@@ -13,10 +13,7 @@ class ProfileRepository {
 
   /// The caller's own profile, including the private fields (email) that the
   /// public [Player] projection omits.
-  Future<Profile> getProfile() async {
-    final response = await engineCall(() => _api.getProfile());
-    return response.data!;
-  }
+  Future<Profile> getProfile() => engineData(() => _api.getProfile());
 
   /// Changes the caller's username — the unique, charset-constrained handle.
   ///
@@ -24,24 +21,24 @@ class ProfileRepository {
   /// [ErrorCode.usernameInvalid]; both are field-level form errors rather than
   /// failures to report generically.
   Future<String> updateUsername(String username) async {
-    final response = await engineCall(
+    final body = await engineData(
       () => _api.updateUsername(
         usernameUpdate: UsernameUpdate(username: username),
       ),
     );
-    return response.data!.username;
+    return body.username;
   }
 
   /// Changes the caller's display name — the free-form label shown beside their
   /// moves. Not unique: two players may share one, which is what the username
   /// disambiguates.
   Future<String> updateDisplayName(String displayName) async {
-    final response = await engineCall(
+    final body = await engineData(
       () => _api.updateDisplayName(
         displayNameUpdate: DisplayNameUpdate(displayName: displayName),
       ),
     );
-    return response.data!.displayName;
+    return body.displayName;
   }
 
   /// Deletes the caller's account and all of its data.

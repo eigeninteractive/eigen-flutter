@@ -11,6 +11,19 @@
 /// degrading UX in production. The fixture file format is documented in
 /// `@eigen/testkit`'s `twin-fixtures.ts`, the TS half.
 ///
+/// Loading and running are separate steps on purpose. A fixture file is
+/// hand-written JSON, so [loadTwinFixtureSuites] validates it into the typed
+/// [TwinFixtureCase] hierarchy first: a missing or mistyped field fails at
+/// load with the file, case and field named, rather than surfacing later as a
+/// confusing comparison failure blamed on the game's rules. By the time
+/// [runTwinFixtureCase] sees a case, every field it reads is known-present and
+/// known-typed, so it performs no casting at all.
+///
+/// This side validates fields it never itself reads (`expected.state`,
+/// `participantCount`, ...) as well. Those belong to the TS runner, but a game
+/// package may ship only a Dart twin — and then this is the only thing
+/// standing between a typo and a silently skipped assertion.
+///
 /// Framework-free on purpose (no `flutter_test` import), so it can live in
 /// `lib/` and be consumed by any app's test suite:
 ///
@@ -24,7 +37,7 @@
 ///       for (final fixtureCase in suite.cases) {
 ///         test(fixtureCase.name, () {
 ///           expect(rules, isNotNull);
-///           expect(runTwinFixtureCase(rules!, fixtureCase.json), isEmpty);
+///           expect(runTwinFixtureCase(rules!, fixtureCase), isEmpty);
 ///         });
 ///       }
 ///     });
@@ -40,8 +53,8 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:eigen_flutter/core/game/game_module.dart';
 import 'package:eigen_api/eigen_api.dart' show GameAccess;
+import 'package:eigen_flutter/core/game/game_module.dart';
 
 /// One fixture file's cases, all targeting one `schema_version` unit.
 class TwinFixtureSuite {
@@ -60,20 +73,95 @@ class TwinFixtureSuite {
   final List<TwinFixtureCase> cases;
 }
 
-/// One named fixture case, kept as raw JSON for [runTwinFixtureCase].
-class TwinFixtureCase {
-  const TwinFixtureCase({required this.name, required this.json});
+/// One validated fixture case. Sealed, so [runTwinFixtureCase] switches
+/// exhaustively and an added case kind is a compile error rather than a
+/// silently unhandled string.
+sealed class TwinFixtureCase {
+  const TwinFixtureCase({required this.name});
 
+  /// The case's `name`, used as the test name.
   final String name;
-  final Map<String, dynamic> json;
+}
+
+/// Exercises the action codec, [GameRules.isValidAction] and — when the game
+/// implements optimism — [GameRules.previewAction].
+final class ActionCase extends TwinFixtureCase {
+  const ActionCase({
+    required super.name,
+    required this.config,
+    required this.state,
+    required this.obs,
+    required this.action,
+    required this.pending,
+    required this.playerIndex,
+    required this.expectedValid,
+    required this.expectedObservation,
+  });
+
+  final Map<String, dynamic> config;
+
+  /// The TS runner's `applyAction` input. Read here only as the fallback for
+  /// [obs] — a perfect-information game omits `obs` because the two coincide.
+  final Map<String, dynamic> state;
+
+  /// The acting seat's observation payload: the fixture's `obs`, or `state`
+  /// when the fixture omits it.
+  final Map<String, dynamic> obs;
+
+  final Map<String, dynamic> action;
+  final List<int> pending;
+  final int playerIndex;
+  final bool expectedValid;
+
+  /// The actor's post-action view, or null when the fixture records none.
+  final Map<String, dynamic>? expectedObservation;
+}
+
+/// A [GameRules.ratingPool] predicate case.
+final class RatingPoolCase extends TwinFixtureCase {
+  const RatingPoolCase({
+    required super.name,
+    required this.access,
+    required this.turnSeconds,
+    required this.budgetSeconds,
+    required this.incrementSeconds,
+    required this.minPlayers,
+    required this.maxPlayers,
+    required this.config,
+    required this.expected,
+  });
+
+  final GameAccess access;
+  final int? turnSeconds;
+  final int? budgetSeconds;
+  final int? incrementSeconds;
+  final int minPlayers;
+  final int maxPlayers;
+  final Map<String, dynamic> config;
+  final String? expected;
+}
+
+/// A [GameRules.botSeatable] predicate case.
+final class BotSeatableCase extends TwinFixtureCase {
+  const BotSeatableCase({
+    required super.name,
+    required this.gameConfig,
+    required this.botConfig,
+    required this.expected,
+  });
+
+  final Map<String, dynamic> gameConfig;
+  final Map<String, dynamic> botConfig;
+  final bool expected;
 }
 
 /// Loads every fixture file under [rootPath] (layout: `<root>/v<N>/*.json`),
 /// sorted by path for stable test ordering.
 ///
-/// Throws [FormatException] on malformed JSON and [TypeError] on a file
-/// missing `schemaVersion`/`cases` — a broken fixture should fail loudly, not
-/// silently shrink the suite.
+/// Throws [FormatException] on malformed JSON, and on any fixture that does
+/// not match the documented format — a broken fixture should fail loudly and
+/// immediately, not silently shrink the suite or fail later as a phantom
+/// rules divergence.
 List<TwinFixtureSuite> loadTwinFixtureSuites(String rootPath) {
   final files =
       Directory(rootPath)
@@ -84,100 +172,205 @@ List<TwinFixtureSuite> loadTwinFixtureSuites(String rootPath) {
         ..sort((a, b) => a.path.compareTo(b.path));
   return [
     for (final file in files)
-      _parseSuite(file.path, jsonDecode(file.readAsStringSync())),
+      parseTwinFixtureSuite(file.path, jsonDecode(file.readAsStringSync())),
   ];
 }
 
-TwinFixtureSuite _parseSuite(String path, dynamic json) {
-  final map = json as Map<String, dynamic>;
+/// Validates one fixture file's decoded JSON into a typed suite.
+///
+/// Exported so a package can lint its fixtures without running them, and so
+/// the failure is attributable to a file even when the caller supplies the
+/// JSON itself.
+TwinFixtureSuite parseTwinFixtureSuite(String path, dynamic json) {
+  final root = _object(path, json);
+  final cases = _list('$path.cases', root['cases']);
   return TwinFixtureSuite(
     path: path,
-    schemaVersion: map['schemaVersion'] as int,
+    schemaVersion: _int('$path.schemaVersion', root['schemaVersion']),
     cases: [
-      for (final c in map['cases'] as List)
-        TwinFixtureCase(
-          name: (c as Map<String, dynamic>)['name'] as String,
-          json: c,
-        ),
+      for (final (index, raw) in cases.indexed)
+        _parseCase('$path.cases[$index]', raw),
     ],
   );
 }
 
-/// Runs one fixture case against the Dart [rules] twin, returning failure
-/// descriptions (empty ⇒ the case passes).
+TwinFixtureCase _parseCase(String indexed, dynamic raw) {
+  final map = _object(indexed, raw);
+  // Prefer the case's own name in the location once it is readable — a
+  // fixture author finds `cases[3] (seat 0 wins)` faster than an index.
+  final name = map['name'];
+  final where = name is String ? '$indexed ($name)' : indexed;
+  return switch (map['kind']) {
+    'action' => _parseActionCase(where, map),
+    'ratingPool' => _parseRatingPoolCase(where, map),
+    'botSeatable' => _parseBotSeatableCase(where, map),
+    final kind => throw FormatException(
+      '$where.kind: expected one of action | ratingPool | botSeatable, '
+      'got ${jsonEncode(kind)}',
+    ),
+  };
+}
+
+ActionCase _parseActionCase(String where, Map<String, dynamic> map) {
+  final expected = _object('$where.expected', map['expected']);
+  final state = _object('$where.state', map['state']);
+  // Fields only the TS runner consumes. Validated, not stored: a game package
+  // may ship no TS twin at all, and then nothing else would catch a typo.
+  _optional('$where.expected.state', expected['state'], _object);
+  _optional('$where.expected.pending', expected['pending'], _intList);
+  _optional('$where.participantCount', map['participantCount'], _int);
+  _optional('$where.rngSeed', map['rngSeed'], _string);
+  if (expected.containsKey('outcome') && expected['outcome'] != null) {
+    _list('$where.expected.outcome', expected['outcome']);
+  }
+  return ActionCase(
+    name: _string('$where.name', map['name']),
+    config: _object('$where.config', map['config']),
+    state: state,
+    obs: _optional('$where.obs', map['obs'], _object) ?? state,
+    action: _object('$where.action', map['action']),
+    pending: _intList('$where.pending', map['pending']),
+    playerIndex: _int('$where.playerIndex', map['playerIndex']),
+    expectedValid: _bool('$where.expected.valid', expected['valid']),
+    expectedObservation: _optional(
+      '$where.expected.observation',
+      expected['observation'],
+      _object,
+    ),
+  );
+}
+
+RatingPoolCase _parseRatingPoolCase(String where, Map<String, dynamic> map) {
+  final accessName = _string('$where.access', map['access']);
+  final access = GameAccess.values.asNameMap()[accessName];
+  if (access == null) {
+    throw FormatException(
+      '$where.access: expected one of '
+      '${GameAccess.values.map((a) => a.name).join(' | ')}, '
+      'got ${jsonEncode(accessName)}',
+    );
+  }
+  return RatingPoolCase(
+    name: _string('$where.name', map['name']),
+    access: access,
+    turnSeconds: _optional('$where.turnSeconds', map['turnSeconds'], _int),
+    budgetSeconds: _optional(
+      '$where.budgetSeconds',
+      map['budgetSeconds'],
+      _int,
+    ),
+    incrementSeconds: _optional(
+      '$where.incrementSeconds',
+      map['incrementSeconds'],
+      _int,
+    ),
+    minPlayers: _int('$where.minPlayers', map['minPlayers']),
+    maxPlayers: _int('$where.maxPlayers', map['maxPlayers']),
+    config: _object('$where.config', map['config']),
+    expected: _optional('$where.expected', map['expected'], _string),
+  );
+}
+
+BotSeatableCase _parseBotSeatableCase(String where, Map<String, dynamic> map) {
+  return BotSeatableCase(
+    name: _string('$where.name', map['name']),
+    gameConfig: _object('$where.gameConfig', map['gameConfig']),
+    botConfig: _object('$where.botConfig', map['botConfig']),
+    expected: _bool('$where.expected', map['expected']),
+  );
+}
+
+// ── Field readers ───────────────────────────────────────────────────────────
+
+Never _fail(String where, String expected, dynamic got) =>
+    throw FormatException('$where: expected $expected, got ${_describe(got)}');
+
+String _describe(dynamic value) => switch (value) {
+  null => 'null',
+  final List<dynamic> _ => 'an array',
+  final Map<dynamic, dynamic> _ => 'an object',
+  final String s => 'the string ${jsonEncode(s)}',
+  _ => '$value (${value.runtimeType})',
+};
+
+Map<String, dynamic> _object(String where, dynamic v) =>
+    v is Map<String, dynamic> ? v : _fail(where, 'an object', v);
+
+List<dynamic> _list(String where, dynamic v) =>
+    v is List ? v : _fail(where, 'an array', v);
+
+String _string(String where, dynamic v) =>
+    v is String ? v : _fail(where, 'a string', v);
+
+bool _bool(String where, dynamic v) =>
+    v is bool ? v : _fail(where, 'a boolean', v);
+
+int _int(String where, dynamic v) => v is int ? v : _fail(where, 'an int', v);
+
+List<int> _intList(String where, dynamic v) => [
+  for (final (index, n) in _list(where, v).indexed) _int('$where[$index]', n),
+];
+
+/// Reads an optional field: absent and explicit null both mean "unspecified".
+T? _optional<T>(String where, dynamic v, T Function(String, dynamic) read) =>
+    v == null ? null : read(where, v);
+
+// ── Case evaluation ─────────────────────────────────────────────────────────
+
+/// Runs one validated fixture case against the Dart [rules] twin, returning
+/// failure descriptions (empty ⇒ the case passes).
 ///
 /// A parse throw (config/observation/action `fromJson`) is reported as a
 /// failure, not rethrown — a codec that cannot read the recorded payload is
 /// itself twin drift.
 List<String> runTwinFixtureCase(
   GameRules<dynamic, dynamic, dynamic> rules,
-  Map<String, dynamic> caseJson,
-) {
-  switch (caseJson['kind']) {
-    case 'action':
-      return _runActionCase(rules, caseJson);
-    case 'ratingPool':
-      return _runRatingPoolCase(rules, caseJson);
-    case 'botSeatable':
-      return _runBotSeatableCase(rules, caseJson);
-    case final kind:
-      return [
-        'unknown case kind "$kind" — expected '
-            'action | ratingPool | botSeatable',
-      ];
-  }
-}
+  TwinFixtureCase fixtureCase,
+) => switch (fixtureCase) {
+  ActionCase() => _runActionCase(rules, fixtureCase),
+  RatingPoolCase() => _runRatingPoolCase(rules, fixtureCase),
+  BotSeatableCase() => _runBotSeatableCase(rules, fixtureCase),
+};
 
 List<String> _runActionCase(
   GameRules<dynamic, dynamic, dynamic> rules,
-  Map<String, dynamic> c,
+  ActionCase c,
 ) {
   final failures = <String>[];
-  final rawAction = c['action'] as Map<String, dynamic>;
-  final config = _parse(
-    'config',
-    () => rules.parseConfig(c['config'] as Map<String, dynamic>),
-    failures,
-  );
+  final config = _parse('config', () => rules.parseConfig(c.config), failures);
   final obs = _parse(
     'observation',
-    () => rules.parseObservation(
-      (c['obs'] ?? c['state']) as Map<String, dynamic>,
-    ),
+    () => rules.parseObservation(c.obs),
     failures,
   );
-  final action = _parse('action', () => rules.parseAction(rawAction), failures);
+  final action = _parse('action', () => rules.parseAction(c.action), failures);
   if (failures.isNotEmpty) return failures;
 
   // The codec must round-trip the fixture action: what parseAction reads,
   // serializeAction must write back — otherwise a submitted move would not
   // match what the TS side validated this fixture against.
   final roundTrip = rules.serializeAction(action);
-  if (!_deepEquals(roundTrip, rawAction)) {
+  if (!_deepEquals(roundTrip, c.action)) {
     failures.add(
       'action codec does not round-trip the fixture action — '
       'serializeAction produced ${jsonEncode(roundTrip)}',
     );
   }
 
-  final expected = c['expected'] as Map<String, dynamic>;
-  final expectedValid = expected['valid'] as bool;
-  final pending = (c['pending'] as List).cast<int>();
-  final playerIndex = c['playerIndex'] as int;
   final valid = rules.isValidAction(
     obs: obs,
-    pending: pending,
+    pending: c.pending,
     data: action,
-    playerIndex: playerIndex,
+    playerIndex: c.playerIndex,
     config: config,
   );
-  if (valid != expectedValid) {
+  if (valid != c.expectedValid) {
     failures.add(
-      'isValidAction returned $valid, fixture expects $expectedValid',
+      'isValidAction returned $valid, fixture expects ${c.expectedValid}',
     );
     return failures;
   }
-  if (expectedValid && expected['observation'] != null) {
+  if (c.expectedValid && c.expectedObservation != null) {
     _checkPreview(rules, c, obs, action, config, failures);
   }
   return failures;
@@ -188,7 +381,7 @@ List<String> _runActionCase(
 /// server-driven", which is always a correct answer, never drift).
 void _checkPreview(
   GameRules<dynamic, dynamic, dynamic> rules,
-  Map<String, dynamic> c,
+  ActionCase c,
   dynamic obs,
   dynamic action,
   dynamic config,
@@ -196,18 +389,15 @@ void _checkPreview(
 ) {
   final preview = rules.previewAction(
     obs: obs,
-    pending: (c['pending'] as List).cast<int>(),
+    pending: c.pending,
     data: action,
-    playerIndex: c['playerIndex'] as int,
+    playerIndex: c.playerIndex,
     config: config,
   );
   if (preview == null) return;
-  final expectedJson =
-      (c['expected'] as Map<String, dynamic>)['observation']
-          as Map<String, dynamic>;
   final expectedObs = _parse(
     'expected.observation',
-    () => rules.parseObservation(expectedJson),
+    () => rules.parseObservation(c.expectedObservation!),
     failures,
   );
   if (failures.isNotEmpty) return;
@@ -221,48 +411,35 @@ void _checkPreview(
 
 List<String> _runRatingPoolCase(
   GameRules<dynamic, dynamic, dynamic> rules,
-  Map<String, dynamic> c,
+  RatingPoolCase c,
 ) {
-  final failures = <String>[];
-  final accessName = c['access'] as String;
-  final access = GameAccess.values.asNameMap()[accessName];
-  if (access == null) {
-    return ['unknown access "$accessName" in ratingPool case'];
-  }
   final pool = rules.ratingPool(
     RatingPoolArgs(
-      access: access,
-      turnSeconds: c['turnSeconds'] as int?,
-      budgetSeconds: c['budgetSeconds'] as int?,
-      incrementSeconds: c['incrementSeconds'] as int?,
-      minPlayers: c['minPlayers'] as int,
-      maxPlayers: c['maxPlayers'] as int,
-      config: c['config'] as Map<String, dynamic>,
+      access: c.access,
+      turnSeconds: c.turnSeconds,
+      budgetSeconds: c.budgetSeconds,
+      incrementSeconds: c.incrementSeconds,
+      minPlayers: c.minPlayers,
+      maxPlayers: c.maxPlayers,
+      config: c.config,
     ),
   );
-  final expected = c['expected'] as String?;
-  if (pool != expected) {
-    failures.add(
-      'ratingPool returned ${jsonEncode(pool)}, fixture expects '
-      '${jsonEncode(expected)}',
-    );
-  }
-  return failures;
+  if (pool == c.expected) return const [];
+  return [
+    'ratingPool returned ${jsonEncode(pool)}, fixture expects '
+        '${jsonEncode(c.expected)}',
+  ];
 }
 
 List<String> _runBotSeatableCase(
   GameRules<dynamic, dynamic, dynamic> rules,
-  Map<String, dynamic> c,
+  BotSeatableCase c,
 ) {
   final seatable = rules.botSeatable(
-    BotSeatableArgs(
-      gameConfig: c['gameConfig'] as Map<String, dynamic>,
-      botConfig: c['botConfig'] as Map<String, dynamic>,
-    ),
+    BotSeatableArgs(gameConfig: c.gameConfig, botConfig: c.botConfig),
   );
-  final expected = c['expected'] as bool;
-  if (seatable == expected) return const [];
-  return ['botSeatable returned $seatable, fixture expects $expected'];
+  if (seatable == c.expected) return const [];
+  return ['botSeatable returned $seatable, fixture expects ${c.expected}'];
 }
 
 /// Runs one codec step, converting a throw into a recorded failure.

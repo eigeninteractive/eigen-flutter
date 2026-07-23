@@ -25,6 +25,13 @@ DioException _noAnswer(DioExceptionType type) => DioException(
   type: type,
 );
 
+/// A 2xx [Response] carrying [body] (possibly null, as Dio returns for an
+/// empty body).
+Response<T> _ok<T>(T? body) {
+  final options = RequestOptions(path: '/api/engine/games');
+  return Response<T>(requestOptions: options, statusCode: 200, data: body);
+}
+
 void main() {
   group('a server-reported failure', () {
     test('becomes an EngineException carrying the typed code', () async {
@@ -94,5 +101,40 @@ void main() {
 
   test('a successful call returns its value', () async {
     await check(engineCall(() async => 42)).completes((v) => v.equals(42));
+  });
+
+  group('engineData', () {
+    test('unwraps the response body', () async {
+      await check(
+        engineData(() async => _ok('hello')),
+      ).completes((v) => v.equals('hello'));
+    });
+
+    test('throws EngineException when a success carries no body', () async {
+      await check(
+        engineData<String>(() async => _ok<String>(null)),
+      ).throws<EngineException>((e) => e.has((x) => x.code, 'code').isNull());
+    });
+
+    test('still surfaces a server failure as an EngineException', () async {
+      await check(
+        engineData<String>(
+          () => throw _serverSaidNo(409, {
+            'error': 'Game is full',
+            'code': 'game_full',
+          }),
+        ),
+      ).throws<EngineException>(
+        (e) => e.has((x) => x.code, 'code').equals(ErrorCode.gameFull),
+      );
+    });
+
+    test('still lets a transport failure propagate untouched', () async {
+      await check(
+        engineData<String>(
+          () => throw _noAnswer(DioExceptionType.connectionError),
+        ),
+      ).throws<DioException>();
+    });
   });
 }

@@ -30,7 +30,7 @@ void main() {
             because: 'no Dart rules unit for v${suite.schemaVersion}',
             rules,
           ).isNotNull();
-          check(runTwinFixtureCase(rules!, fixtureCase.json)).isEmpty();
+          check(runTwinFixtureCase(rules!, fixtureCase)).isEmpty();
         });
       }
     });

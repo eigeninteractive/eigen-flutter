@@ -22,22 +22,16 @@ class PlayerNotFoundException implements Exception {
 /// game rows: a caller collects the ids it needs and resolves them in one
 /// request, and the client's persisted cache absorbs the repeats.
 ///
+/// This is the batch itself; single-id resolution is [PlayerBatchLoader]'s job,
+/// which coalesces per-id cache misses back into one call here. Nothing calls a
+/// per-id method on this repository — that would be the N+1 the endpoint exists
+/// to avoid.
+///
 /// Everything returned is public-safe — no email, no account state.
 class PlayerRepository {
   PlayerRepository(this._api);
 
   final PlayersApi _api;
-
-  /// Public identity for one player, human or bot.
-  ///
-  /// Throws [PlayerNotFoundException] when no player has this id. Prefer
-  /// [getPlayers] when resolving more than one: the endpoint is a batch, and
-  /// calling it per id defeats the point of having it.
-  Future<Player> getPlayer(String id) async {
-    final players = await getPlayers([id]);
-    if (players.isEmpty) throw PlayerNotFoundException(id);
-    return players.single;
-  }
 
   /// Public identities for a batch of ids.
   ///
@@ -46,9 +40,7 @@ class PlayerRepository {
   /// empty [ids] resolves without a request.
   Future<List<Player>> getPlayers(List<String> ids) async {
     if (ids.isEmpty) return const [];
-    final response = await engineCall(
-      () => _api.getPlayers(ids: ids.join(',')),
-    );
-    return response.data?.players ?? const [];
+    final body = await engineData(() => _api.getPlayers(ids: ids.join(',')));
+    return body.players;
   }
 }

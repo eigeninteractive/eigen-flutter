@@ -30,6 +30,33 @@ Future<T> engineCall<T>(Future<T> Function() run) async {
   }
 }
 
+/// Runs a generated API call and returns its decoded body, unwrapping the
+/// [Response].
+///
+/// The successor to the `final response = await engineCall(...); return
+/// response.data?.x ?? ...` shape that recurred at every read site: it runs
+/// through [engineCall] — so a server-reported failure still surfaces as an
+/// [EngineException] and a transport failure still propagates untouched — then
+/// returns the non-null payload.
+///
+/// ```dart
+/// final friends = (await engineData(() => api.listFriends())).friends;
+/// ```
+///
+/// Throws [EngineException] if a success response carries no body, which is a
+/// contract violation for an endpoint declared to return one (never the normal
+/// path: the generated models make list fields non-null, so a present body
+/// needs no `?? const []`). A call that expects no body — a 204 write — uses
+/// [engineCall] directly instead.
+Future<T> engineData<T>(Future<Response<T>> Function() run) async {
+  final response = await engineCall(run);
+  final data = response.data;
+  if (data == null) {
+    throw const EngineException('The server returned an empty response.');
+  }
+  return data;
+}
+
 /// Reads the `{ error, code? }` envelope out of a failed response.
 ///
 /// Falls back to a status-line message when the body is missing, is not the

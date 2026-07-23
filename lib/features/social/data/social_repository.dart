@@ -13,8 +13,8 @@ class SocialRepository {
 
   /// The caller's accepted friends, most recently befriended first.
   Future<List<Friend>> getFriends() async {
-    final response = await engineCall(() => _api.listFriends());
-    return response.data?.friends ?? const [];
+    final body = await engineData(() => _api.listFriends());
+    return body.friends;
   }
 
   /// Pending requests in both directions.
@@ -23,8 +23,8 @@ class SocialRepository {
   /// (actionable) and outgoing (withdrawable) requests arrive together and are
   /// split by the caller rather than by two round trips.
   Future<List<FriendRequest>> getFriendRequests() async {
-    final response = await engineCall(() => _api.listFriendRequests());
-    return response.data?.requests ?? const [];
+    final body = await engineData(() => _api.listFriendRequests());
+    return body.requests;
   }
 
   /// Joinable games created by the caller's friends.
@@ -32,10 +32,10 @@ class SocialRepository {
   /// [cursor] is the previous page's last `created_at`; omit for the first
   /// page.
   Future<List<GameSummary>> getFriendsGames({int? limit, int? cursor}) async {
-    final response = await engineCall(
+    final body = await engineData(
       () => _api.getFriendsGames(limit: limit, cursor: cursor),
     );
-    return response.data?.games ?? const [];
+    return body.games;
   }
 
   /// Case-insensitive search over usernames and display names.
@@ -46,8 +46,8 @@ class SocialRepository {
   /// field.
   Future<List<Player>> searchUsers(String query) async {
     if (query.trim().isEmpty) return const [];
-    final response = await engineCall(() => _api.searchUsers(q: query));
-    return response.data?.users ?? const [];
+    final body = await engineData(() => _api.searchUsers(q: query));
+    return body.users;
   }
 
   /// Sends a friend request.
@@ -57,12 +57,12 @@ class SocialRepository {
   /// caller must render the [FriendRequestResult.status] rather than assume
   /// "requested".
   Future<FriendRequestResultStatusEnum> sendFriendRequest(String userId) async {
-    final response = await engineCall(
+    final body = await engineData(
       () => _api.sendFriendRequest(
         friendTarget: FriendTarget(targetUserId: userId),
       ),
     );
-    return response.data!.status;
+    return body.status;
   }
 
   /// Accepts a request [userId] sent the caller.

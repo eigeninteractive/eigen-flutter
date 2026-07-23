@@ -19,10 +19,12 @@ part 'engine_api_providers.g.dart';
 /// The base URL is the origin only: every generated route already carries its
 /// `/api/engine` prefix.
 ///
-/// The generated `EigenApi` facade is deliberately not used. It authenticates
-/// by storing a fixed bearer token (`setBearerAuth`), which cannot work for
-/// Firebase ID tokens that rotate roughly hourly, and it installs three further
-/// auth interceptors (OAuth, basic, API key) the engine never uses.
+/// The generated `EigenApi` facade is deliberately not used, but not because it
+/// can't take this Dio — it can (`EigenApi(dio: ..., interceptors: const [])`
+/// installs none of its own). The reason is the split below: each repository
+/// depends on the one narrow `*Api` it needs, so a fake in a test is that one
+/// resource, not the whole surface. The facade would hand every repository all
+/// of them.
 @Riverpod(keepAlive: true)
 Dio engineDio(Ref ref) {
   final config = ref.watch(appConfigProvider).engine;
