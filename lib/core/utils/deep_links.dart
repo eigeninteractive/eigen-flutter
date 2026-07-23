@@ -20,11 +20,13 @@ Uri? gameInviteLink(String code, {required String? appHost}) =>
 Uri? gameReplayLink(String gameId, {required String? appHost}) =>
     appHost != null ? Uri.https(appHost, '/game/$gameId') : null;
 
-/// Returns a URL for the given legal [path] on the shared root domain, or
-/// `null` if [legalHost] is not configured.
+/// Returns a URL for the given legal [path] on the game's own host, or `null`
+/// if [appHost] is not configured.
 ///
-/// Uses [legalHost] (e.g. `eigeninteractive.com`) rather than the
-/// game-specific app-host subdomain so the OS never intercepts legal links as
-/// deep links.
-Uri? legalPageUrl(String path, {required String? legalHost}) =>
-    legalHost != null ? Uri.https(legalHost, path) : null;
+/// The server serves `/terms`, `/privacy` and `/delete-account` on the same
+/// host as the app's deep links. That is safe because the app's App Links
+/// intent-filter is scoped to the `/join` and `/game` prefixes (see
+/// `client_reference.md` §21), so legal paths are never intercepted and open in
+/// the browser. Opened with `LaunchMode.inAppBrowserView` as belt and braces.
+Uri? legalPageUrl(String path, {required String? appHost}) =>
+    appHost != null ? Uri.https(appHost, path) : null;

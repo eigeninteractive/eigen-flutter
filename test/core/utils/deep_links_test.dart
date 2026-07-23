@@ -21,15 +21,18 @@ void main() {
   });
 
   group('legalPageUrl', () {
-    test('builds an https URL on the legal host', () {
-      final uri = legalPageUrl('/privacy', legalHost: 'eigeninteractive.com');
+    test('builds an https URL on the app host', () {
+      final uri = legalPageUrl(
+        '/privacy',
+        appHost: 'strategy.eigeninteractive.com',
+      );
       check(uri).isNotNull();
-      check(uri!.host).equals('eigeninteractive.com');
+      check(uri!.host).equals('strategy.eigeninteractive.com');
       check(uri.path).equals('/privacy');
     });
 
-    test('returns null when legalHost is null', () {
-      check(legalPageUrl('/privacy', legalHost: null)).isNull();
+    test('returns null when appHost is null', () {
+      check(legalPageUrl('/privacy', appHost: null)).isNull();
     });
   });
 }

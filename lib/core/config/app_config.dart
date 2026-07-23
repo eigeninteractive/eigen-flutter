@@ -40,7 +40,6 @@ class EngineConfig {
     required this.googleWebClientId,
     this.firebaseVapidKey,
     this.appHost,
-    this.legalHost,
   });
 
   /// Origin of the Eigen server, with no trailing slash and no path — for
@@ -57,11 +56,15 @@ class EngineConfig {
   /// VAPID public key for FCM Web Push (Flutter web only); null on mobile.
   final String? firebaseVapidKey;
 
-  /// Subdomain host for shareable game deep links; null disables them.
+  /// The game's public host, e.g. `strategy.eigeninteractive.com` or a
+  /// customer's own domain; null disables the features built on it.
+  ///
+  /// One host serves everything: the app's deep links (`/join/:code`,
+  /// `/game/:id`), and — when the worker has `site` configured — the legal
+  /// pages and landing page. The App Links intent-filter is scoped to the
+  /// deep-link prefixes, so legal URLs on this same host open in the browser
+  /// rather than being intercepted.
   final String? appHost;
-
-  /// Root domain for legal pages (terms, privacy); null disables those links.
-  final String? legalHost;
 }
 
 /// User-facing identity for the app shell.

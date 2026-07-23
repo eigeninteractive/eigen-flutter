@@ -21,7 +21,7 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
-    final legalHost = ref.watch(appConfigProvider).engine.legalHost;
+    final appHost = ref.watch(appConfigProvider).engine.appHost;
 
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -62,7 +62,7 @@ class SettingsScreen extends ConsumerWidget {
           child: Column(
             children: [
               const _AppVersionTile(),
-              if (legalHost != null) ...[
+              if (appHost != null) ...[
                 const Divider(height: 1),
                 ListTile(
                   leading: Icon(
@@ -71,7 +71,7 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                   title: const Text('Terms of Service'),
                   trailing: const Icon(Icons.open_in_new, size: 18),
-                  onTap: () => _launchLegalUrl('/terms', legalHost: legalHost),
+                  onTap: () => _launchLegalUrl('/terms', appHost: appHost),
                 ),
                 const Divider(height: 1),
                 ListTile(
@@ -81,8 +81,7 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                   title: const Text('Privacy Policy'),
                   trailing: const Icon(Icons.open_in_new, size: 18),
-                  onTap: () =>
-                      _launchLegalUrl('/privacy', legalHost: legalHost),
+                  onTap: () => _launchLegalUrl('/privacy', appHost: appHost),
                 ),
               ],
             ],
@@ -575,8 +574,8 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
   }
 }
 
-Future<void> _launchLegalUrl(String path, {required String? legalHost}) async {
-  final uri = legalPageUrl(path, legalHost: legalHost);
+Future<void> _launchLegalUrl(String path, {required String? appHost}) async {
+  final uri = legalPageUrl(path, appHost: appHost);
   if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
 }
 

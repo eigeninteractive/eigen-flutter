@@ -631,7 +631,7 @@ A shell with indexed-stack branches, and full-screen routes above it:
   `pushReplacement`s into the game, so Back from the game never lands on a stuck
   spinner. On error it `go`es home — safe for both in-app entry and a deep-link
   cold start where no shell is in the stack.
-- Deep links (`/j/{code}` from a share, or a push's deep link) route through the
+- Deep links (`/join/{code}` from a share, or a push's deep link) route through the
   same join/game paths.
 
 Use `go` for auth redirects and branch roots (replaces the stack), `push` for
@@ -839,8 +839,7 @@ build` after any change):
 |---|---|---|
 | `API_BASE_URL` | **yes** | Origin of the Eigen server — scheme + host only, **no path, no trailing slash**. Routes carry their own `/api/engine` prefix; the socket is this origin with `ws`/`wss`. |
 | `GOOGLE_WEB_CLIENT_ID` | yes | Google Sign-In. |
-| `APP_HOST` | optional | This game's deep-link subdomain. Drives invite/replay links and the waiting-room QR code; both are hidden when unset. |
-| `LEGAL_HOST` | optional | Root domain for terms/privacy. The tiles are hidden when unset. |
+| `APP_HOST` | optional | This game's public host (a subdomain, or a customer's own domain). One host for everything: invite/replay deep links, the waiting-room QR code, and — when the worker has `site` configured — the terms/privacy tiles and landing page. All of these are hidden when unset. |
 | `FIREBASE_VAPID_KEY` | optional | FCM Web Push (web only). |
 
 ## 20. Firebase setup (once per deployment)
@@ -891,17 +890,31 @@ Because they're gitignored, CI must reconstruct them (§23).
 
 The **server** hosts the verification files: it generates
 `/.well-known/assetlinks.json` (Android) and `apple-app-site-association` (iOS)
-from its `deepLink` config, and serves the `/j/{shortCode}` landing page. The
+from its `deepLink` config, and serves the `/join/{shortCode}` landing page. The
 **client** must declare the same host so an installed app intercepts the link.
+
+The app owns **two path prefixes** on this host: `/join/{code}` (invite/share
+links) and `/game/{id}` (replay links, and a push notification's deep link).
+Everything else the worker serves on the host — `/`, `/terms`, `/privacy`,
+`/delete-account` — is deliberately *not* claimed, so it opens in the browser.
 
 `APP_HOST` is therefore declared in **three places that must stay in sync**,
 because the OS verifies domain ownership at install time from a value compiled
 into the binary:
 
 1. **`.env`** — `APP_HOST=mygame.example.com`, then regenerate envied.
-2. **`android/app/src/main/AndroidManifest.xml`** — `android:host` in the App
-   Links `<intent-filter>`. Android fetches `https://<host>/.well-known/assetlinks.json`
+2. **`android/app/src/main/AndroidManifest.xml`** — `android:host` **and a
+   `android:pathPrefix` for each of `/join` and `/game`** in the App Links
+   `<intent-filter>`. Android fetches `https://<host>/.well-known/assetlinks.json`
    at install; a mismatch silently falls back to the browser.
+
+   The path prefixes are not optional. `assetlinks.json` declares
+   `handle_all_urls`, so the *host* is verified as a whole and the
+   `<intent-filter>` is the only thing that decides which paths the app claims.
+   Without the prefixes the app claims **every** path on the host — including the
+   server's `/terms`, `/privacy` and `/delete-account` pages — and the OS hands
+   them to a router that has no such route. iOS needs no separate step: the
+   server's AASA already scopes Universal Links to `paths: ["/join/*", "/game/*"]`.
 3. **`ios/Runner/Runner.entitlements`** — `applinks:mygame.example.com`. **The
    entitlements file alone is not enough**: open Xcode → Runner target → Signing
    & Capabilities and confirm Associated Domains lists it; if stale, remove and
@@ -918,12 +931,20 @@ and an AASA validator for iOS. The usual failures are a fingerprint that doesn't
 match the signing keystore, an iOS Team ID mismatch, or the verification file
 being served through a redirect.
 
-**`LEGAL_HOST` is deliberately a different domain.** App/Universal Links only
-cover `APP_HOST`; if terms and privacy URLs were built on it, the OS would
-intercept them as deep links and hand them back to the router, which has no such
-route. Hosting them on the root domain — which has no deep-link config — means
-the in-app browser opens them directly. This is the same reason those links use
-`LaunchMode.inAppBrowserView` (§14): belt and braces.
+**Legal pages live on `APP_HOST` — there is no separate legal host.** They used
+to need a different domain: App Links covered the whole of `APP_HOST`, so a
+`/terms` URL built on it was intercepted and handed to a router with no such
+route. Two things removed that constraint — the server's `site` config serves
+`/terms`, `/privacy` and `/delete-account` on the game's own host, and the
+intent-filter above claims only the `/join` and `/game` prefixes. Legal URLs
+therefore fall outside the claimed paths and open in the browser.
+
+**The path prefixes are what make this safe.** An app shipped without them
+intercepts its own legal links, and because the host is compiled into the binary,
+fixing that needs a new release. If you would rather host legal pages on a
+separate domain — for example one canonical policy shared across several games —
+just point the app's terms/privacy links there instead; nothing in the engine
+requires them to be on `APP_HOST`.
 
 [Google Digital Asset Links validator]: https://developers.google.com/digital-asset-links/tools/generator
 
@@ -983,7 +1004,29 @@ centred; some clients crop to a square. Verify with the Facebook Sharing Debugge
 after deploying, and re-scrape after changes — both it and Slack cache hard.
 
 *(This is the app's own branding. The **server** renders the per-game share card
-at `/j/{code}` from the D1 summary — a different surface.)*
+at `/join/{code}` from the D1 summary — a different surface.)*
+
+### Reusing these assets on the game's website
+
+The game Worker's `site` config serves a landing page, legal pages and a web
+manifest on the game's own host, and it needs exactly the files this section
+already produces — **no second icon set, and no extra artwork**. The engine's
+default paths are the names `flutter_launcher_icons` emits, so the whole step is
+copying `web/` output into the Worker's `public/`:
+
+| This app generates | Copy to the Worker's `public/` | Used for |
+|---|---|---|
+| `web/favicon.png` | `favicon.png` | Browser tab |
+| `web/icons/Icon-192.png` | `icons/Icon-192.png` | Manifest, apple-touch-icon |
+| `web/icons/Icon-512.png` | `icons/Icon-512.png` | Manifest |
+| `web/icons/Icon-maskable-192.png` | `icons/Icon-maskable-192.png` | Manifest (maskable) |
+| `web/icons/Icon-maskable-512.png` | `icons/Icon-maskable-512.png` | Manifest (maskable) |
+| `web/og-image.png` | `og-image.png` | Landing-page share card |
+
+All of them derive from the same `assets/icon/icon.png`, except `og-image.png`,
+which is the one hand-made 1200 × 630 image this section already asks for. If
+you host the Worker on a different origin, the `og:image` it emits is absolute
+and built from `site.canonicalOrigin`, so nothing needs rewriting.
 
 ### Checklist
 
@@ -996,6 +1039,9 @@ at `/j/{code}` from the D1 summary — a different surface.)*
       `og:image`; `web/og-image.png` at 1200 × 630
 - [ ] `web/manifest.json`: real `name`, `short_name`, `description`,
       `background_color` / `theme_color`
+- [ ] `web/` icons + `og-image.png` copied into the game Worker's `public/`
+- [ ] App Links `<intent-filter>` carries an `android:pathPrefix` for both
+      `/join` and `/game` (§21)
 
 ## 23. Android release hardening
 
@@ -1055,7 +1101,7 @@ Required GitHub Actions secrets:
 | Secret | Used for |
 |---|---|
 | `ENGINE_DEPLOY_KEY` | SSH deploy key for the private engine repo |
-| `API_BASE_URL`, `GOOGLE_WEB_CLIENT_ID`, `APP_HOST`, `LEGAL_HOST` | written into `.env` |
+| `API_BASE_URL`, `GOOGLE_WEB_CLIENT_ID`, `APP_HOST` | written into `.env` |
 | `FIREBASE_OPTIONS_DART_BASE64` | `lib/firebase_options.dart` (needed in **test** too, or analyze can't resolve the import) |
 | `GOOGLE_SERVICES_JSON_BASE64` | `android/app/google-services.json` (build only) |
 | `GOOGLE_SERVICE_INFO_PLIST_BASE64` | iOS equivalent, when iOS CI is added |
