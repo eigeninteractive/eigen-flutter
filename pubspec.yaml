@@ -1,7 +1,20 @@
 name: eigen_flutter
 description: "Eigen Engine — whitelabel Flutter client for turn-based multiplayer games on the Eigen server."
-publish_to: none
 version: 0.1.0
+homepage: https://eigeninteractive.com
+repository: https://github.com/eigeninteractive/eigen-flutter
+documentation: https://eigeninteractive.com/docs/client/overview
+issue_tracker: https://github.com/eigeninteractive/eigen-flutter/issues
+
+# `cider` keeps CHANGELOG.md and the version above in step, Keep-a-Changelog
+# style. Add entries as you work (`cider log added "…"`), then at release time
+# `cider bump minor && cider release` moves everything under `## [Unreleased]`
+# into a dated, linked section and bumps the version here.
+cider:
+  link_template:
+    tag: https://github.com/eigeninteractive/eigen-flutter/releases/tag/%tag%
+    diff: https://github.com/eigeninteractive/eigen-flutter/compare/%from%...%to%
+    version: v%version%
 
 environment:
   sdk: ^3.9.2
@@ -42,12 +55,22 @@ dependencies:
   path: ^1.9.1
   package_info_plus: ^10.1.0
   qr_flutter: ^4.1.0
-  eigen_api:
-    path: packages/eigen_api
+  # Released in lockstep with this package; see CONTRIBUTING.md.
+  eigen_api: ^0.1.0
   dio: ^5.10.0
   dio_smart_retry: ^7.0.1
   firebase_auth: ^6.5.6
   web_socket_channel: ^3.0.3
+
+# Development only. `dependency_overrides` is honoured just for the root
+# package, so this points at the local checkout while you work and is ignored
+# entirely by any app that depends on eigen_flutter. It is what lets the
+# generated client keep its own independent resolution — a pub workspace
+# would force one shared resolution, and eigen_api's build_runner needs a
+# newer analyzer than riverpod_lint allows.
+dependency_overrides:
+  eigen_api:
+    path: packages/eigen_api
 
 dev_dependencies:
   flutter_test:

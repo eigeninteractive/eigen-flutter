@@ -82,17 +82,38 @@ on the pub.dev package page (Admin → Automated publishing) with repository
 trusts the workflow's short-lived GitHub identity. There is no pub credential in
 GitHub secrets.
 
+### Two packages, one version
+
+`eigen_api` is published too, and the two release **in lockstep** — same version,
+always together. `eigen_flutter` declares `eigen_api: ^<same version>`, which is
+a real version constraint (pub.dev rejects `path` dependencies), and a
+`dependency_overrides` entry points at the local checkout while you work.
+
+That override is honoured **only when `eigen_flutter` is the root package**, so
+an app depending on `eigen_flutter` resolves the published `eigen_api` normally.
+It also keeps `eigen_api`'s dependency resolution independent, which matters:
+its `build_runner` needs a newer `analyzer` than `riverpod_lint` allows, so a
+pub workspace — which forces one shared resolution — will not resolve.
+
+Publish order is `eigen_api` first, then `eigen_flutter`.
+
+`eigen_api` being on pub.dev does not make it public API. It is documented as
+internal and no app should depend on it directly, the same way Flutter's
+federated plugins publish `*_platform_interface` packages nobody imports.
+
 > [!IMPORTANT]
-> **Publishing is currently blocked.** pub.dev rejects packages with `path`
-> dependencies, and `eigen_flutter` depends on `packages/eigen_api` by path.
-> `publish_to: none` in `pubspec.yaml` reflects that.
+> **Publishing is blocked until generated code is committed.**
 >
-> Resolving it means either publishing `eigen_api` separately and depending on
-> it by version, or folding the generated client into `eigen_flutter/lib/src/`.
-> The second is the better fit: `eigen_api` is a build artifact, and the
-> architecture already forbids apps from depending on it directly — so
-> publishing it as a public package would contradict its own contract and make
-> every wire change a two-package release.
+> `.gitignore` currently excludes `*.g.dart` and `*.freezed.dart`, and
+> `dart pub publish` honours `.gitignore`. Today that means **71 generated files
+> exist on disk and zero would be published** — a consumer would install a
+> package whose `part 'foo.g.dart';` directives point at files that do not
+> exist, and it would not compile.
+>
+> Consumers never run `build_runner` on a dependency, so a published Dart
+> package has to ship its generated code. Fixing this means removing those two
+> `.gitignore` lines and committing the generated output, accepting the diff
+> noise on every regeneration. It applies to both packages.
 
 ## Documentation changes
 
