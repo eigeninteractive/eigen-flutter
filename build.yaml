@@ -1,5 +1,11 @@
 targets:
   $default:
+    # `example/` is its own package with its own resolution and generates
+    # nothing; without this the root build walks its sources and its Flutter
+    # build artifacts on every run.
+    sources:
+      exclude:
+        - example/**
     builders:
       json_serializable:
         options:

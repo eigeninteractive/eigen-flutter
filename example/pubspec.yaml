@@ -1,0 +1,51 @@
+name: rps_example
+description: "Rock-Paper-Scissors — the reference game implementation for the Eigen Flutter client."
+publish_to: none
+version: 1.0.0
+
+environment:
+  sdk: ^3.9.2
+  flutter: ">=3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  eigen_flutter:
+    path: ../
+  # An app declares these two itself: `flutterfire configure` writes
+  # `firebase_options.dart` against `firebase_core`, and the background-message
+  # handler passed to `runEngineApp` is typed by `firebase_messaging`. The
+  # framework depends on both as well, but a package must not import through
+  # its dependency's dependencies.
+  firebase_core: ^4.9.0
+  firebase_messaging: ^16.2.2
+  # The payload codec. A game's observation type needs value equality, because
+  # the twin fixture runner compares observations with `==`; Freezed provides
+  # it (with deep collection equality) and `json_serializable` writes the
+  # `fromJson`/`toJson` the codec delegates to.
+  freezed_annotation: ^3.1.0
+  json_annotation: ^4.12.0
+
+# Development only, and temporary. `eigen_flutter` depends on `eigen_api` by
+# version and overrides it to a local path — but `dependency_overrides` is
+# honoured only for the *root* package, and here the root is this example. So
+# the override has to be repeated. Delete this block once `eigen_api` is
+# published to pub.dev; a real app depending on `eigen_flutter` never needs it.
+dependency_overrides:
+  eigen_api:
+    path: ../packages/eigen_api
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.15.0
+  freezed: ^3.2.5
+  json_serializable: ^6.13.0
+  # Widget-testing a game screen means supplying the `AppConfig` the shared
+  # widgets read, which needs a `ProviderScope`. `runEngineApp` installs one in
+  # a real app, so this is a test-only dependency.
+  flutter_riverpod: ^3.3.2
+
+flutter:
+  uses-material-design: true

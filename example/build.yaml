@@ -1,0 +1,23 @@
+# Codegen settings for the game's payload types.
+#
+# There is deliberately **no `field_rename`**. The JSON keys are whatever the
+# TypeScript schemas declare, and this game's are camelCase (`yourMove`,
+# `lastRound`, `targetWins`) — so the Dart field names are already the wire
+# keys and renaming them would silently break the codec.
+#
+# The framework package one directory up sets `field_rename: snake`, because
+# the engine's own wire vocabulary is snake_case. Do not copy that setting into
+# a game without checking which convention your schemas actually use; the twin
+# fixtures are what would catch it, since they carry the real wire keys.
+targets:
+  $default:
+    builders:
+      json_serializable:
+        options:
+          explicit_to_json: true
+          # Wrap decode failures in `CheckedFromJsonException`, which names the
+          # offending field. A game payload that fails to parse is a twin-drift
+          # bug report, and "yourMove: dynamite is not one of the supported
+          # values" is a far better one than a bare ArgumentError. The generated
+          # `eigen_api` client uses the same setting.
+          checked: true

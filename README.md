@@ -9,10 +9,25 @@ The **server half** lives in the sibling [`eigen-server`](https://github.com/eig
 repo — a Cloudflare Worker (Durable Objects + D1). This package talks to it over
 a generated REST client plus one WebSocket per game.
 
-This is a **standalone package** with no bundled example game. An app depends on
-it and supplies a `GameModule`. The reference game is
-[Rock-Paper-Scissors](https://eigeninteractive.com/docs/getting-started/your-first-game),
-whose server half ships as `examples/rps` in the engine repo.
+## The example is the documentation
+
+[`example/`](example/) is a complete game — Rock–Paper–Scissors, in about 500
+lines — and it is the fastest way to see what building on this package actually
+involves. Its server half is `examples/rps` in the engine repo, and the two are
+checked against each other by shared JSON fixtures that both languages run.
+
+RPS is deliberately the *hardest* small case: simultaneous commitment, hidden
+information, and nothing worth predicting. So the example also shows the two
+things a simpler game would hide — that an observation is a per-seat projection
+rather than the state, and that `previewAction` returning null is sometimes the
+correct answer.
+
+```bash
+cd example
+flutter pub get
+dart run build_runner build --delete-conflicting-outputs
+flutter test
+```
 
 ## Documentation
 
@@ -36,6 +51,7 @@ eigen-flutter/
 │   ├── features/            # about auth game home profile rating settings social
 │   ├── shared/              # shared widgets, providers, data
 │   └── testing/             # the Dart half of the twin-fixture runner
+├── example/                 # Rock–Paper–Scissors: a complete game, its own package
 ├── openapi/openapi.json     # vendored snapshot of the server's spec
 ├── packages/eigen_api/      # GENERATED REST client — never hand-edited
 ├── tool/generate_api.sh     # regenerates eigen_api from the spec
@@ -109,6 +125,9 @@ own — an app injects everything at runtime.
 git clone git@github.com:eigeninteractive/eigen-flutter.git
 cd eigen-flutter
 flutter pub get
+# Two builds: the root one does not reach into the path dependency, so the
+# generated REST client has to be built in its own package.
+(cd packages/eigen_api && dart pub get && dart run build_runner build)
 dart run build_runner build   # generated code isn't committed — do this first
 flutter analyze
 flutter test

@@ -10,10 +10,13 @@ and is the source of truth. Retrieve it rather than relying on memory:
 | Any page as Markdown | append `.md` to its URL |
 | HTTP contract (OpenAPI 3.1) | `https://eigeninteractive.com/openapi.json` |
 
-Start points: `/docs/concepts/overview.md` (how the engine works),
-`/docs/build-a-game/game-module.md` (the rules contract),
-`/docs/client/overview.md` (the Flutter client),
-`/docs/operate/configuration.md` (deploying and running it).
+The docs are task-first, and each page covers **both halves** of a task — the
+TypeScript rules and the Dart client — because they are one change.
+
+Start points: `/docs/getting-started/your-first-game.md` (a whole game, both
+languages), `/docs/build-a-game/the-contract.md` (what you write and what the
+engine owns), `/docs/ship-it/deploy-the-worker.md` (getting it running),
+`/docs/how-it-works/overview.md` (why it is built this way).
 
 There is also a Claude Code skill for writing game rules:
 

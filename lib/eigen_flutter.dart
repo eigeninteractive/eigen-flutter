@@ -40,6 +40,11 @@ export 'package:eigen_api/eigen_api.dart'
         SeatTypeEnum;
 
 export 'app_runner.dart' show runEngineApp, MyApp;
+
+/// Server time. Exported because [TimingContext.clock] is typed as it, so
+/// without this a game could read the field but never name it — which is what
+/// building a [GameContentContext] in a widget test requires.
+export 'core/api/server_clock.dart' show ServerClock;
 export 'core/config/app_config.dart'
     show AppConfig, Branding, EngineConfig, appConfigProvider;
 export 'core/errors/engine_exception.dart';
