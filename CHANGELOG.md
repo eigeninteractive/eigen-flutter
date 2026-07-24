@@ -13,7 +13,7 @@ and this project adheres to
 - Bundle **Inter** as a package font (all 9 weights under `fonts:`) instead of
   fetching it at runtime via `google_fonts`; dropped the `google_fonts`
   dependency. Consuming apps get Inter automatically and it renders offline from
-  the first frame. `AppTheme` references `packages/eigen_engine/Inter`.
+  the first frame. `AppTheme` references `packages/eigen_flutter/Inter`.
 - Bumped the riverpod toolchain to the 3.3.2 line (`flutter_riverpod ^3.3.2`,
   `riverpod_annotation ^4.0.3`, `riverpod_generator ^4.0.4`, `riverpod_lint
   ^3.1.4`, `riverpod_sqflite ^0.4.3`) so the engine resolves the same riverpod

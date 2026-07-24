@@ -17,3 +17,24 @@ pubspec.lock
 # Logs
 *.log
 custom_lint.log
+
+# Secrets & instance-specific config — NEVER commit these.
+#
+# The framework itself needs none of them, but CI writes `.env` and
+# `firebase_options.dart` from secrets in order to analyze, and a consuming app
+# generates the whole set via `flutterfire configure`. Without these rules a
+# local run of the same steps would happily commit real credentials.
+.env
+.env.*
+!.env.example
+lib/firebase_options.dart
+firebase.json
+android/app/google-services.json
+android/key.properties
+ios/Runner/GoogleService-Info.plist
+macos/Runner/GoogleService-Info.plist
+*.jks
+*.keystore
+*.p8
+*.p12
+*.mobileprovision

@@ -5,13 +5,14 @@ turn-based multiplayer games (auth, the game socket, timing, ratings, social,
 notifications, the whole app shell). A game plugs in as a single Dart
 `GameModule`; an app boots with `runEngineApp(...)`.
 
-The **server half** lives in the sibling [`eigen-server`](https://github.com/seenu-k/eigen-server)
+The **server half** lives in the sibling [`eigen-server`](https://github.com/eigeninteractive/eigen-server)
 repo — a Cloudflare Worker (Durable Objects + D1). This package talks to it over
 a generated REST client plus one WebSocket per game.
 
 This is a **standalone package** with no bundled example game. An app depends on
-it and supplies a `GameModule`. [`seenu-k/strategy`](https://github.com/seenu-k/strategy)
-is the reference app.
+it and supplies a `GameModule`. The reference game is
+[Rock-Paper-Scissors](https://eigeninteractive.com/docs/getting-started/your-first-game),
+whose server half ships as `examples/rps` in the engine repo.
 
 ## Documentation
 
@@ -105,7 +106,7 @@ dependency, no local database, and no cloud account. It reads no config of its
 own — an app injects everything at runtime.
 
 ```bash
-git clone git@github.com:seenu-k/eigen-flutter.git
+git clone git@github.com:eigeninteractive/eigen-flutter.git
 cd eigen-flutter
 flutter pub get
 dart run build_runner build   # generated code isn't committed — do this first
