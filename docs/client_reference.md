@@ -1026,7 +1026,7 @@ copying `web/` output into the Worker's `public/`:
 All of them derive from the same `assets/icon/icon.png`, except `og-image.png`,
 which is the one hand-made 1200 × 630 image this section already asks for. If
 you host the Worker on a different origin, the `og:image` it emits is absolute
-and built from `site.canonicalOrigin`, so nothing needs rewriting.
+and built from the request origin, so nothing needs rewriting.
 
 ### Checklist
 
