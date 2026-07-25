@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// from.
 ///
 /// `eigen_api` is regenerated wholesale from the server's `openapi.json`
-/// (`tool/generate_api.sh`), so nothing in it is reviewable by diffing hand
+/// (in the engine repo), so nothing in it is reviewable by diffing hand
 /// edits. These checks are the drift canary: if the server changes a wire enum
 /// or reshapes a payload, the regenerated package still compiles but these
 /// assertions fail, which is the signal to update the call sites that dispatch

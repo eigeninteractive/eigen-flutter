@@ -55,22 +55,15 @@ dependencies:
   path: ^1.9.1
   package_info_plus: ^10.1.0
   qr_flutter: ^4.1.0
-  # Released in lockstep with this package; see CONTRIBUTING.md.
-  eigen_api: ^0.1.0
+  # The generated REST client. It is produced and published by the ENGINE repo
+  # (eigen-server/clients/dart), because that is where the wire contract lives —
+  # so its version is the engine's, and this constraint is the compatibility
+  # statement: `^1.0.0` means "any engine that has not broken the wire".
+  eigen_api: ^1.0.0
   dio: ^5.10.0
   dio_smart_retry: ^7.0.1
   firebase_auth: ^6.5.6
   web_socket_channel: ^3.0.3
-
-# Development only. `dependency_overrides` is honoured just for the root
-# package, so this points at the local checkout while you work and is ignored
-# entirely by any app that depends on eigen_flutter. It is what lets the
-# generated client keep its own independent resolution — a pub workspace
-# would force one shared resolution, and eigen_api's build_runner needs a
-# newer analyzer than riverpod_lint allows.
-dependency_overrides:
-  eigen_api:
-    path: packages/eigen_api
 
 dev_dependencies:
   flutter_test:

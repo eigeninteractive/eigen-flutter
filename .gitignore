@@ -5,9 +5,12 @@
 build/
 pubspec.lock
 
-# Generated code
-*.g.dart
-*.freezed.dart
+# Generated code (`*.g.dart`, `*.freezed.dart`) is deliberately NOT ignored: it
+# is committed, so the published package compiles for consumers — who never run
+# build_runner on a dependency — and so `git diff` after `build_runner build`
+# is the drift guard that proves it is current. This is why there is no
+# `.pubignore`: publishing falls back to this file, which correctly excludes
+# build output and the credentials below while keeping the generated sources.
 
 # IDE / OS
 .idea/
@@ -38,3 +41,6 @@ macos/Runner/GoogleService-Info.plist
 *.p8
 *.p12
 *.mobileprovision
+
+# Local-only dependency overrides (see the file for what it is for).
+pubspec_overrides.yaml

@@ -26,15 +26,6 @@ dependencies:
   freezed_annotation: ^3.1.0
   json_annotation: ^4.12.0
 
-# Development only, and temporary. `eigen_flutter` depends on `eigen_api` by
-# version and overrides it to a local path — but `dependency_overrides` is
-# honoured only for the *root* package, and here the root is this example. So
-# the override has to be repeated. Delete this block once `eigen_api` is
-# published to pub.dev; a real app depending on `eigen_flutter` never needs it.
-dependency_overrides:
-  eigen_api:
-    path: ../packages/eigen_api
-
 dev_dependencies:
   flutter_test:
     sdk: flutter

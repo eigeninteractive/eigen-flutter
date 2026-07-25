@@ -52,10 +52,11 @@ eigen-flutter/
 │   ├── shared/              # shared widgets, providers, data
 │   └── testing/             # the Dart half of the twin-fixture runner
 ├── example/                 # Rock–Paper–Scissors: a complete game, its own package
-├── openapi/openapi.json     # vendored snapshot of the server's spec
-├── packages/eigen_api/      # GENERATED REST client — never hand-edited
-├── tool/generate_api.sh     # regenerates eigen_api from the spec
 └── docs/client_reference.md
+
+The generated REST client (`eigen_api`) is NOT here. It is generated and
+published by the engine repo, which owns the wire contract, and consumed from
+pub.dev like any other dependency.
 ```
 
 ## Using the engine in an app
@@ -70,11 +71,14 @@ dependencies:
     path: ../eigen-flutter
 ```
 
-Generated code (`*.g.dart`, `*.freezed.dart`) is **not committed**, so generate
-it once after cloning — and again in CI before building the app:
+Generated code (`*.g.dart`, `*.freezed.dart`) **is committed** — a fresh clone
+compiles without a build step, and the published package ships it (consumers
+never run `build_runner` on a dependency). Regenerate after changing any
+annotated class; CI runs `build_runner` and fails if the result is not
+committed.
 
 ```bash
-cd eigen-flutter && flutter pub get && dart run build_runner build
+cd eigen-flutter && flutter pub get
 ```
 
 Then:
@@ -98,8 +102,8 @@ An app depends on **`eigen_flutter` alone** and imports **only its barrel**:
 import 'package:eigen_flutter/eigen_flutter.dart';
 ```
 
-Never `package:eigen_api/...` (a build artifact `generate_api.sh` rewrites
-wholesale) and never a deep path into `lib/`. The barrel re-exports the wire
+Never `package:eigen_api/...` (a generated build artifact the engine repo
+rewrites wholesale) and never a deep path into `lib/`. The barrel re-exports the wire
 types a game renders from — `GameStatus`, `Outcome`, `Player`, `Seat`, `Frame`,
 … — while keeping the generated `*Api` classes and Dio out of your namespace:
 **naming a type is part of the contract, calling the server is not.**
@@ -115,7 +119,6 @@ types a game renders from — `GameStatus`, `Outcome`, `Player`, `Seat`, `Frame`
 | Dart SDK | ^3.9.2 (ships with Flutter) | Everything |
 | JDK | 17 (Temurin) | Android builds |
 | Xcode | latest | iOS builds (macOS only) |
-| Java + `openapi_generator_cli` | — | Only when regenerating `eigen_api` |
 
 No backend tooling is required to work on this package: it has no Docker
 dependency, no local database, and no cloud account. It reads no config of its
@@ -125,18 +128,14 @@ own — an app injects everything at runtime.
 git clone git@github.com:eigeninteractive/eigen-flutter.git
 cd eigen-flutter
 flutter pub get
-# Two builds: the root one does not reach into the path dependency, so the
-# generated REST client has to be built in its own package.
-(cd packages/eigen_api && dart pub get && dart run build_runner build)
-dart run build_runner build   # generated code isn't committed — do this first
-flutter analyze
+flutter analyze              # generated code is committed — no build step needed
 flutter test
 ```
 
-`dart run build_runner build` is not optional after a fresh clone. `*.g.dart`
-and `*.freezed.dart` are deliberately not committed, so analysis fails loudly
-until you generate them. Re-run it after touching any annotated class, or leave
-`dart run build_runner watch` going.
+Generated code is committed, so a fresh clone analyzes immediately. Re-run
+`dart run build_runner build` after touching any annotated class — CI
+regenerates and fails if you forgot to commit the result — or leave
+`dart run build_runner watch` going while you work.
 
 To work on an **app** against a local checkout of the engine, clone them as
 siblings and run `build_runner` in the engine once (see the next section).
@@ -148,23 +147,21 @@ CI runs exactly what you can run locally, in this order — `dart format
 `git diff --exit-code`, `flutter analyze`, `flutter test`. There are no secrets
 and no Firebase config in this repo's workflow, because the package reads none.
 
-### Regenerating the API client
+### The generated API client
 
-After **any** server wire change, re-emit the spec in `eigen-server`
-(`pnpm openapi`) and regenerate here, in the same change:
+`eigen_api` is generated from the engine's `openapi.json` **in the engine repo**
+(`eigen-server/clients/dart`) and published to pub.dev at the engine's version.
+Nothing here regenerates it, and there is no vendored copy of the spec: this
+package just declares `eigen_api: ^1.0.0`.
 
-```bash
-dart pub global activate openapi_generator_cli   # once (needs Java)
-./tool/generate_api.sh                           # re-vendors the spec + regenerates
-```
+That constraint is the compatibility statement. A server change that breaks the
+wire is a major engine bump, so it becomes a visible, deliberate dependency bump
+here rather than a silent drift between two copies of a file.
 
-The script refreshes `openapi/openapi.json` from the sibling `eigen-server`
-checkout when present, then rewrites `packages/eigen_api/lib` and `doc`
-wholesale. Review and commit the result.
-
-**Fix wire awkwardness at the source.** A shape the generated client consumes
-badly gets fixed in the server's zod schemas and regenerated — never patched
-around in Dart.
+**To work on both halves at once**, clone `eigen-server` as a sibling and add a
+`pubspec_overrides.yaml` (gitignored) pointing `eigen_api` at
+`../eigen-server/clients/dart`. `flutter pub get` picks it up; the published
+manifest never sees it.
 
 **Wire enums are closed sets.** Generated enums carry no `unknown` sentinel and
 parse strictly, so adding a member to any enum on the wire is a breaking change

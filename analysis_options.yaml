@@ -4,9 +4,5 @@ linter:
   rules:
 
 analyzer:
-  exclude:
-    # Generated REST client — regenerated wholesale by tool/generate_api.sh and
-    # analyzed on its own terms, not against the app's lint rules.
-    - packages/eigen_api/**
   plugins:
     - custom_lint

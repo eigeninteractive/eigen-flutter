@@ -14,10 +14,6 @@ here. This file is for people working *on* the framework.
 
 ```bash
 flutter pub get
-# The generated REST client is a separate package, and the root build does not
-# reach into a path dependency. Skip this and every model that parses a
-# response fails to compile.
-(cd packages/eigen_api && dart pub get && dart run build_runner build)
 dart run build_runner build --delete-conflicting-outputs
 flutter analyze
 flutter test
@@ -88,18 +84,35 @@ listening to rather than papering over.
 
 ## The generated API client
 
-`packages/eigen_api` is **generated** from a vendored snapshot of the engine's
-`openapi.json` (`openapi/openapi.json`). `tool/generate_api.sh` deletes and
-rewrites it wholesale — never hand-edit it, and never depend on it from an app.
+`eigen_api` is **not in this repository.** It is generated from `openapi.json`
+in the engine repo (`eigen-server/clients/dart`), published to pub.dev at the
+engine's version, and consumed here as an ordinary dependency:
+`eigen_api: ^1.0.0`.
 
-It usually refreshes itself: eigen-server dispatches here when its spec changes,
-and `.github/workflows/sync-api.yml` re-vendors the spec, regenerates the
-client, and opens a PR.
+That is a deliberate move away from vendoring the spec and regenerating locally.
+The wire contract belongs to the server, so the client that speaks it is
+versioned by the server — and a breaking wire change now appears as a reviewable
+Dart diff in the engine PR that caused it, instead of arriving here days later
+as a failing sync PR. There is no dispatch workflow and no vendored spec.
 
-**If that PR's checks fail, the engine made a breaking wire change.** Generated
-enums carry no `unknown` sentinel and parse strictly, so a new member is a
-compile error by design. That needs a coordinated schema-version bump across
-both repos, not a fix here.
+**To work on both halves at once**, clone `eigen-server` as a sibling and create
+a `pubspec_overrides.yaml` — it is gitignored, pub reads it alongside
+`pubspec.yaml`, and it keeps the override out of the published manifest:
+
+```yaml
+dependency_overrides:
+  eigen_api:
+    path: ../eigen-server/clients/dart
+```
+
+The example needs its own copy (with one more `../`), because
+`dependency_overrides` applies only to the root package and the example is its
+own root.
+
+**A wire change that fails to compile here is the engine telling you it broke
+the wire.** Generated enums carry no `unknown` sentinel and parse strictly, so a
+new member is a compile error by design. That needs a coordinated
+schema-version bump across both repos, not a fix here.
 
 ## Twin fixtures — the coupling CI cannot see
 
@@ -129,39 +142,23 @@ on the pub.dev package page (Admin → Automated publishing) with repository
 trusts the workflow's short-lived GitHub identity. There is no pub credential in
 GitHub secrets.
 
-### Two packages, one version
+One package. `eigen_api` is released by the engine repo, so there is no lockstep
+to coordinate and no publish order to get right.
 
-`eigen_api` is published too, and the two release **in lockstep** — same version,
-always together. `eigen_flutter` declares `eigen_api: ^<same version>`, which is
-a real version constraint (pub.dev rejects `path` dependencies), and a
-`dependency_overrides` entry points at the local checkout while you work.
+### Generated code is committed
 
-That override is honoured **only when `eigen_flutter` is the root package**, so
-an app depending on `eigen_flutter` resolves the published `eigen_api` normally.
-It also keeps `eigen_api`'s dependency resolution independent, which matters:
-its `build_runner` needs a newer `analyzer` than `riverpod_lint` allows, so a
-pub workspace — which forces one shared resolution — will not resolve.
+`*.g.dart` and `*.freezed.dart` are **not** gitignored here — they are committed,
+for two reasons. A published Dart package must ship its generated code, because
+a consumer never runs `build_runner` on a dependency; and committing it makes
+`build_runner` + `git diff` the drift guard that proves the checked-in copy is
+current (the "no pending fixes" step above).
 
-Publish order is `eigen_api` first, then `eigen_flutter`.
-
-`eigen_api` being on pub.dev does not make it public API. It is documented as
-internal and no app should depend on it directly, the same way Flutter's
-federated plugins publish `*_platform_interface` packages nobody imports.
-
-> [!IMPORTANT]
-> **Publishing is blocked until generated code is committed.**
->
-> `.gitignore` currently excludes `*.g.dart` and `*.freezed.dart`, and
-> `dart pub publish` honours `.gitignore`. Today that means **73 generated files
-> exist on disk and zero would be published** — a consumer would install a
-> package whose `part 'foo.g.dart';` directives point at files that do not
-> exist, and it would not compile. The example is included in the tarball, so
-> its two generated files are affected too.
->
-> Consumers never run `build_runner` on a dependency, so a published Dart
-> package has to ship its generated code. Fixing this means removing those two
-> `.gitignore` lines and committing the generated output, accepting the diff
-> noise on every regeneration. It applies to both packages.
+Because the generated sources are tracked, publishing needs no `.pubignore`:
+`dart pub publish` falls back to `.gitignore`, which already excludes build
+output and the credential set while keeping the generated code. That is the
+safer arrangement — a `.pubignore` *replaces* `.gitignore` rather than adding to
+it, so an incomplete one silently re-includes `.env`, keystores and
+`firebase_options.dart`.
 
 ## Documentation changes
 
