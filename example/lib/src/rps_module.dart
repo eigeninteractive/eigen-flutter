@@ -2,7 +2,7 @@
 ///
 /// [RpsModule] is the version-independent container: the registry of
 /// [GameRules] units, plus the creation and About UI. Everything that depends
-/// on a `schema_version` lives in a unit under `v1/`; nothing here branches on
+/// on a `schemaVersion` lives in a unit under `v1/`; nothing here branches on
 /// version, because creation always targets the newest.
 library;
 
@@ -17,7 +17,7 @@ class RpsModule extends GameModule {
 
   /// One entry today. A breaking rules change adds `2: RpsRulesV2()` and keeps
   /// this one until every v1 match has drained — infra picks the unit from the
-  /// match's own `schema_version`, so both generations play side by side.
+  /// match's own `schemaVersion`, so both generations play side by side.
   @override
   Map<int, GameRules> get versions => const {1: RpsRulesV1()};
 

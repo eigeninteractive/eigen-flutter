@@ -46,6 +46,6 @@ class AvatarStorageService {
         ),
       ),
     );
-    return body['avatar_url'] as String;
+    return body['avatarUrl'] as String;
   }
 }

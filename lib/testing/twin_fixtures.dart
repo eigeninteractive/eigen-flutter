@@ -56,7 +56,7 @@ import 'dart:io';
 import 'package:eigen_api/eigen_api.dart' show GameAccess;
 import 'package:eigen_flutter/core/game/game_module.dart';
 
-/// One fixture file's cases, all targeting one `schema_version` unit.
+/// One fixture file's cases, all targeting one `schemaVersion` unit.
 class TwinFixtureSuite {
   const TwinFixtureSuite({
     required this.path,
@@ -67,7 +67,7 @@ class TwinFixtureSuite {
   /// The fixture file this suite was loaded from, for failure messages.
   final String path;
 
-  /// The `schema_version` whose rules unit every case targets.
+  /// The `schemaVersion` whose rules unit every case targets.
   final int schemaVersion;
 
   final List<TwinFixtureCase> cases;

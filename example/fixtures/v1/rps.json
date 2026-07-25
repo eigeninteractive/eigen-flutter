@@ -66,7 +66,7 @@
           "lastRound": { "moves": ["rock", "scissors"], "winner": 0 }
         },
         "pending": [],
-        "outcome": [{ "player_index": 0, "result": "win", "placement": 1, "team_index": 0 }, { "player_index": 1, "result": "loss", "placement": 2, "team_index": 1 }],
+        "outcome": [{ "playerIndex": 0, "result": "win", "placement": 1, "teamIndex": 0 }, { "playerIndex": 1, "result": "loss", "placement": 2, "teamIndex": 1 }],
         "observation": {
           "round": 1,
           "wins": [1, 0],

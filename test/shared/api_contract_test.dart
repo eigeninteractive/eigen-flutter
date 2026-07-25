@@ -17,31 +17,31 @@ void main() {
       // Adding a member server-side is a wire change that needs a
       // schema-version bump; this list is the client half of that contract.
       check(ErrorCode.values.map((c) => c.value).toSet()).deepEquals({
-        'not_active',
-        'not_ready',
+        'notActive',
+        'notReady',
         'expired',
-        'not_pending',
-        'state_updated',
-        'invalid_payload',
-        'illegal_move',
-        'unknown_game',
-        'not_joinable',
-        'game_full',
-        'already_joined',
-        'not_participant',
-        'not_creator',
-        'creator_cannot_leave',
+        'notPending',
+        'stateUpdated',
+        'invalidPayload',
+        'illegalMove',
+        'unknownGame',
+        'notJoinable',
+        'gameFull',
+        'alreadyJoined',
+        'notParticipant',
+        'notCreator',
+        'creatorCannotLeave',
         // Raised by a route before the command reaches the game. Each exists
         // because the UI renders something specific for it.
-        'schema_unsupported',
-        'username_invalid',
-        'username_taken',
-        'friends_only',
-        'registration_required',
-        'image_too_large',
-        'unsupported_image_type',
+        'schemaUnsupported',
+        'usernameInvalid',
+        'usernameTaken',
+        'friendsOnly',
+        'registrationRequired',
+        'imageTooLarge',
+        'unsupportedImageType',
         // Per-user write rate limiting (429).
-        'rate_limited',
+        'rateLimited',
       });
     });
 
@@ -58,7 +58,7 @@ void main() {
     test('parses a coded failure into the typed enum', () {
       final parsed = ErrorResponse.fromJson({
         'error': 'Game is full',
-        'code': 'game_full',
+        'code': 'gameFull',
       });
 
       check(parsed.error).equals('Game is full');
@@ -78,8 +78,8 @@ void main() {
     // to destructure — exactly one of the two ids is set.
     test('carries a user identity', () {
       final identity = RatingIdentity.fromJson({
-        'user_id': 'user-1',
-        'bot_id': null,
+        'userId': 'user-1',
+        'botId': null,
       });
 
       check(identity.userId).equals('user-1');
@@ -88,8 +88,8 @@ void main() {
 
     test('carries a bot identity', () {
       final identity = RatingIdentity.fromJson({
-        'user_id': null,
-        'bot_id': 'bot-x',
+        'userId': null,
+        'botId': 'bot-x',
       });
 
       check(identity.userId).isNull();

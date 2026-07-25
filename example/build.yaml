@@ -5,10 +5,11 @@
 # `lastRound`, `targetWins`) — so the Dart field names are already the wire
 # keys and renaming them would silently break the codec.
 #
-# The framework package one directory up sets `field_rename: snake`, because
-# the engine's own wire vocabulary is snake_case. Do not copy that setting into
-# a game without checking which convention your schemas actually use; the twin
-# fixtures are what would catch it, since they carry the real wire keys.
+# This matches the engine itself: the whole wire vocabulary is camelCase, so
+# neither the framework package one directory up nor the generated `eigen_api`
+# client sets `field_rename`. Keep your game's schemas camelCase too and the
+# Dart mirror stays a straight transcription; the twin fixtures carry the real
+# wire keys and will catch any drift.
 targets:
   $default:
     builders:

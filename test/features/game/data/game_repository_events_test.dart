@@ -14,9 +14,9 @@ Map<String, dynamic> _frameJson(int version) => {
   'type': 'frame',
   'version': version,
   'data': <String, dynamic>{'v': version},
-  'pending_players': <int>[0],
+  'pendingPlayers': <int>[0],
   'deadline': null,
-  'player_times': null,
+  'playerTimes': null,
 };
 
 Frame _frame(int version) => Frame.fromJson(_frameJson(version));

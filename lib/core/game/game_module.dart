@@ -150,7 +150,7 @@ class BotSeatableArgs {
   final Map<String, dynamic> botConfig;
 }
 
-/// The client-side surface of one `schema_version` of the game — the Dart
+/// The client-side surface of one `schemaVersion` of the game — the Dart
 /// twin of the same-named TS `GameRules` unit.
 ///
 /// A version unit is self-contained: it parses and renders exactly one
@@ -309,13 +309,13 @@ abstract class GameRules<TObs, TAction, TConfig> {
 ///
 /// The module is a thin container — the same-named twin of the TS
 /// `GameModule`: the version registry ([versions], one [GameRules] unit per
-/// `schema_version`) plus the creation/about UI, which is version-independent
+/// `schemaVersion`) plus the creation/about UI, which is version-independent
 /// because creation always targets [latestSchemaVersion]. All version
 /// dispatch is owned by infra — game code never branches on version.
 abstract class GameModule {
   const GameModule();
 
-  /// The [GameRules] units keyed by `schema_version` — exactly the versions
+  /// The [GameRules] units keyed by `schemaVersion` — exactly the versions
   /// this build ships, mirroring the keys of the TS `GameModule.versions`.
   ///
   /// Sparse on purpose: loading a game requires its version's entry
@@ -388,7 +388,7 @@ class UnsupportedGameSchemaException implements Exception {
     required this.supportedSchema,
   });
 
-  /// The game's `schema_version` (from the server).
+  /// The game's `schemaVersion` (from the server).
   final int gameSchema;
 
   /// The latest schema this build supports ([GameModule.latestSchemaVersion]).

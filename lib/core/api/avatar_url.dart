@@ -1,4 +1,4 @@
-/// Resolves a stored `avatar_url` into something an image widget can load.
+/// Resolves a stored `avatarUrl` into something an image widget can load.
 ///
 /// The server stores either an absolute URL (when the avatars bucket has a
 /// public base - a custom domain or r2.dev, so reads never touch the worker) or

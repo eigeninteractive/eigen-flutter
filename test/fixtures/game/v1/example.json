@@ -16,10 +16,10 @@
         "pending": [],
         "outcome": [
           {
-            "player_index": 0,
+            "playerIndex": 0,
             "result": "win",
             "placement": 1,
-            "team_index": 0
+            "teamIndex": 0
           }
         ],
         "observation": { "moves": 1 }

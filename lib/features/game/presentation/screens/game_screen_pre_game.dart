@@ -231,7 +231,7 @@ class _AddBotDialog extends ConsumerStatefulWidget {
   /// The game's raw config payload, as it comes off the wire.
   final Object config;
 
-  /// The game's `schema_version` — seating gates run against *this* game's
+  /// The game's `schemaVersion` — seating gates run against *this* game's
   /// rules unit, not the latest.
   final int schemaVersion;
 

@@ -9,5 +9,9 @@ targets:
     builders:
       json_serializable:
         options:
-          field_rename: snake
+          # No `field_rename`: the engine's wire vocabulary is camelCase, so a
+          # framework model's Dart field names are already the wire keys. The
+          # engine wire types themselves come from the generated `eigen_api`
+          # package (which sets its own keys from the OpenAPI schema) — this
+          # config only governs any hand-written model in this package.
           explicit_to_json: true

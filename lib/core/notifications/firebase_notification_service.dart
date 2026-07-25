@@ -44,9 +44,9 @@ enum _NotificationCategory {
   /// Throws [ArgumentError] for unknown or missing values — every notification
   /// must declare its category explicitly.
   static _NotificationCategory fromString(String? value) => switch (value) {
-    'your_turn' => yourTurn,
-    'game_invite' => gameInvite,
-    'friend_request' => friendRequest,
+    'yourTurn' => yourTurn,
+    'gameInvite' => gameInvite,
+    'friendRequest' => friendRequest,
     _ => throw ArgumentError.value(value, 'category'),
   };
 }
@@ -269,7 +269,7 @@ class FirebaseNotificationService {
 
     // Suppress "your turn" banners when the user is already on that game screen.
     if (category == _NotificationCategory.yourTurn) {
-      final deepLink = message.data['deep_link'] as String?;
+      final deepLink = message.data['deepLink'] as String?;
       final gameId = deepLink?.split('/').lastOrNull;
       if (gameId != null && gameId == _activeGameId()) return;
     }
@@ -296,12 +296,12 @@ class FirebaseNotificationService {
               : InterruptionLevel.active,
         ),
       ),
-      payload: message.data['deep_link'] as String?,
+      payload: message.data['deepLink'] as String?,
     );
   }
 
   void _handleTap(RemoteMessage message) {
-    final deepLink = message.data['deep_link'] as String?;
+    final deepLink = message.data['deepLink'] as String?;
     if (deepLink != null) _nav.add(deepLink);
   }
 
@@ -312,13 +312,13 @@ class FirebaseNotificationService {
         _NotificationCategory.friendRequest => _socialChannel,
       };
 
-  /// yourTurn uses deep_link (contains gameId) so a second notification for
+  /// yourTurn uses deepLink (contains gameId) so a second notification for
   /// the same game replaces the first. Other categories use messageId so
   /// notifications from different people stack independently.
   int _notificationId(RemoteMessage message, _NotificationCategory category) {
     final key = category == _NotificationCategory.yourTurn
-        ? (message.data['deep_link'] ?? message.messageId ?? '')
-        : (message.messageId ?? message.data['deep_link'] ?? '');
+        ? (message.data['deepLink'] ?? message.messageId ?? '')
+        : (message.messageId ?? message.data['deepLink'] ?? '');
     return key.hashCode & 0x7FFFFFFF;
   }
 }

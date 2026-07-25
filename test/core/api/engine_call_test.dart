@@ -39,7 +39,7 @@ void main() {
         engineCall<void>(
           () => throw _serverSaidNo(409, {
             'error': 'Game is full',
-            'code': 'game_full',
+            'code': 'gameFull',
           }),
         ),
       ).throws<EngineException>(
@@ -121,7 +121,7 @@ void main() {
         engineData<String>(
           () => throw _serverSaidNo(409, {
             'error': 'Game is full',
-            'code': 'game_full',
+            'code': 'gameFull',
           }),
         ),
       ).throws<EngineException>(

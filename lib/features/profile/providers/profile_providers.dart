@@ -36,7 +36,7 @@ AvatarStorageService avatarStorageService(Ref ref) {
 ///
 /// Every mutation below re-reads the profile from the server rather than
 /// patching state locally. That is not caution for its own sake: the server
-/// derives fields the client does not send - it stamps `avatar_url` itself on
+/// derives fields the client does not send - it stamps `avatarUrl` itself on
 /// upload, complete with the cache-buster - so a locally patched copy would
 /// diverge from what every other client sees.
 @Riverpod(keepAlive: true)
@@ -75,7 +75,7 @@ class CurrentUserProfile extends _$CurrentUserProfile {
 
   /// Uploads [bytes] as the user's new avatar.
   ///
-  /// The server stores the image and stamps the new `avatar_url` on the profile
+  /// The server stores the image and stamps the new `avatarUrl` on the profile
   /// itself, so this re-reads rather than constructing a URL locally.
   Future<void> uploadAvatar(Uint8List bytes) async {
     final current = state.value;

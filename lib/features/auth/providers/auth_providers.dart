@@ -69,7 +69,7 @@ Stream<AuthStateChange> authStateChanges(Ref ref) {
 ///
 /// Watches the auth state stream (not [currentUserId]) so it re-evaluates on
 /// `userUpdated` events — the id is unchanged when a guest upgrades, but the
-/// `is_anonymous` claim flips to false. UI gates (social, rated games, upgrade
+/// `isAnonymous` claim flips to false. UI gates (social, rated games, upgrade
 /// nudge) watch this; `==` on the bool keeps unrelated token refreshes inert.
 @riverpod
 bool isAnonymous(Ref ref) {
