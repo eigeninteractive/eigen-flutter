@@ -19,10 +19,10 @@ const _yourTurnChannel = AndroidNotificationChannel(
   importance: Importance.high,
 );
 
-const _gameInvitesChannel = AndroidNotificationChannel(
-  'game_invites',
-  'Game Invites',
-  description: 'Alerts when a friend creates a game for you.',
+const _gameChannel = AndroidNotificationChannel(
+  'game_updates',
+  'Game Updates',
+  description: 'Results and updates for games you are in.',
   importance: Importance.defaultImportance,
 );
 
@@ -37,16 +37,19 @@ const _socialChannel = AndroidNotificationChannel(
 
 enum _NotificationCategory {
   yourTurn,
-  gameInvite,
-  friendRequest;
+  gameFinished,
+  friendRequest,
+  friendAccepted;
 
-  /// Parses the `category` field from the FCM data payload.
+  /// Parses the `category` field from the FCM data payload — the exact set the
+  /// engine sends (see the server's `push.ts`).
   /// Throws [ArgumentError] for unknown or missing values — every notification
   /// must declare its category explicitly.
   static _NotificationCategory fromString(String? value) => switch (value) {
     'yourTurn' => yourTurn,
-    'gameInvite' => gameInvite,
+    'gameFinished' => gameFinished,
     'friendRequest' => friendRequest,
+    'friendAccepted' => friendAccepted,
     _ => throw ArgumentError.value(value, 'category'),
   };
 }
@@ -225,7 +228,7 @@ class FirebaseNotificationService {
           AndroidFlutterLocalNotificationsPlugin
         >();
     await android?.createNotificationChannel(_yourTurnChannel);
-    await android?.createNotificationChannel(_gameInvitesChannel);
+    await android?.createNotificationChannel(_gameChannel);
     await android?.createNotificationChannel(_socialChannel);
   }
 
@@ -308,15 +311,20 @@ class FirebaseNotificationService {
   AndroidNotificationChannel _channelFor(_NotificationCategory category) =>
       switch (category) {
         _NotificationCategory.yourTurn => _yourTurnChannel,
-        _NotificationCategory.gameInvite => _gameInvitesChannel,
+        _NotificationCategory.gameFinished => _gameChannel,
         _NotificationCategory.friendRequest => _socialChannel,
+        _NotificationCategory.friendAccepted => _socialChannel,
       };
 
-  /// yourTurn uses deepLink (contains gameId) so a second notification for
-  /// the same game replaces the first. Other categories use messageId so
-  /// notifications from different people stack independently.
+  /// Game-scoped notifications (a turn, a finish) key off the deepLink — which
+  /// carries the gameId — so a later update for the same game replaces the
+  /// earlier one. Social notifications key off messageId so events from
+  /// different people stack independently.
   int _notificationId(RemoteMessage message, _NotificationCategory category) {
-    final key = category == _NotificationCategory.yourTurn
+    final gameScoped =
+        category == _NotificationCategory.yourTurn ||
+        category == _NotificationCategory.gameFinished;
+    final key = gameScoped
         ? (message.data['deepLink'] ?? message.messageId ?? '')
         : (message.messageId ?? message.data['deepLink'] ?? '');
     return key.hashCode & 0x7FFFFFFF;
