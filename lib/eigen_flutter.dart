@@ -8,9 +8,9 @@ library;
 
 /// The wire types a game renders from.
 ///
-/// Re-exported deliberately, the way `supabase_flutter` re-exports `supabase`:
-/// they are generated, but they *are* this engine's domain vocabulary — there
-/// are no hand-written mirrors to hide them behind. A game app must be able to
+/// Re-exported deliberately: they are generated, but they *are* this engine's
+/// domain vocabulary — there are no hand-written mirrors to hide them behind,
+/// and inventing some would be pure transcription. A game app must be able to
 /// name a [GameStatus] or an [OutcomeResultEnum] without depending on
 /// `eigen_api` itself, which is a build artifact that `tool/generate_api.sh`
 /// deletes and rewrites wholesale.

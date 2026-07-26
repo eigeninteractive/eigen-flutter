@@ -121,7 +121,7 @@ String _$avatarStorageServiceHash() =>
 ///
 /// Every mutation below re-reads the profile from the server rather than
 /// patching state locally. That is not caution for its own sake: the server
-/// derives fields the client does not send - it stamps `avatar_url` itself on
+/// derives fields the client does not send - it stamps `avatarUrl` itself on
 /// upload, complete with the cache-buster - so a locally patched copy would
 /// diverge from what every other client sees.
 
@@ -137,7 +137,7 @@ final currentUserProfileProvider = CurrentUserProfileProvider._();
 ///
 /// Every mutation below re-reads the profile from the server rather than
 /// patching state locally. That is not caution for its own sake: the server
-/// derives fields the client does not send - it stamps `avatar_url` itself on
+/// derives fields the client does not send - it stamps `avatarUrl` itself on
 /// upload, complete with the cache-buster - so a locally patched copy would
 /// diverge from what every other client sees.
 @JsonPersist()
@@ -151,7 +151,7 @@ final class CurrentUserProfileProvider
   ///
   /// Every mutation below re-reads the profile from the server rather than
   /// patching state locally. That is not caution for its own sake: the server
-  /// derives fields the client does not send - it stamps `avatar_url` itself on
+  /// derives fields the client does not send - it stamps `avatarUrl` itself on
   /// upload, complete with the cache-buster - so a locally patched copy would
   /// diverge from what every other client sees.
   CurrentUserProfileProvider._()
@@ -184,7 +184,7 @@ String _$currentUserProfileHash() =>
 ///
 /// Every mutation below re-reads the profile from the server rather than
 /// patching state locally. That is not caution for its own sake: the server
-/// derives fields the client does not send - it stamps `avatar_url` itself on
+/// derives fields the client does not send - it stamps `avatarUrl` itself on
 /// upload, complete with the cache-buster - so a locally patched copy would
 /// diverge from what every other client sees.
 

@@ -15,7 +15,7 @@ import 'package:json_annotation/json_annotation.dart';
 /// state-changing command: a rejected move did not happen, whereas a timed-out
 /// one may well have landed.
 ///
-/// The direct successor to the Supabase-era `dbGuard`, and used the same way:
+/// Wrap every generated call at the data layer:
 ///
 /// ```dart
 /// final lobby = await engineCall(() => api.getLobby(limit: 50));

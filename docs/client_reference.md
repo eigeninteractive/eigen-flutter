@@ -33,8 +33,8 @@ package directory. And the framework needs one public surface it can evolve
 behind; deep imports make every internal file layout an accidental contract.
 
 So the barrel re-exports the wire vocabulary a game renders from — `GameStatus`,
-`Outcome`, `OutcomeResultEnum`, `Player`, `Seat`, `Frame`, and the rest — exactly
-as `supabase_flutter` re-exports `supabase`. It lists them explicitly rather than
+`Outcome`, `OutcomeResultEnum`, `Player`, `Seat`, `Frame`, and the rest. It
+lists them explicitly rather than
 exporting `eigen_api` wholesale, so the generated `*Api` classes and their Dio
 plumbing stay out of an app's namespace: **naming a type is part of the contract,
 calling the server is not.** `test/core/architecture/api_isolation_test.dart`
@@ -70,9 +70,9 @@ enforces both halves.
   parse strictly, so adding a member to any of them — `GameStatus`, `ErrorCode`,
   `GameAccess`, seat type — is a breaking change needing a schema-version bump.
   `test/shared/api_contract_test.dart` pins the sets so drift fails loudly.
-  *(This replaced the Supabase-era `@JsonKey(unknownEnumValue:)` tolerance
-  convention: the client no longer degrades gracefully on an unknown value, it
-  refuses to build. §25 explains why that trade is the right one here.)*
+  *(Deliberately not `@JsonKey(unknownEnumValue:)`: the client does not degrade
+  gracefully on an unknown value, it refuses to build. §25 explains why that
+  trade is the right one here.)*
 - **Lists page by keyset cursor**, not offset: the cursor is the previous page's
   last sort value. These lists change while they are being read, and an offset
   would show the same row twice after a single insert.
@@ -179,8 +179,8 @@ game code gets non-nullable identity — no null checks or loading states.
 
 - Identity comes from `GET /api/engine/players?ids=` (batch, public identity:
   username, display name, avatar, anonymity — never email), warmed by a
-  client-side persisted cache (§12). This is the decided alternative to
-  denormalizing identity onto game rows.
+  client-side persisted cache (§12). Game rows carry no denormalized identity,
+  so a renamed user is correct everywhere on the next fetch.
 - For a **finished game whose participant was deleted**, the server anonymizes the
   seat (the roster keeps the seat, id nulled); the client renders a **synthetic
   identity** ("Deleted User", `player_{index}`) and sets `GamePlayer.isDeleted`.
@@ -1155,10 +1155,9 @@ draining.**
 
 ### Wire compatibility — closed enums, not tolerant decode
 
-The Supabase-era client used `unknown` enum sentinels so an unrecognised value
-degraded gracefully. **That is deliberately gone.** Generated enums parse
-strictly, so an unknown value throws and `test/shared/api_contract_test.dart`
-pins the sets.
+An `unknown` enum sentinel would let an unrecognised value degrade gracefully.
+**That is deliberately not done here.** Generated enums parse strictly, so an
+unknown value throws and `test/shared/api_contract_test.dart` pins the sets.
 
 The trade: graceful degradation on the wire buys silence, and silence is exactly
 wrong when the two sides are two repos with one generated seam between them. With

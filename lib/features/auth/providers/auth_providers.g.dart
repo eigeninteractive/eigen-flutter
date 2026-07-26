@@ -215,7 +215,7 @@ String _$authStateChangesHash() => r'ee83d39078d728a4e5a0431d43cb29b07bb412f4';
 ///
 /// Watches the auth state stream (not [currentUserId]) so it re-evaluates on
 /// `userUpdated` events — the id is unchanged when a guest upgrades, but the
-/// `is_anonymous` claim flips to false. UI gates (social, rated games, upgrade
+/// `isAnonymous` claim flips to false. UI gates (social, rated games, upgrade
 /// nudge) watch this; `==` on the bool keeps unrelated token refreshes inert.
 
 @ProviderFor(isAnonymous)
@@ -225,7 +225,7 @@ final isAnonymousProvider = IsAnonymousProvider._();
 ///
 /// Watches the auth state stream (not [currentUserId]) so it re-evaluates on
 /// `userUpdated` events — the id is unchanged when a guest upgrades, but the
-/// `is_anonymous` claim flips to false. UI gates (social, rated games, upgrade
+/// `isAnonymous` claim flips to false. UI gates (social, rated games, upgrade
 /// nudge) watch this; `==` on the bool keeps unrelated token refreshes inert.
 
 final class IsAnonymousProvider extends $FunctionalProvider<bool, bool, bool>
@@ -234,7 +234,7 @@ final class IsAnonymousProvider extends $FunctionalProvider<bool, bool, bool>
   ///
   /// Watches the auth state stream (not [currentUserId]) so it re-evaluates on
   /// `userUpdated` events — the id is unchanged when a guest upgrades, but the
-  /// `is_anonymous` claim flips to false. UI gates (social, rated games, upgrade
+  /// `isAnonymous` claim flips to false. UI gates (social, rated games, upgrade
   /// nudge) watch this; `==` on the bool keeps unrelated token refreshes inert.
   IsAnonymousProvider._()
     : super(

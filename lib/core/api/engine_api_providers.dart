@@ -12,7 +12,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 part 'engine_api_providers.g.dart';
 
 /// The app-wide HTTP client for the engine — the data layer's single backend
-/// handle, and the successor to the Supabase-era `supabaseClientProvider`.
+/// handle.
 ///
 /// Only repositories and data services may watch this or the API providers
 /// below; everything above them consumes domain types. Enforced by

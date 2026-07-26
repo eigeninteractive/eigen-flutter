@@ -9,7 +9,7 @@ part of 'engine_api_providers.dart';
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
 /// The app-wide HTTP client for the engine — the data layer's single backend
-/// handle, and the successor to the Supabase-era `supabaseClientProvider`.
+/// handle.
 ///
 /// Only repositories and data services may watch this or the API providers
 /// below; everything above them consumes domain types. Enforced by
@@ -29,7 +29,7 @@ part of 'engine_api_providers.dart';
 final engineDioProvider = EngineDioProvider._();
 
 /// The app-wide HTTP client for the engine — the data layer's single backend
-/// handle, and the successor to the Supabase-era `supabaseClientProvider`.
+/// handle.
 ///
 /// Only repositories and data services may watch this or the API providers
 /// below; everything above them consumes domain types. Enforced by
@@ -48,7 +48,7 @@ final engineDioProvider = EngineDioProvider._();
 final class EngineDioProvider extends $FunctionalProvider<Dio, Dio, Dio>
     with $Provider<Dio> {
   /// The app-wide HTTP client for the engine — the data layer's single backend
-  /// handle, and the successor to the Supabase-era `supabaseClientProvider`.
+  /// handle.
   ///
   /// Only repositories and data services may watch this or the API providers
   /// below; everything above them consumes domain types. Enforced by

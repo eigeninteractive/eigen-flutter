@@ -22,7 +22,14 @@ const _yourTurnChannel = AndroidNotificationChannel(
 const _gameChannel = AndroidNotificationChannel(
   'game_updates',
   'Game Updates',
-  description: 'Results and updates for games you are in.',
+  description: 'Your game is ready to start, or a match has finished.',
+  importance: Importance.defaultImportance,
+);
+
+const _gameInvitesChannel = AndroidNotificationChannel(
+  'game_invites',
+  'Game Invites',
+  description: 'A friend started a game you can join.',
   importance: Importance.defaultImportance,
 );
 
@@ -33,24 +40,37 @@ const _socialChannel = AndroidNotificationChannel(
   importance: Importance.low,
 );
 
+/// Catch-all for a category this build does not recognise — a newer server
+/// than the installed app. Nothing is dropped; it surfaces here instead.
+const _generalChannel = AndroidNotificationChannel(
+  'general',
+  'General',
+  description: 'Other notifications.',
+  importance: Importance.defaultImportance,
+);
+
 // ── Notification category ─────────────────────────────────────────────────────
 
 enum _NotificationCategory {
   yourTurn,
+  gameReady,
   gameFinished,
+  gameInvite,
   friendRequest,
   friendAccepted;
 
   /// Parses the `category` field from the FCM data payload — the exact set the
-  /// engine sends (see the server's `push.ts`).
-  /// Throws [ArgumentError] for unknown or missing values — every notification
-  /// must declare its category explicitly.
-  static _NotificationCategory fromString(String? value) => switch (value) {
+  /// engine sends (see the server's `push.ts`). Returns null for an unknown or
+  /// missing value (a newer server than this build); the caller falls back to a
+  /// generic notification rather than dropping it.
+  static _NotificationCategory? fromString(String? value) => switch (value) {
     'yourTurn' => yourTurn,
+    'gameReady' => gameReady,
     'gameFinished' => gameFinished,
+    'gameInvite' => gameInvite,
     'friendRequest' => friendRequest,
     'friendAccepted' => friendAccepted,
-    _ => throw ArgumentError.value(value, 'category'),
+    _ => null,
   };
 }
 
@@ -229,7 +249,9 @@ class FirebaseNotificationService {
         >();
     await android?.createNotificationChannel(_yourTurnChannel);
     await android?.createNotificationChannel(_gameChannel);
+    await android?.createNotificationChannel(_gameInvitesChannel);
     await android?.createNotificationChannel(_socialChannel);
+    await android?.createNotificationChannel(_generalChannel);
   }
 
   /// Upserts the `(current user, FID)` row, skipping the write when that exact
@@ -255,19 +277,18 @@ class FirebaseNotificationService {
     if (kIsWeb) return; // flutter_local_notifications has no web implementation
     final notification = message.notification;
     if (notification == null) return;
-    final _NotificationCategory category;
-    try {
-      category = _NotificationCategory.fromString(
-        message.data['category'] as String?,
-      );
-    } catch (e, stack) {
+    // An unrecognised or missing category (a newer server than this build)
+    // resolves to null and still shows — on the general channel — rather than
+    // being dropped.
+    final category = _NotificationCategory.fromString(
+      message.data['category'] as String?,
+    );
+    if (category == null) {
       developer.log(
-        'Unknown notification category: ${message.data['category']}',
+        'Unknown notification category: ${message.data['category']} — '
+        'showing on the general channel',
         name: 'notifications',
-        error: e,
-        stackTrace: stack,
       );
-      return;
     }
 
     // Suppress "your turn" banners when the user is already on that game screen.
@@ -276,7 +297,7 @@ class FirebaseNotificationService {
       final gameId = deepLink?.split('/').lastOrNull;
       if (gameId != null && gameId == _activeGameId()) return;
     }
-    final channel = _channelFor(category);
+    final channel = category == null ? _generalChannel : _channelFor(category);
     _localNotifications.show(
       id: _notificationId(message, category),
       title: notification.title,
@@ -311,18 +332,21 @@ class FirebaseNotificationService {
   AndroidNotificationChannel _channelFor(_NotificationCategory category) =>
       switch (category) {
         _NotificationCategory.yourTurn => _yourTurnChannel,
+        _NotificationCategory.gameReady => _gameChannel,
         _NotificationCategory.gameFinished => _gameChannel,
+        _NotificationCategory.gameInvite => _gameInvitesChannel,
         _NotificationCategory.friendRequest => _socialChannel,
         _NotificationCategory.friendAccepted => _socialChannel,
       };
 
-  /// Game-scoped notifications (a turn, a finish) key off the deepLink — which
-  /// carries the gameId — so a later update for the same game replaces the
-  /// earlier one. Social notifications key off messageId so events from
-  /// different people stack independently.
-  int _notificationId(RemoteMessage message, _NotificationCategory category) {
+  /// Game-scoped notifications (a turn, a ready, a finish) key off the deepLink
+  /// — which carries the gameId — so a later update for the same game replaces
+  /// the earlier one. Everything else (invites, social, unknown) keys off
+  /// messageId so events from different people/games stack independently.
+  int _notificationId(RemoteMessage message, _NotificationCategory? category) {
     final gameScoped =
         category == _NotificationCategory.yourTurn ||
+        category == _NotificationCategory.gameReady ||
         category == _NotificationCategory.gameFinished;
     final key = gameScoped
         ? (message.data['deepLink'] ?? message.messageId ?? '')
