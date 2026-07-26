@@ -87,7 +87,7 @@ listening to rather than papering over.
 `eigen_api` is **not in this repository.** It is generated from `openapi.json`
 in the engine repo (`eigen-server/clients/dart`), published to pub.dev at the
 engine's version, and consumed here as an ordinary dependency:
-`eigen_api: ^1.0.0`.
+`eigen_api: ^0.1.0`.
 
 That is a deliberate move away from vendoring the spec and regenerating locally.
 The wire contract belongs to the server, so the client that speaks it is

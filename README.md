@@ -152,11 +152,12 @@ and no Firebase config in this repo's workflow, because the package reads none.
 `eigen_api` is generated from the engine's `openapi.json` **in the engine repo**
 (`eigen-server/clients/dart`) and published to pub.dev at the engine's version.
 Nothing here regenerates it, and there is no vendored copy of the spec: this
-package just declares `eigen_api: ^1.0.0`.
+package just declares `eigen_api: ^0.1.0`.
 
 That constraint is the compatibility statement. A server change that breaks the
-wire is a major engine bump, so it becomes a visible, deliberate dependency bump
-here rather than a silent drift between two copies of a file.
+wire bumps the engine out of the range (pre-1.0 that means `0.2.0`, since `0.x`
+announces breakage in the MINOR position), so it becomes a visible, deliberate
+dependency bump here rather than a silent drift between two copies of a file.
 
 **To work on both halves at once**, clone `eigen-server` as a sibling and add a
 `pubspec_overrides.yaml` (gitignored) pointing `eigen_api` at
@@ -184,6 +185,10 @@ git commit -am "chore: release $(cider version)" \
 
 While at **0.y.z** the API is still evolving and breaking changes may land in a
 MINOR bump. At **≥ 1.0.0**, MAJOR = a breaking Dart API or wire-contract change.
+The engine is at `0.1.0` and follows the same rule, so both halves are currently
+announcing breakage in the minor position — see
+[Versions and compatibility](https://eigeninteractive.com/docs/reference/compatibility)
+for the table of what pairs with what.
 
 Three contracts can break across versions, each at a different layer:
 
