@@ -126,15 +126,58 @@ stale copy, and nothing fails until the other repo's CI next runs — possibly
 days later, on someone else's PR. **A rules change is a two-repo change**, and
 the fixture edit is the part that must land in both.
 
-## Releasing to pub.dev
+## Describing your change
 
-Tag-driven:
+`CHANGELOG.md` is maintained with [`cider`](https://pub.dev/packages/cider),
+Keep-a-Changelog style. Install it once:
 
 ```bash
-# bump `version:` in pubspec.yaml, update CHANGELOG.md, commit
-git tag v0.2.0
+dart pub global activate cider
+```
+
+**In the PR that makes the change**, add the line a user will read:
+
+```bash
+cider log added "Spectator mode on the game screen."
+cider log fixed "Avatar cache not invalidated after upload."
+```
+
+Each call appends a bullet under `## [Unreleased]`. The types are `added`,
+`changed`, `deprecated`, `removed`, `fixed` and `security`. Commit the
+`CHANGELOG.md` edit with your code.
+
+Do this *as you work*, not at release time. It is the same discipline as the
+engine repo's `pnpm changeset`: whoever made the change is the only person who
+reliably knows what it means for a user, and they know it now.
+
+A change with no user-visible effect needs no entry.
+
+> The `cider:` block in `pubspec.yaml` supplies the tag and diff link templates,
+> so `cider release` decorates each section with links to the GitHub release and
+> the compare view. Nothing else reads it.
+
+## Releasing to pub.dev
+
+Tag-driven, and `cider` does the bookkeeping:
+
+```bash
+cider bump minor      # or: patch · breaking
+cider release         # [Unreleased] -> a dated, linked section
+git commit -am "Release $(cider version)"
+git tag "v$(cider version)"
 git push --follow-tags
 ```
+
+`cider bump` edits `version:` in `pubspec.yaml`; `cider release` moves everything
+under `## [Unreleased]` into a dated section for that version. The tag must match
+the pubspec — the release workflow re-checks it and refuses to publish a
+mismatch, because a tag can point at any commit.
+
+> **Use `cider bump breaking`, not `major`, while this package is pre-1.0.**
+> Under pub's semantics a `0.x` release conveys breakage in the *minor*
+> position, so `breaking` takes `0.1.0` → `0.2.0`, which is what a consumer's
+> `^0.1.0` constraint actually protects against. `cider bump major` would jump
+> to `1.0.0` and claim a stability guarantee you have not made yet.
 
 Authentication is **OIDC**, not a stored token: configure *Automated publishing*
 on the pub.dev package page (Admin → Automated publishing) with repository
@@ -143,7 +186,17 @@ trusts the workflow's short-lived GitHub identity. There is no pub credential in
 GitHub secrets.
 
 One package. `eigen_api` is released by the engine repo, so there is no lockstep
-to coordinate and no publish order to get right.
+to coordinate and no publish order to get right — bumping the `eigen_api`
+constraint here is an ordinary dependency change with an ordinary changelog line.
+
+### Before you tag
+
+`pubspec_overrides.yaml` is gitignored, so it cannot reach the published
+manifest — but if you added a `dependency_overrides:` block to `pubspec.yaml`
+itself while working on both halves, the release would ship a package whose
+`eigen_api` constraint has never actually been resolved. The workflow fails the
+build on that rather than publishing it; a pub.dev version cannot be
+unpublished, only retracted.
 
 ### Generated code is committed
 
