@@ -10,6 +10,7 @@ extension GameStatusUI on GameStatus {
     GameStatus.active => colorScheme.primary,
     GameStatus.finished => colorScheme.outline,
     GameStatus.aborted => colorScheme.error,
+    GameStatus.unknownDefaultOpenApi => colorScheme.outline,
   };
 
   /// Returns the icon associated with this status.
@@ -19,6 +20,7 @@ extension GameStatusUI on GameStatus {
     GameStatus.active => Icons.sports_esports,
     GameStatus.finished => Icons.emoji_events,
     GameStatus.aborted => Icons.cancel_outlined,
+    GameStatus.unknownDefaultOpenApi => Icons.help_outline,
   };
 }
 
@@ -33,6 +35,7 @@ extension OutcomeResultUI on OutcomeResultEnum? {
     OutcomeResultEnum.loss => Icons.close,
     OutcomeResultEnum.draw => Icons.handshake_outlined,
     OutcomeResultEnum.eliminated => Icons.remove_circle_outline,
+    OutcomeResultEnum.unknownDefaultOpenApi => Icons.help_outline,
     null => Icons.cancel_outlined,
   };
 
@@ -42,6 +45,7 @@ extension OutcomeResultUI on OutcomeResultEnum? {
     OutcomeResultEnum.loss => colorScheme.error,
     OutcomeResultEnum.draw => colorScheme.tertiary,
     OutcomeResultEnum.eliminated => colorScheme.error,
+    OutcomeResultEnum.unknownDefaultOpenApi => colorScheme.outline,
     null => colorScheme.outline,
   };
 
@@ -51,6 +55,7 @@ extension OutcomeResultUI on OutcomeResultEnum? {
     OutcomeResultEnum.loss => 'Lost',
     OutcomeResultEnum.draw => 'Draw',
     OutcomeResultEnum.eliminated => 'Eliminated',
+    OutcomeResultEnum.unknownDefaultOpenApi => 'Unknown',
     null => 'Aborted',
   };
 }

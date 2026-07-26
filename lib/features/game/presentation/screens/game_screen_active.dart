@@ -30,7 +30,7 @@ class _ActiveGameContent extends ConsumerWidget {
     // a newer build surfaces as UnsupportedGameSchemaException.
     final configAsync = ref.watch(gameConfigProvider(gameId: game.id));
     if (configAsync.error is UnsupportedGameSchemaException) {
-      return const _UnsupportedSchemaContent();
+      return const _UpdateRequiredContent();
     }
 
     final config = configAsync.value;

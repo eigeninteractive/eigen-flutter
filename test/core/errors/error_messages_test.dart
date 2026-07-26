@@ -40,12 +40,26 @@ void main() {
       ).equals('That username is already taken.');
     });
 
-    test('gives every code its own copy', () {
-      // `messageForCode` is an exhaustive switch, so it cannot silently
-      // regress to a generic message for a newly added code — but it can
-      // regress to a copy-pasted duplicate, which this catches.
-      final messages = ErrorCode.values.map(messageForCode).toSet();
-      check(messages).length.equals(ErrorCode.values.length);
+    test('gives every known code its own copy', () {
+      // The generated sentinel deliberately shares generic copy. Published
+      // server codes remain unique so specific guidance cannot regress to a
+      // copy-pasted message unnoticed.
+      final knownCodes = ErrorCode.values.where(
+        (code) => code != ErrorCode.unknownDefaultOpenApi,
+      );
+      final messages = knownCodes.map(messageForCode).toSet();
+      check(messages).length.equals(knownCodes.length);
+    });
+
+    test('falls back to generic copy for a code from a newer server', () {
+      check(
+        humanize(
+          const EngineException(
+            'A newer server rejection',
+            code: ErrorCode.unknownDefaultOpenApi,
+          ),
+        ),
+      ).equals('Something went wrong. Please try again.');
     });
 
     test('falls back to the generic message for an uncoded failure', () {

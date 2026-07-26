@@ -32,6 +32,10 @@ describe the starting state rather than changes from a previous version.
   created at.
 - Client-side optimistic preview (`previewAction`) and cue-aware rendering
   against the engine's append-only observation history.
+- Generated wire enums preserve values introduced by a newer server as an
+  `unknownDefaultOpenApi` sentinel instead of failing response decoding. Known
+  values retain their specific UI; unknown values degrade to generic or
+  update-required UI.
 - Firebase auth (Google + guest), FCM push, Crashlytics and Analytics wiring.
 - Avatar upload and display against the worker-served avatar URL, via
   `cached_network_image`.

@@ -63,11 +63,10 @@ Future<T> engineData<T>(Future<Response<T>> Function() run) async {
 /// envelope at all (a proxy's HTML error page, or a failure raised before the
 /// engine's own handler ran), or fails to parse.
 ///
-/// The parse is guarded because the generated model is strict: it rejects an
-/// unrecognised `code`, which is exactly what a client one release behind the
-/// server would see. Throwing there would replace a clean "the server said no"
-/// with an opaque parse crash on the failure path — so an unreadable envelope
-/// degrades to the status line instead, and the caller still gets an
+/// Unknown enum values decode to [ErrorCode.unknownDefaultOpenApi], so a client
+/// one release behind the server still preserves the server's message and
+/// reaches the generic UI fallback. The parse remains guarded for malformed
+/// envelopes: those degrade to the status line, and the caller gets an
 /// [EngineException] with a null [EngineException.code].
 EngineException _engineExceptionFrom(Response<dynamic> response) {
   final data = response.data;

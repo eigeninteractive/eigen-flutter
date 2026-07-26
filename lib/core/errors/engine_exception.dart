@@ -19,9 +19,9 @@ class EngineException implements Exception {
   /// The stable machine code, or null for failures that carry none — request
   /// validation and unexpected 500s.
   ///
-  /// A closed set: the server publishes it as an enum, so a `switch` over it is
-  /// exhaustive and the compiler catches an unhandled case. Adding a value
-  /// server-side is a breaking change requiring a schema-version bump.
+  /// Values introduced by a newer server decode to
+  /// [ErrorCode.unknownDefaultOpenApi], preserving the coded-failure path until
+  /// this app learns their specific meaning.
   final ErrorCode? code;
 
   @override

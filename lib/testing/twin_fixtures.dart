@@ -242,11 +242,14 @@ ActionCase _parseActionCase(String where, Map<String, dynamic> map) {
 
 RatingPoolCase _parseRatingPoolCase(String where, Map<String, dynamic> map) {
   final accessName = _string('$where.access', map['access']);
-  final access = GameAccess.values.asNameMap()[accessName];
+  final supportedAccess = GameAccess.values.where(
+    (access) => access != GameAccess.unknownDefaultOpenApi,
+  );
+  final access = supportedAccess.asNameMap()[accessName];
   if (access == null) {
     throw FormatException(
       '$where.access: expected one of '
-      '${GameAccess.values.map((a) => a.name).join(' | ')}, '
+      '${supportedAccess.map((a) => a.name).join(' | ')}, '
       'got ${jsonEncode(accessName)}',
     );
   }

@@ -498,6 +498,17 @@ class _GameBody extends StatelessWidget {
           ],
         );
 
+      case GameStatus.unknownDefaultOpenApi:
+        return const CustomScrollView(
+          physics: AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: _UpdateRequiredContent(),
+            ),
+          ],
+        );
+
       case GameStatus.active:
       case GameStatus.finished:
         return CustomScrollView(

@@ -14,9 +14,12 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('ErrorCode', () {
     test('covers exactly the codes the server publishes', () {
-      // Adding a member server-side is a wire change that needs a
-      // schema-version bump; this list is the client half of that contract.
-      check(ErrorCode.values.map((c) => c.value).toSet()).deepEquals({
+      // The fallback is generated client-side rather than published on the
+      // wire, so exclude it before comparing the server contract.
+      final publishedCodes = ErrorCode.values.where(
+        (code) => code != ErrorCode.unknownDefaultOpenApi,
+      );
+      check(publishedCodes.map((c) => c.value).toSet()).deepEquals({
         'notActive',
         'notReady',
         'expired',
@@ -70,6 +73,58 @@ void main() {
       final parsed = ErrorResponse.fromJson({'error': 'Invalid request'});
 
       check(parsed.code).isNull();
+    });
+
+    test('maps a code from a newer server to the read-side sentinel', () {
+      final parsed = ErrorResponse.fromJson({
+        'error': 'A newer rejection',
+        'code': 'introducedLater',
+      });
+
+      check(parsed.error).equals('A newer rejection');
+      check(parsed.code).equals(ErrorCode.unknownDefaultOpenApi);
+      check(parsed.toJson()['code']).equals('unknown_default_open_api');
+    });
+  });
+
+  group('Forward-compatible response enums', () {
+    test('maps unknown game, access, and seat values to their sentinels', () {
+      final parsed = GameSummary.fromJson({
+        'id': 'game-1',
+        'createdBy': null,
+        'status': 'pausedLater',
+        'access': 'tournamentLater',
+        'schemaVersion': 1,
+        'config': <String, dynamic>{},
+        'turnSeconds': null,
+        'budgetSeconds': null,
+        'incrementSeconds': null,
+        'rated': false,
+        'ratingPool': null,
+        'minPlayers': 2,
+        'maxPlayers': 4,
+        'shortCode': 'ABC123',
+        'pendingPlayers': null,
+        'turnDeadline': null,
+        'outcomes': null,
+        'finishedAt': null,
+        'createdAt': 1,
+        'updatedAt': 1,
+        'participants': [
+          {
+            'playerIndex': 0,
+            'userId': 'user-1',
+            'botId': null,
+            'type': 'spectatorLater',
+          },
+        ],
+      });
+
+      check(parsed.status).equals(GameStatus.unknownDefaultOpenApi);
+      check(parsed.access).equals(GameAccess.unknownDefaultOpenApi);
+      check(
+        parsed.participants.single.type,
+      ).equals(SeatTypeEnum.unknownDefaultOpenApi);
     });
   });
 

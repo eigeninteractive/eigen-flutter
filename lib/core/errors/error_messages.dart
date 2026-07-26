@@ -22,10 +22,9 @@ String humanize(Object e) => switch (e) {
 
 /// Display copy for every code the server can send.
 ///
-/// Exhaustive over [ErrorCode] with no fallback arm, so adding a code
-/// server-side fails to compile here until copy is written for it. That is the
-/// point: a silent generic message for a code we have specific advice for is a
-/// UX regression that is otherwise invisible.
+/// Known server codes get specific copy. A code introduced by a newer server
+/// decodes to [ErrorCode.unknownDefaultOpenApi] and uses generic copy until the
+/// app updates.
 String messageForCode(ErrorCode code) => switch (code) {
   // Kernel rejections — the move reached the game and it refused.
   ErrorCode.notActive => 'This game has already ended.',
@@ -56,6 +55,7 @@ String messageForCode(ErrorCode code) => switch (code) {
   ErrorCode.unsupportedImageType => 'Use a JPEG, PNG, or WebP image.',
   ErrorCode.rateLimited =>
     "You're doing that too quickly. Wait a moment and try again.",
+  ErrorCode.unknownDefaultOpenApi => _unexpected,
 };
 
 const _offline = "Can't reach the server. Check your connection.";

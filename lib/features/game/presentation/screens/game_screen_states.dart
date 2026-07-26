@@ -50,10 +50,9 @@ class _AbortedContent extends StatelessWidget {
   }
 }
 
-/// Shown when a game's schema version exceeds what this build supports — it was
-/// created by a newer app version, so the user must update to view it.
-class _UnsupportedSchemaContent extends StatelessWidget {
-  const _UnsupportedSchemaContent();
+/// Shown when a game uses a schema or wire value this build cannot present.
+class _UpdateRequiredContent extends StatelessWidget {
+  const _UpdateRequiredContent();
 
   @override
   Widget build(BuildContext context) {
@@ -80,7 +79,7 @@ class _UnsupportedSchemaContent extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'This game was created with a newer version of the app. '
+              'This game uses features from a newer version of the app. '
               'Please update to view it.',
               style: textTheme.bodyMedium?.copyWith(
                 color: colorScheme.onSurfaceVariant,
@@ -123,10 +122,10 @@ class _ReconnectingBannerSlot extends ConsumerWidget {
 
     // Use .value to read stale status when stream is in AsyncError.
     final status = gameAsync.value?.status;
-    final isInGame =
-        status != null &&
-        status != GameStatus.finished &&
-        status != GameStatus.aborted;
+    final isInGame = switch (status) {
+      GameStatus.waiting || GameStatus.ready || GameStatus.active => true,
+      _ => false,
+    };
 
     return AnimatedSize(
       duration: const Duration(milliseconds: 200),

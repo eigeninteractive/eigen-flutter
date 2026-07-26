@@ -67,9 +67,9 @@ void main() {
       ).throws<EngineException>((e) => e.has((x) => x.code, 'code').isNull());
     });
 
-    test('degrades to the status line for an unrecognised code', () async {
-      // What a client one release behind a newer server sees. It must still
-      // surface as an EngineException — never a parse crash on the error path.
+    test('preserves an unrecognised code as the sentinel', () async {
+      // What a client one release behind a newer server sees. The message and
+      // coded-failure path survive even before this build knows the meaning.
       await check(
         engineCall<void>(
           () => throw _serverSaidNo(409, {
@@ -77,7 +77,11 @@ void main() {
             'code': 'a_code_from_the_future',
           }),
         ),
-      ).throws<EngineException>((e) => e.has((x) => x.code, 'code').isNull());
+      ).throws<EngineException>(
+        (e) => e
+          ..has((x) => x.message, 'message').equals('Something new')
+          ..has((x) => x.code, 'code').equals(ErrorCode.unknownDefaultOpenApi),
+      );
     });
   });
 
