@@ -8,7 +8,58 @@ part of 'update_notifier.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// Drives the Play Store in-app update lifecycle (Android only).
+/// Platform update gateway.
+
+@ProviderFor(appUpdateGateway)
+final appUpdateGatewayProvider = AppUpdateGatewayProvider._();
+
+/// Platform update gateway.
+
+final class AppUpdateGatewayProvider
+    extends
+        $FunctionalProvider<
+          AppUpdateGateway,
+          AppUpdateGateway,
+          AppUpdateGateway
+        >
+    with $Provider<AppUpdateGateway> {
+  /// Platform update gateway.
+  AppUpdateGatewayProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'appUpdateGatewayProvider',
+        isAutoDispose: false,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$appUpdateGatewayHash();
+
+  @$internal
+  @override
+  $ProviderElement<AppUpdateGateway> $createElement($ProviderPointer pointer) =>
+      $ProviderElement(pointer);
+
+  @override
+  AppUpdateGateway create(Ref ref) {
+    return appUpdateGateway(ref);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(AppUpdateGateway value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<AppUpdateGateway>(value),
+    );
+  }
+}
+
+String _$appUpdateGatewayHash() => r'fe97aec49b8ffe84a76828402ddba99d9a4d9b5a';
+
+/// Drives background update checks and explicit compatibility updates.
 ///
 /// Call [checkForUpdate] on each app resume. When [state] transitions to
 /// [UpdateInstallStatus.downloadComplete], show the user a prompt and call
@@ -17,14 +68,14 @@ part of 'update_notifier.dart';
 @ProviderFor(UpdateNotifier)
 final updateProvider = UpdateNotifierProvider._();
 
-/// Drives the Play Store in-app update lifecycle (Android only).
+/// Drives background update checks and explicit compatibility updates.
 ///
 /// Call [checkForUpdate] on each app resume. When [state] transitions to
 /// [UpdateInstallStatus.downloadComplete], show the user a prompt and call
 /// [completeUpdate] on confirmation.
 final class UpdateNotifierProvider
     extends $NotifierProvider<UpdateNotifier, UpdateInstallStatus> {
-  /// Drives the Play Store in-app update lifecycle (Android only).
+  /// Drives background update checks and explicit compatibility updates.
   ///
   /// Call [checkForUpdate] on each app resume. When [state] transitions to
   /// [UpdateInstallStatus.downloadComplete], show the user a prompt and call
@@ -56,9 +107,9 @@ final class UpdateNotifierProvider
   }
 }
 
-String _$updateNotifierHash() => r'bc7934f3b31eecb4ee01d770ceecf95227160695';
+String _$updateNotifierHash() => r'f02f9b5ffeceb4c5f31080f7284b9bfb5e1fcb3b';
 
-/// Drives the Play Store in-app update lifecycle (Android only).
+/// Drives background update checks and explicit compatibility updates.
 ///
 /// Call [checkForUpdate] on each app resume. When [state] transitions to
 /// [UpdateInstallStatus.downloadComplete], show the user a prompt and call

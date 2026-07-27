@@ -38,4 +38,10 @@ abstract class AnalyticsService {
   Future<void> friendRequestSent();
 
   Future<void> friendAccepted();
+
+  /// A generated enum decoded a value this build does not understand.
+  Future<void> wireEnumFallback({
+    required String enumType,
+    required String surface,
+  });
 }

@@ -66,4 +66,13 @@ class FirebaseAnalyticsService implements AnalyticsService {
 
   @override
   Future<void> friendAccepted() => _analytics.logEvent(name: 'friend_accepted');
+
+  @override
+  Future<void> wireEnumFallback({
+    required String enumType,
+    required String surface,
+  }) => _analytics.logEvent(
+    name: 'wire_enum_fallback',
+    parameters: {'enum_type': enumType, 'surface': surface},
+  );
 }

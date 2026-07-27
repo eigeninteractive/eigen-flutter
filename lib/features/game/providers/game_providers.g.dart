@@ -531,6 +531,119 @@ final class GameSummaryFamily extends $Family
   String toString() => r'gameSummaryProvider';
 }
 
+/// Compatibility verdict across the initial summary and live game payloads.
+///
+/// Status, seat type, and frame type drive gameplay behavior, so guessing would
+/// be unsafe. Metadata-only unknowns such as access remain usable with
+/// conservative UI.
+
+@ProviderFor(gameWireCompatibility)
+final gameWireCompatibilityProvider = GameWireCompatibilityFamily._();
+
+/// Compatibility verdict across the initial summary and live game payloads.
+///
+/// Status, seat type, and frame type drive gameplay behavior, so guessing would
+/// be unsafe. Metadata-only unknowns such as access remain usable with
+/// conservative UI.
+
+final class GameWireCompatibilityProvider
+    extends
+        $FunctionalProvider<
+          GameWireCompatibility,
+          GameWireCompatibility,
+          GameWireCompatibility
+        >
+    with $Provider<GameWireCompatibility> {
+  /// Compatibility verdict across the initial summary and live game payloads.
+  ///
+  /// Status, seat type, and frame type drive gameplay behavior, so guessing would
+  /// be unsafe. Metadata-only unknowns such as access remain usable with
+  /// conservative UI.
+  GameWireCompatibilityProvider._({
+    required GameWireCompatibilityFamily super.from,
+    required String super.argument,
+  }) : super(
+         retry: null,
+         name: r'gameWireCompatibilityProvider',
+         isAutoDispose: true,
+         dependencies: null,
+         $allTransitiveDependencies: null,
+       );
+
+  @override
+  String debugGetCreateSourceHash() => _$gameWireCompatibilityHash();
+
+  @override
+  String toString() {
+    return r'gameWireCompatibilityProvider'
+        ''
+        '($argument)';
+  }
+
+  @$internal
+  @override
+  $ProviderElement<GameWireCompatibility> $createElement(
+    $ProviderPointer pointer,
+  ) => $ProviderElement(pointer);
+
+  @override
+  GameWireCompatibility create(Ref ref) {
+    final argument = this.argument as String;
+    return gameWireCompatibility(ref, gameId: argument);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(GameWireCompatibility value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<GameWireCompatibility>(value),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is GameWireCompatibilityProvider && other.argument == argument;
+  }
+
+  @override
+  int get hashCode {
+    return argument.hashCode;
+  }
+}
+
+String _$gameWireCompatibilityHash() =>
+    r'069f94aaf1278b1812de48934ce55a9606c4f366';
+
+/// Compatibility verdict across the initial summary and live game payloads.
+///
+/// Status, seat type, and frame type drive gameplay behavior, so guessing would
+/// be unsafe. Metadata-only unknowns such as access remain usable with
+/// conservative UI.
+
+final class GameWireCompatibilityFamily extends $Family
+    with $FunctionalFamilyOverride<GameWireCompatibility, String> {
+  GameWireCompatibilityFamily._()
+    : super(
+        retry: null,
+        name: r'gameWireCompatibilityProvider',
+        dependencies: null,
+        $allTransitiveDependencies: null,
+        isAutoDispose: true,
+      );
+
+  /// Compatibility verdict across the initial summary and live game payloads.
+  ///
+  /// Status, seat type, and frame type drive gameplay behavior, so guessing would
+  /// be unsafe. Metadata-only unknowns such as access remain usable with
+  /// conservative UI.
+
+  GameWireCompatibilityProvider call({required String gameId}) =>
+      GameWireCompatibilityProvider._(argument: gameId, from: this);
+
+  @override
+  String toString() => r'gameWireCompatibilityProvider';
+}
+
 /// The game's live feed: roster snapshots pre-game, then ordered frames.
 ///
 /// One socket serves the whole game, so this is the single subscription a game
@@ -1095,7 +1208,7 @@ final class GameOutcomesProvider
   }
 }
 
-String _$gameOutcomesHash() => r'2e36f7fd06a516b344538f32f38ef863245f9989';
+String _$gameOutcomesHash() => r'd572692644faa8b347067d3f25ae8cc9077854fe';
 
 /// A finished game's outcomes.
 ///

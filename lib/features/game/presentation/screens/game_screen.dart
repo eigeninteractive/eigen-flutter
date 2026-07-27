@@ -9,6 +9,7 @@ import 'package:eigen_flutter/core/config/app_config.dart';
 import 'package:eigen_flutter/core/connectivity/connectivity_provider.dart';
 import 'package:eigen_flutter/shared/widgets/status_banner.dart';
 import 'package:eigen_flutter/core/review/review_notifier.dart';
+import 'package:eigen_flutter/core/updates/required_update_button.dart';
 import 'package:eigen_flutter/core/utils/deep_links.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -65,11 +66,13 @@ enum _PendingAction {
 class _GameScreenState extends ConsumerState<GameScreen> {
   _PendingAction? _pendingAction;
   bool _errorSnackBarShown = false;
+  final Set<String> _reportedCompatibility = {};
   late final AppLifecycleListener _lifecycleListener;
   late final ProviderSubscription<AsyncValue<Roster>> _gameStatusSub;
   late final ProviderSubscription<AsyncValue<List<Outcome>>> _outcomesSub;
   late final ProviderSubscription<bool> _offlineSub;
   late final ProviderSubscription<AsyncValue<GameSocketEvent>> _eventsSub;
+  late final ProviderSubscription<GameWireCompatibility> _compatibilitySub;
 
   @override
   void initState() {
@@ -93,6 +96,11 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     _eventsSub = ref.listenManual(
       gameEventsProvider(gameId: widget.gameId),
       _onGameEvent,
+    );
+    _compatibilitySub = ref.listenManual(
+      gameWireCompatibilityProvider(gameId: widget.gameId),
+      _onCompatibilityChange,
+      fireImmediately: true,
     );
   }
 
@@ -261,6 +269,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     _outcomesSub.close();
     _offlineSub.close();
     _eventsSub.close();
+    _compatibilitySub.close();
     _lifecycleListener.dispose();
     super.dispose();
   }
@@ -268,6 +277,9 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   @override
   Widget build(BuildContext context) {
     final gameAsync = ref.watch(gameSummaryProvider(gameId: widget.gameId));
+    final compatibility = ref.watch(
+      gameWireCompatibilityProvider(gameId: widget.gameId),
+    );
     return Scaffold(
       body: Column(
         children: [
@@ -280,15 +292,17 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                 // communicates the reconnecting state.
                 _ when gameAsync.value != null => RefreshIndicator(
                   onRefresh: _onRefresh,
-                  child: _GameBody(
-                    game: gameAsync.value!,
-                    pendingAction: _pendingAction,
-                    onStartGame: _startGame,
-                    onCancelGame: _cancelGame,
-                    onLeaveGame: _leaveGame,
-                    onAction: _submitAction,
-                    onForfeit: _forfeitGame,
-                  ),
+                  child: compatibility.requiresUpdate
+                      ? const _UpdateRequiredScroll()
+                      : _GameBody(
+                          game: gameAsync.value!,
+                          pendingAction: _pendingAction,
+                          onStartGame: _startGame,
+                          onCancelGame: _cancelGame,
+                          onLeaveGame: _leaveGame,
+                          onAction: _submitAction,
+                          onForfeit: _forfeitGame,
+                        ),
                 ),
                 AsyncError(:final error) => _ErrorState(
                   error: humanize(error),
@@ -300,6 +314,25 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  void _onCompatibilityChange(
+    GameWireCompatibility? _,
+    GameWireCompatibility next,
+  ) {
+    if (next.unknownStatus) _reportCompatibility('GameStatus');
+    if (next.unknownSeatType) _reportCompatibility('SeatType');
+    if (next.unknownFrameType) _reportCompatibility('FrameType');
+    if (next.unknownAccess) _reportCompatibility('GameAccess');
+  }
+
+  void _reportCompatibility(String enumType) {
+    if (!_reportedCompatibility.add(enumType)) return;
+    unawaited(
+      ref
+          .read(analyticsServiceProvider)
+          .wireEnumFallback(enumType: enumType, surface: 'game'),
     );
   }
 
@@ -499,15 +532,7 @@ class _GameBody extends StatelessWidget {
         );
 
       case GameStatus.unknownDefaultOpenApi:
-        return const CustomScrollView(
-          physics: AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: _UpdateRequiredContent(),
-            ),
-          ],
-        );
+        return const _UpdateRequiredScroll();
 
       case GameStatus.active:
       case GameStatus.finished:

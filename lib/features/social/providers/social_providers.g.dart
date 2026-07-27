@@ -94,7 +94,7 @@ final class FriendsProvider
   Friends create() => Friends();
 }
 
-String _$friendsHash() => r'd4bde5f9d00260e7b700e6ce133a6ecb256408d7';
+String _$friendsHash() => r'e08415853469b641faabba84894df31de6943886';
 
 /// The caller's accepted friends.
 ///
@@ -176,7 +176,7 @@ final class FriendRequestsProvider
   }
 }
 
-String _$friendRequestsHash() => r'0954868a19601d72bb6bb3e51b26584d0dabfb94';
+String _$friendRequestsHash() => r'0d6b0d52d5cf1ff2b6a39391bebfdcfb6c6786de';
 
 /// Requests the caller received and can act on.
 

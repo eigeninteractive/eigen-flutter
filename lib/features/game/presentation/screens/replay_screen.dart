@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:eigen_flutter/core/errors/error_messages.dart';
 import 'package:eigen_flutter/core/game/game_module.dart';
+import 'package:eigen_flutter/core/updates/required_update_button.dart';
 
 import 'package:eigen_flutter/features/game/providers/game_frame_provider.dart';
 import 'package:eigen_flutter/features/game/providers/game_providers.dart';
@@ -53,10 +54,19 @@ class _ReplayBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final frameCount = frames.length;
+    if (frames.any(
+      (frame) => frame.type == FrameTypeEnum.unknownDefaultOpenApi,
+    )) {
+      return const _ReplayMessage(
+        'This replay uses features from a newer version of the app.',
+        showUpdate: true,
+      );
+    }
     final configAsync = ref.watch(gameConfigProvider(gameId: gameId));
     if (configAsync.error is UnsupportedGameSchemaException) {
       return const _ReplayMessage(
         'This game was created by a newer version of the app.',
+        showUpdate: true,
       );
     }
 
@@ -174,16 +184,26 @@ class _ReplayControls extends ConsumerWidget {
 
 /// Centered message for the empty / error / unsupported states.
 class _ReplayMessage extends StatelessWidget {
-  const _ReplayMessage(this.text);
+  const _ReplayMessage(this.text, {this.showUpdate = false});
 
   final String text;
+  final bool showUpdate;
 
   @override
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
-        child: Text(text, textAlign: TextAlign.center),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(text, textAlign: TextAlign.center),
+            if (showUpdate) ...[
+              const SizedBox(height: 24),
+              const RequiredUpdateButton(),
+            ],
+          ],
+        ),
       ),
     );
   }

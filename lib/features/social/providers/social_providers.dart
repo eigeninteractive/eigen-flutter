@@ -55,7 +55,19 @@ class Friends extends _$Friends {
   /// auto-accepts when the target already had a request out to the caller, so
   /// this can add a friend rather than a pending request.
   Future<void> sendRequest(String targetUserId) async {
-    await ref.read(socialRepositoryProvider).sendFriendRequest(targetUserId);
+    final result = await ref
+        .read(socialRepositoryProvider)
+        .sendFriendRequest(targetUserId);
+    if (result == FriendRequestResultStatusEnum.unknownDefaultOpenApi) {
+      unawaited(
+        ref
+            .read(analyticsServiceProvider)
+            .wireEnumFallback(
+              enumType: 'FriendRequestResultStatus',
+              surface: 'social',
+            ),
+      );
+    }
     unawaited(ref.read(analyticsServiceProvider).friendRequestSent());
     _invalidateAll();
   }
@@ -84,8 +96,24 @@ class Friends extends _$Friends {
 /// stale request that has since been accepted or withdrawn is worse than a
 /// brief spinner.
 @riverpod
-Future<List<FriendRequest>> friendRequests(Ref ref) {
-  return ref.watch(socialRepositoryProvider).getFriendRequests();
+Future<List<FriendRequest>> friendRequests(Ref ref) async {
+  final requests = await ref
+      .watch(socialRepositoryProvider)
+      .getFriendRequests();
+  if (requests.any(
+    (request) =>
+        request.direction == FriendRequestDirectionEnum.unknownDefaultOpenApi,
+  )) {
+    unawaited(
+      ref
+          .read(analyticsServiceProvider)
+          .wireEnumFallback(
+            enumType: 'FriendRequestDirection',
+            surface: 'social',
+          ),
+    );
+  }
+  return requests;
 }
 
 /// Requests the caller received and can act on.
@@ -113,7 +141,13 @@ Future<List<GameSummary>> friendsGames(Ref ref) {
 }
 
 /// The current relationship between the local user and another player.
-enum FriendStatus { friends, incomingPending, outgoingPending, none }
+enum FriendStatus {
+  friends,
+  incomingPending,
+  outgoingPending,
+  updateRequired,
+  none,
+}
 
 /// Derives the relationship with [targetId] from the friends and requests
 /// lists.
@@ -128,9 +162,12 @@ FriendStatus computeFriendStatus(
   if (friends.any((f) => f.userId == targetId)) return FriendStatus.friends;
   for (final request in requests) {
     if (request.userId != targetId) continue;
-    return request.direction == FriendRequestDirectionEnum.incoming
-        ? FriendStatus.incomingPending
-        : FriendStatus.outgoingPending;
+    return switch (request.direction) {
+      FriendRequestDirectionEnum.incoming => FriendStatus.incomingPending,
+      FriendRequestDirectionEnum.outgoing => FriendStatus.outgoingPending,
+      FriendRequestDirectionEnum.unknownDefaultOpenApi =>
+        FriendStatus.updateRequired,
+    };
   }
   return FriendStatus.none;
 }

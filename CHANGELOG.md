@@ -34,8 +34,9 @@ describe the starting state rather than changes from a previous version.
   against the engine's append-only observation history.
 - Generated wire enums preserve values introduced by a newer server as an
   `unknownDefaultOpenApi` sentinel instead of failing response decoding. Known
-  values retain their specific UI; unknown values degrade to generic or
-  update-required UI.
+  values retain their specific UI; unknown values degrade to generic UI when
+  safe, while gameplay-critical values block only the affected surface and
+  offer a native Play update on Android or a browser reload on web.
 - Firebase auth (Google + guest), FCM push, Crashlytics and Analytics wiring.
 - Avatar upload and display against the worker-served avatar URL, via
   `cached_network_image`.

@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:dio/dio.dart';
 import 'package:eigen_api/eigen_api.dart';
 import 'package:eigen_flutter/core/errors/engine_exception.dart';
@@ -73,6 +75,12 @@ EngineException _engineExceptionFrom(Response<dynamic> response) {
   if (data is Map) {
     try {
       final parsed = ErrorResponse.fromJson(Map<String, dynamic>.from(data));
+      if (parsed.code == ErrorCode.unknownDefaultOpenApi) {
+        developer.log(
+          'Unknown ErrorCode received: ${data['code']}',
+          name: 'eigen.compatibility',
+        );
+      }
       return EngineException(parsed.error, code: parsed.code);
     } on CheckedFromJsonException catch (_) {
       // Fall through to the status line.

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:eigen_flutter/core/updates/required_update_button.dart';
 import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
 import 'package:eigen_flutter/features/social/presentation/widgets/friend_buttons.dart';
 import 'package:eigen_flutter/features/social/providers/social_providers.dart';
@@ -140,6 +141,9 @@ class _FullActions extends StatelessWidget {
           RemoveFriendButton(playerId: playerId),
         ],
       ),
+      FriendStatus.updateRequired => const Center(
+        child: RequiredUpdateButton(),
+      ),
     };
   }
 }
@@ -168,6 +172,7 @@ class _CompactActions extends StatelessWidget {
         onPressed: null,
         child: Text('Friends'),
       ),
+      FriendStatus.updateRequired => const RequiredUpdateButton(compact: true),
     };
   }
 }

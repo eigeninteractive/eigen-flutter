@@ -36,6 +36,7 @@ class _AppStartupState extends ConsumerState<AppStartup> {
     super.initState();
     _authSub = ref.listenManual(authStateChangesProvider, _onAuthStateChange);
     unawaited(_removeNativeSplashWhenReady());
+    unawaited(ref.read(updateProvider.notifier).checkForUpdate());
     _lifecycleListener = AppLifecycleListener(
       onResume: () {
         ref.read(updateProvider.notifier).checkForUpdate();

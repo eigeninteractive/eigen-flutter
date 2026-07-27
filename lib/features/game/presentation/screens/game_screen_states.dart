@@ -51,6 +51,21 @@ class _AbortedContent extends StatelessWidget {
 }
 
 /// Shown when a game uses a schema or wire value this build cannot present.
+class _UpdateRequiredScroll extends StatelessWidget {
+  const _UpdateRequiredScroll();
+
+  @override
+  Widget build(BuildContext context) => const CustomScrollView(
+    physics: AlwaysScrollableScrollPhysics(),
+    slivers: [
+      SliverFillRemaining(
+        hasScrollBody: false,
+        child: _UpdateRequiredContent(),
+      ),
+    ],
+  );
+}
+
 class _UpdateRequiredContent extends StatelessWidget {
   const _UpdateRequiredContent();
 
@@ -87,6 +102,8 @@ class _UpdateRequiredContent extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 32),
+            const RequiredUpdateButton(),
+            const SizedBox(height: 12),
             OutlinedButton.icon(
               onPressed: () => context.go('/home'),
               icon: const Icon(Icons.arrow_back),

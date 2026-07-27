@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:eigen_api/eigen_api.dart';
+import 'package:eigen_flutter/core/analytics/analytics_provider.dart';
 import 'package:eigen_flutter/core/api/engine_api_providers.dart';
 import 'package:eigen_flutter/core/api/game_socket.dart';
 import 'package:eigen_flutter/core/game/game_creation_spec.dart';
@@ -152,6 +155,65 @@ Future<GameSummary> gameSummary(Ref ref, {required String gameId}) {
   return ref.watch(gameRepositoryProvider).getGame(gameId);
 }
 
+/// Whether the current wire payload contains gameplay semantics this build
+/// cannot safely interpret.
+typedef GameWireCompatibility = ({
+  bool unknownStatus,
+  bool unknownSeatType,
+  bool unknownFrameType,
+  bool unknownAccess,
+});
+
+extension GameWireCompatibilityX on GameWireCompatibility {
+  /// Whether gameplay must stop until the client updates.
+  bool get requiresUpdate =>
+      unknownStatus || unknownSeatType || unknownFrameType;
+}
+
+/// Compatibility verdict across the initial summary and live game payloads.
+///
+/// Status, seat type, and frame type drive gameplay behavior, so guessing would
+/// be unsafe. Metadata-only unknowns such as access remain usable with
+/// conservative UI.
+@riverpod
+GameWireCompatibility gameWireCompatibility(Ref ref, {required String gameId}) {
+  final summary = ref.watch(gameSummaryProvider(gameId: gameId)).value;
+  final roster = ref.watch(gameRosterProvider(gameId: gameId)).value;
+  final frame = ref.watch(gameFrameDataProvider(gameId: gameId));
+  return evaluateGameWireCompatibility(
+    summaryStatus: summary?.status,
+    summarySeats: summary?.participants,
+    access: summary?.access,
+    rosterStatus: roster?.status,
+    rosterSeats: roster?.players,
+    frameType: frame?.type,
+  );
+}
+
+/// Computes compatibility without requiring a provider container.
+GameWireCompatibility evaluateGameWireCompatibility({
+  GameStatus? summaryStatus,
+  Iterable<Seat>? summarySeats,
+  GameAccess? access,
+  GameStatus? rosterStatus,
+  Iterable<Seat>? rosterSeats,
+  FrameTypeEnum? frameType,
+}) {
+  return (
+    unknownStatus:
+        summaryStatus == GameStatus.unknownDefaultOpenApi ||
+        rosterStatus == GameStatus.unknownDefaultOpenApi,
+    unknownSeatType:
+        _hasUnknownSeatType(summarySeats) || _hasUnknownSeatType(rosterSeats),
+    unknownFrameType: frameType == FrameTypeEnum.unknownDefaultOpenApi,
+    unknownAccess: access == GameAccess.unknownDefaultOpenApi,
+  );
+}
+
+bool _hasUnknownSeatType(Iterable<Seat>? seats) =>
+    seats?.any((seat) => seat.type == SeatTypeEnum.unknownDefaultOpenApi) ??
+    false;
+
 /// The game's live feed: roster snapshots pre-game, then ordered frames.
 ///
 /// One socket serves the whole game, so this is the single subscription a game
@@ -280,7 +342,17 @@ Future<Joined> joinByCode(Ref ref, {required String code}) => ref
 @riverpod
 Future<List<Outcome>> gameOutcomes(Ref ref, {required String gameId}) async {
   final summary = await ref.watch(gameSummaryProvider(gameId: gameId).future);
-  return summary.outcomes ?? const [];
+  final outcomes = summary.outcomes ?? const [];
+  if (outcomes.any(
+    (outcome) => outcome.result == OutcomeResultEnum.unknownDefaultOpenApi,
+  )) {
+    unawaited(
+      ref
+          .read(analyticsServiceProvider)
+          .wireEnumFallback(enumType: 'OutcomeResult', surface: 'game'),
+    );
+  }
+  return outcomes;
 }
 
 /// A player's most recent finished public games, for the replay list on their
