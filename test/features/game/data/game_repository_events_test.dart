@@ -98,8 +98,9 @@ Future<List<int>> _versions(
     if (e is GameSocketFrame) seen.add(e.frame.version);
   });
   await drive();
-  // Long enough for the stubbed gap fetches the pipeline may issue to land.
-  await Future<void>.delayed(const Duration(milliseconds: 50));
+  // Drain the asynchronous stream/Dio pipeline without depending on wall-clock
+  // timing, which becomes flaky when the test runner executes many suites.
+  await pumpEventQueue();
   await sub.cancel();
   return seen;
 }

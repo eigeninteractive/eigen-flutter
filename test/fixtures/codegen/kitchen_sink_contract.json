@@ -1,0 +1,221 @@
+{
+  "formatVersion": 1,
+  "game": "2048 Arena",
+  "versions": {
+    "2": {
+      "schemas": {
+        "state": {
+          "type": "object",
+          "properties": {
+            "turn": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "turn"
+          ]
+        },
+        "observation": {
+          "type": "object",
+          "properties": {
+            "turn": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "turn"
+          ]
+        },
+        "action": {
+          "type": "object",
+          "properties": {
+            "pass": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "pass"
+          ]
+        },
+        "config": {
+          "type": "object",
+          "properties": {
+            "board-size": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "board-size"
+          ]
+        }
+      }
+    },
+    "1": {
+      "schemas": {
+        "state": {
+          "type": "object",
+          "properties": {
+            "turn": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "turn"
+          ]
+        },
+        "observation": {
+          "$defs": {
+            "move": {
+              "type": "string",
+              "enum": [
+                "class",
+                "in-progress",
+                "cost$money"
+              ]
+            },
+            "profile": {
+              "type": "object",
+              "properties": {
+                "display-name": {
+                  "type": "string"
+                },
+                "nickname": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "display-name",
+                "nickname"
+              ]
+            }
+          },
+          "type": "object",
+          "properties": {
+            "profile": {
+              "$ref": "#/$defs/profile"
+            },
+            "history": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/profile"
+              }
+            },
+            "matrix": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "possible-moves": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/move"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "note": {
+              "type": "string"
+            },
+            "quote'$key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "profile",
+            "matrix",
+            "possible-moves",
+            "quote'$key"
+          ]
+        },
+        "action": {
+          "type": "object",
+          "properties": {
+            "move": {
+              "$ref": "#/$defs/move"
+            },
+            "targets": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            },
+            "metadata": {
+              "type": "object",
+              "properties": {
+                "switch": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "switch"
+              ]
+            }
+          },
+          "required": [
+            "move",
+            "targets"
+          ]
+        },
+        "config": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "solo",
+                "team-play"
+              ]
+            },
+            "level": {
+              "anyOf": [
+                {
+                  "const": 1
+                },
+                {
+                  "const": 2
+                }
+              ]
+            },
+            "labels": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "required": [
+            "mode",
+            "level",
+            "labels"
+          ]
+        }
+      }
+    }
+  },
+  "fixtures": []
+}

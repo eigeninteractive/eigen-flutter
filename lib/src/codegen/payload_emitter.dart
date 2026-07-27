@@ -33,6 +33,7 @@ final class _PayloadField {
     required this.required,
     required this.decode,
     required this.encode,
+    required this.nullAwareMapValue,
   });
 
   final String wireName;
@@ -41,6 +42,7 @@ final class _PayloadField {
   final bool required;
   final String decode;
   final String encode;
+  final bool nullAwareMapValue;
 }
 
 final class _PayloadRulesBase extends _PayloadDeclaration {
@@ -249,7 +251,11 @@ final class _PayloadEmitter {
     final entries = declaration.fields
         .map((field) {
           final entry = '${_dartString(field.wireName)}: ${field.encode},';
-          return field.required ? entry : 'if (${field.name} != null) $entry';
+          if (field.required) return entry;
+          if (field.nullAwareMapValue) {
+            return '${_dartString(field.wireName)}: ?${field.name},';
+          }
+          return 'if (${field.name} != null) $entry';
         })
         .join('\n');
     return Method(
@@ -390,6 +396,19 @@ if (value is Map) {
   );
 }
 return value.hashCode;
+''',
+    ),
+    _helper(
+      name: '_payloadRequired',
+      returns: 'Object?',
+      parameters: [
+        ('Map<String, dynamic>', 'json'),
+        ('String', 'key'),
+        ('String', 'path'),
+      ],
+      body: r'''
+if (json.containsKey(key)) return json[key];
+throw FormatException('$path: required field is missing');
 ''',
     ),
     _guardHelper(

@@ -37,6 +37,11 @@ int _payloadHash(Object? value) {
   return value.hashCode;
 }
 
+Object? _payloadRequired(Map<String, dynamic> json, String key, String path) {
+  if (json.containsKey(key)) return json[key];
+  throw FormatException('$path: required field is missing');
+}
+
 Map<String, dynamic> _payloadMap(Object? value, String path) {
   if (value is Map<String, dynamic>) return value;
   throw FormatException('$path: expected an object');
@@ -94,14 +99,21 @@ final class RpsV1Round {
   factory RpsV1Round.fromJson(Map<String, dynamic> json) {
     const path = "RpsV1Round";
     return RpsV1Round(
-      moves: _payloadList(json["moves"], "$path.moves").indexed.map((entry) {
-        final index = entry.$1;
-        final item = entry.$2;
-        return RpsV1Move.fromJson(item, "$path.moves[$index]");
-      }).toList(),
-      winner: json["winner"] == null
+      moves:
+          _payloadList(
+            _payloadRequired(json, "moves", "$path.moves"),
+            "$path.moves",
+          ).indexed.map((entry) {
+            final index = entry.$1;
+            final item = entry.$2;
+            return RpsV1Move.fromJson(item, "$path.moves[$index]");
+          }).toList(),
+      winner: _payloadRequired(json, "winner", "$path.winner") == null
           ? null
-          : _payloadInt(json["winner"], "$path.winner"),
+          : _payloadInt(
+              _payloadRequired(json, "winner", "$path.winner"),
+              "$path.winner",
+            ),
     );
   }
 
@@ -148,17 +160,27 @@ final class RpsV1Observation {
                   : RpsV1Move.fromJson(item, "$path.commits[$index]");
             }).toList()
           : null,
-      lastRound: json["lastRound"] == null
+      lastRound: _payloadRequired(json, "lastRound", "$path.lastRound") == null
           ? null
           : RpsV1Round.fromJson(
-              _payloadMap(json["lastRound"], "$path.lastRound"),
+              _payloadMap(
+                _payloadRequired(json, "lastRound", "$path.lastRound"),
+                "$path.lastRound",
+              ),
             ),
-      round: _payloadInt(json["round"], "$path.round"),
-      wins: _payloadList(json["wins"], "$path.wins").indexed.map((entry) {
-        final index = entry.$1;
-        final item = entry.$2;
-        return _payloadInt(item, "$path.wins[$index]");
-      }).toList(),
+      round: _payloadInt(
+        _payloadRequired(json, "round", "$path.round"),
+        "$path.round",
+      ),
+      wins:
+          _payloadList(
+            _payloadRequired(json, "wins", "$path.wins"),
+            "$path.wins",
+          ).indexed.map((entry) {
+            final index = entry.$1;
+            final item = entry.$2;
+            return _payloadInt(item, "$path.wins[$index]");
+          }).toList(),
       yourMove: json.containsKey("yourMove")
           ? json["yourMove"] == null
                 ? null
@@ -213,7 +235,12 @@ final class RpsV1Action {
 
   factory RpsV1Action.fromJson(Map<String, dynamic> json) {
     const path = "RpsV1Action";
-    return RpsV1Action(move: RpsV1Move.fromJson(json["move"], "$path.move"));
+    return RpsV1Action(
+      move: RpsV1Move.fromJson(
+        _payloadRequired(json, "move", "$path.move"),
+        "$path.move",
+      ),
+    );
   }
 
   final RpsV1Move move;
@@ -235,7 +262,10 @@ final class RpsV1Config {
   factory RpsV1Config.fromJson(Map<String, dynamic> json) {
     const path = "RpsV1Config";
     return RpsV1Config(
-      targetWins: _payloadInt(json["targetWins"], "$path.targetWins"),
+      targetWins: _payloadInt(
+        _payloadRequired(json, "targetWins", "$path.targetWins"),
+        "$path.targetWins",
+      ),
     );
   }
 

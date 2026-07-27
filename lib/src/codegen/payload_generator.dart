@@ -196,11 +196,14 @@ final class _GenerationContext {
           ? type
           : type.asNullable();
       final wireLiteral = _dartString(entry.key);
-      final value = 'json[$wireLiteral]';
+      final path = _dartPath(entry.key);
+      final value = isRequired
+          ? '_payloadRequired(json, $wireLiteral, $path)'
+          : 'json[$wireLiteral]';
       final decode = _decode(
         fieldSchema,
         value,
-        _dartPath(entry.key),
+        path,
         suggestedName: '$name${_pascal(entry.key)}',
       );
       final encode = isRequired
@@ -222,6 +225,7 @@ final class _GenerationContext {
           required: isRequired,
           decode: decode,
           encode: encode,
+          nullAwareMapValue: !isRequired && _usesIdentityEncoding(fieldSchema),
         ),
       );
     }
@@ -402,6 +406,20 @@ bool _numericConstants(Map<String, dynamic> schema) {
             branch['const'] is num &&
             (branch['const'] as num).toInt() == branch['const'],
       );
+}
+
+bool _usesIdentityEncoding(Map<String, dynamic> schema) {
+  final nullable = _nullableBranch(schema);
+  if (nullable != null) return _usesIdentityEncoding(nullable);
+  return schema[r'$ref'] == null &&
+      !_isStringEnum(schema) &&
+      (const {
+            'integer',
+            'number',
+            'string',
+            'boolean',
+          }.contains(schema['type']) ||
+          _numericConstants(schema));
 }
 
 bool _isStringEnum(Map<String, dynamic> schema) =>
