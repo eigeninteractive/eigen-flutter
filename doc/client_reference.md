@@ -60,19 +60,16 @@ enforces both halves.
   (scheme + host, no path, no trailing slash) because every generated route
   already carries its own prefix. The one non-generated piece is the frame
   stream (§2), which is hand-written.
-- **Errors** are `{ error, code? }`, and `code` is a **generated enum**
-  (`ErrorCode`), so `humanize` switches over it exhaustively — adding a code
-  server-side fails the client build until copy exists. `engineCall` converts a
+- **Errors** are `{ error, code? }`, and `code` is a generated enum
+  (`ErrorCode`). `humanize` handles its unknown fallback by presenting an
+  update-required state. `engineCall` converts a
   server-reported failure into `EngineException`; a failure with *no* response
   propagates as the underlying `DioException`, because "the server said no" and
   "the outcome is unknown" mean different things to a state-changing command.
-- **Wire enums are closed sets.** Generated enums carry no `unknown` sentinel and
-  parse strictly, so adding a member to any of them — `GameStatus`, `ErrorCode`,
-  `GameAccess`, seat type — is a breaking change needing a schema-version bump.
-  `test/shared/api_contract_test.dart` pins the sets so drift fails loudly.
-  *(Deliberately not `@JsonKey(unknownEnumValue:)`: the client does not degrade
-  gracefully on an unknown value, it refuses to build. §25 explains why that
-  trade is the right one here.)*
+- **Engine wire enums are forward-readable.** Generated enums map a value an
+  older app does not know to `unknownDefaultOpenApi`. The app nudges an update
+  instead of failing response decoding. This sentinel is read-side only and is
+  never serialized to a route.
 - **Lists page by keyset cursor**, not offset: the cursor is the previous page's
   last sort value. These lists change while they are being read, and an offset
   would show the same row twice after a single insert.
@@ -304,11 +301,9 @@ class MyGameRulesV1
     extends GameRules<ObservationData, ActionData, GameConfigData> {
   const MyGameRulesV1();
 
-  // Codec — the Freezed mirror of the TS unit's schemas.
-  @override GameConfigData parseConfig(Map<String, dynamic> j) => GameConfigData.fromJson(j);
-  @override ObservationData parseObservation(Map<String, dynamic> j) => ObservationData.fromJson(j);
-  @override ActionData parseAction(Map<String, dynamic> j) => ActionData.fromJson(j);
-  @override Map<String, dynamic> serializeAction(ActionData a) => a.toJson();
+  @override
+  GamePayloadCodec<ObservationData, ActionData, GameConfigData>
+      get payloadCodec => const MyGamePayloadCodec();
 
   // Legality — the transcribed legality half of the TS applyAction.
   @override
@@ -447,11 +442,10 @@ The Dart half rides `flutter test` via
 
 Three things the fixtures are strict about:
 
-- **Fixtures use the wire shape, not Dart field names.** With
-  `field_rename: snake`, the key is `action_count`, never `actionCount` — and the
-  TS schemas must use the same keys. The fixture is what pins this.
-- **The Dart observation type needs value equality** for the observation
-  comparison. Freezed gives it; a hand-written type must override `==`/`hashCode`.
+- **Fixtures use the wire shape, not Dart field names.** The generator preserves
+  the JSON Schema property names exactly, eliminating rename configuration.
+- **Generated observations have deep value equality**, including collections,
+  so fixture comparisons are meaningful without an app-side builder stack.
 - **Grow the suite with the rules.** Cover at minimum one legal move (with its
   expected observation), one illegal move, one game-ending move, and one case per
   `ratingPool` / `botSeatable` branch.
@@ -1153,18 +1147,16 @@ surprises people:**
 **Draining gates the write path; replay gates the read path, and replay outlives
 draining.**
 
-### Wire compatibility — closed enums, not tolerant decode
+### Wire compatibility — tolerant reads, strict writes
 
-An `unknown` enum sentinel would let an unrecognised value degrade gracefully.
-**That is deliberately not done here.** Generated enums parse strictly, so an
-unknown value throws and `test/shared/api_contract_test.dart` pins the sets.
+Engine API enums include `unknownDefaultOpenApi`. An installed app can therefore
+decode an additive enum value and enter the update-required UI instead of
+throwing while parsing the response. The sentinel is not a domain value and
+must never be serialized back.
 
-The trade: graceful degradation on the wire buys silence, and silence is exactly
-wrong when the two sides are two repos with one generated seam between them. With
-closed enums, adding a value server-side breaks the client **build** — loudly, in
-CI, before release — instead of producing a screen that renders nothing at
-runtime. That makes adding a wire enum member a coordinated, schema-version-bumped
-change, which it always was in truth.
+Game payload enums are different: their meaning drives legality and rendering,
+so an unknown member requires a new game `schemaVersion` and a compatible app
+release.
 
 Within a version, additive change is still fine: new fields must be nullable or
 `@Default(...)`, never `required`. Changing a field's type or meaning, or removing
