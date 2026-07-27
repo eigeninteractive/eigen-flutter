@@ -24,7 +24,7 @@ class RpsBoard extends StatefulWidget {
   /// place a shared fixture can hold to account rather than re-decided here.
   /// Taking it as a parameter (instead of importing `rules.dart`) is also what
   /// keeps rendering and rules from importing each other.
-  final GameRules<RpsObservation, RpsAction, RpsConfig> rules;
+  final GameRules<RpsV1Observation, RpsV1Action, RpsV1Config> rules;
 
   @override
   State<RpsBoard> createState() => _RpsBoardState();
@@ -38,7 +38,7 @@ class _RpsBoardState extends State<RpsBoard> {
   /// its next observation at all (see [RpsRulesV1.previewAction]), but it can
   /// always know what *this* player just did. Showing that immediately is what
   /// makes the tap feel instant across a round trip.
-  RpsMove? _submitting;
+  RpsV1Move? _submitting;
 
   @override
   void didUpdateWidget(RpsBoard oldWidget) {
@@ -51,12 +51,12 @@ class _RpsBoardState extends State<RpsBoard> {
     }
   }
 
-  Future<void> _throw(RpsMove move) async {
+  Future<void> _throw(RpsV1Move move) async {
     final ctx = widget.context;
     final seat = ctx.mySeat.indexOrNull;
-    final obs = ctx.frame.observation! as RpsObservation;
-    final config = ctx.config as RpsConfig;
-    final action = RpsAction(move: move);
+    final obs = ctx.frame.observation! as RpsV1Observation;
+    final config = ctx.config as RpsV1Config;
+    final action = RpsV1Action(move: move);
 
     // Ask the rules unit, not this widget. The same check runs server-side in
     // the TS `applyAction`, and keeping the client's copy in the rules unit is
@@ -90,8 +90,8 @@ class _RpsBoardState extends State<RpsBoard> {
   @override
   Widget build(BuildContext context) {
     final ctx = widget.context;
-    final obs = ctx.frame.observation! as RpsObservation;
-    final config = ctx.config as RpsConfig;
+    final obs = ctx.frame.observation! as RpsV1Observation;
+    final config = ctx.config as RpsV1Config;
     final seat = ctx.mySeat.indexOrNull;
 
     return Padding(
@@ -144,8 +144,8 @@ class _Scoreboard extends StatelessWidget {
     required this.players,
   });
 
-  final RpsObservation observation;
-  final RpsConfig config;
+  final RpsV1Observation observation;
+  final RpsV1Config config;
   final PlayersContext players;
 
   @override
@@ -208,7 +208,7 @@ class _SeatScore extends StatelessWidget {
 class _Reveal extends StatelessWidget {
   const _Reveal({required this.round, required this.mySeat});
 
-  final RpsRound? round;
+  final RpsV1Round? round;
   final int? mySeat;
 
   @override
@@ -259,11 +259,11 @@ class _StatusLine extends StatelessWidget {
     required this.submitting,
   });
 
-  final RpsObservation observation;
+  final RpsV1Observation observation;
   final GameStatus gameStatus;
   final List<Outcome> outcomes;
   final int? mySeat;
-  final RpsMove? submitting;
+  final RpsV1Move? submitting;
 
   @override
   Widget build(BuildContext context) {
@@ -304,15 +304,15 @@ class _MoveButtons extends StatelessWidget {
   });
 
   final bool enabled;
-  final RpsMove? chosen;
-  final ValueChanged<RpsMove> onThrow;
+  final RpsV1Move? chosen;
+  final ValueChanged<RpsV1Move> onThrow;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        for (final move in RpsMove.values)
+        for (final move in RpsV1Move.values)
           _MoveButton(
             move: move,
             selected: move == chosen,
@@ -330,7 +330,7 @@ class _MoveButton extends StatelessWidget {
     required this.onPressed,
   });
 
-  final RpsMove move;
+  final RpsV1Move move;
   final bool selected;
   final VoidCallback? onPressed;
 
@@ -354,8 +354,8 @@ class _MoveButton extends StatelessWidget {
   }
 }
 
-String _glyph(RpsMove move) => switch (move) {
-  RpsMove.rock => '✊',
-  RpsMove.paper => '✋',
-  RpsMove.scissors => '✌️',
+String _glyph(RpsV1Move move) => switch (move) {
+  RpsV1Move.rock => '✊',
+  RpsV1Move.paper => '✋',
+  RpsV1Move.scissors => '✌️',
 };

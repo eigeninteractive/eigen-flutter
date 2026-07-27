@@ -1,7 +1,7 @@
 /// Runs the shared twin fixtures against the Dart RPS twin.
 ///
 /// The files under `fixtures/v1/` are byte-identical copies of
-/// `eigen-server/examples/rps/src/rules/fixtures/v1/`, and the server runs the
+/// `eigen-server/examples/rps/src/module/fixtures/v1/`, and the server runs the
 /// same files against the authoritative TypeScript unit via `@eigen/testkit`.
 /// One recorded behaviour, two languages, two CIs: when the twins disagree,
 /// one of them goes red.

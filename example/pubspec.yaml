@@ -19,20 +19,11 @@ dependencies:
   # its dependency's dependencies.
   firebase_core: ^4.9.0
   firebase_messaging: ^16.2.2
-  # The payload codec. A game's observation type needs value equality, because
-  # the twin fixture runner compares observations with `==`; Freezed provides
-  # it (with deep collection equality) and `json_serializable` writes the
-  # `fromJson`/`toJson` the codec delegates to.
-  freezed_annotation: ^3.1.0
-  json_annotation: ^4.12.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  build_runner: ^2.15.0
-  freezed: ^3.2.5
-  json_serializable: ^6.13.0
   # Widget-testing a game screen means supplying the `AppConfig` the shared
   # widgets read, which needs a `ProviderScope`. `runEngineApp` installs one in
   # a real app, so this is a test-only dependency.

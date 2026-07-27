@@ -17,7 +17,7 @@ and does not do is worth reading before you write your own.
 |---|---|
 | `lib/main.dart` | The whole app: which game, what it's called, where the server is |
 | `lib/src/rps_module.dart` | The version registry, the create dialog, the rules page |
-| `lib/src/v1/models.dart` | The payload codec — the Dart mirror of the TypeScript Zod schemas |
+| `lib/src/v1/models.dart` | Generated payload types and handwritten helpers — the Dart mirror of the TypeScript schemas |
 | `lib/src/v1/rules.dart` | The `GameRules` unit: legality, optimism, and what to render |
 | `lib/src/v1/board.dart` | The board |
 | `fixtures/v1/rps.json` | Behaviour recorded once, run by both languages |
@@ -30,8 +30,9 @@ here is involved in any of it.
 
 The server decides; the client draws and proposes. Concretely, the TypeScript
 unit owns `initialState`, `applyAction`, `applyLifecycle`, `computeObservation`
-and the payload schemas. This side owns the codec, the legality check behind a
-greyed-out button, the optimism contract, and the widgets.
+and the payload schemas. This side inherits generated payload parsing, then owns
+the legality check behind a greyed-out button, the optimism contract, and the
+widgets.
 
 Where the two overlap — legality, `ratingPool`, `botSeatable` — they are
 transcriptions of each other, and drifting apart is a bug the fixtures catch.
@@ -42,7 +43,7 @@ transcriptions of each other, and drifting apart is a bug the fixtures catch.
 payload per seat, and for RPS it emits two different *shapes*: live play carries
 `yourMove` and simply omits the opponent's commit, while replay carries
 `commits` for both seats because the match is over. The opponent's throw is not
-hidden by the UI — it is not in the bytes. `RpsObservation.fromJson` handles
+hidden by the UI — it is not in the bytes. `RpsV1Observation.fromJson` handles
 both shapes, and that is the entire cost of hidden information on the client.
 
 **`previewAction` returns null, and that is the right answer.** The engine also
@@ -76,14 +77,13 @@ once you have both.
 > this example, so it has to be repeated. Delete the block once `eigen_api` is
 > published; an app depending on `eigen_flutter` never needs it.
 
-## The fixtures are duplicated
+## The generated contract
 
-`fixtures/v1/rps.json` is a byte-identical copy of the server's copy. There is
-no sharing mechanism, on purpose — neither repo depends on the other.
-
-The consequence is worth internalising: **editing a fixture in one repo leaves
-that repo green while the other holds a stale copy.** A rules change is a
-two-repo change, and the fixture edit is the part that must land in both.
+The server example emits `game-contract.json` from its four schemas and
+validated fixtures. `payloads.dart` and `fixtures/v1/rps.json` are generated
+from that artifact, so they are not handwritten mirrors. Separate repositories
+exchange the artifact by release/checksum rather than depending on one another's
+checkout layout.
 
 Note that a case's `pending` array is written from the server's point of view.
 The client normally sees a masked projection of it, which for RPS is at most

@@ -164,8 +164,9 @@ class BotSeatableArgs {
 /// `applyLifecycle`, `computeObservation`) plus the Zod `schemas`; this side
 /// owns the client half, member for member:
 ///
-/// - the payload codec ([parseConfig] / [parseObservation] / [parseAction] /
-///   [serializeAction]) — the Freezed mirror of the TS `schemas`;
+/// - the generated payload parsing and serialization ([parseConfig] /
+///   [parseObservation] / [parseAction] / [serializeAction]) — emitted from
+///   the TS schemas;
 /// - [isValidAction] — the legality half of the TS `applyAction`, transcribed;
 /// - [previewAction] — the game's own optimistic projection of `applyAction`
 ///   (a standardized contract; infra never calls it);
@@ -179,40 +180,37 @@ class BotSeatableArgs {
 /// The type parameters are this version's payload types. Infra holds units
 /// erased (`Map<int, GameRules>` on the module) and calls through the erased
 /// type; your own code (widgets, bots) works against the concrete subclass.
+///
+/// `eigen_flutter:generate_payloads` emits a typed abstract base class that
+/// implements the four JSON methods below. Game implementations extend that
+/// generated base and only supply game behavior.
 abstract class GameRules<TObs, TAction, TConfig> {
   const GameRules();
 
   /// Parses the raw `games.config` JSON into this version's config type.
   ///
   /// Called once per game by infra (the parsed value is cached and handed to
-  /// [buildContent] via [GameContentContext.config]). Implement by delegating
-  /// to the Freezed `fromJson`.
+  /// [buildContent] via [GameContentContext.config]).
   TConfig parseConfig(Map<String, dynamic> json);
 
   /// Parses a raw observation JSON map into this version's observation type.
   ///
-  /// Called once per network event — never on frame rebuild. Implement by
-  /// delegating to the Freezed `fromJson`:
-  /// ```dart
-  /// @override
-  /// ObservationData parseObservation(Map<String, dynamic> json) =>
-  ///     ObservationData.fromJson(json);
-  /// ```
+  /// Called once per network event — never on frame rebuild.
   TObs parseObservation(Map<String, dynamic> json);
 
-  /// Parses a raw action JSON map into this version's action type — the
-  /// input mirror of [serializeAction], completing the codec (the TS twin's
-  /// `schemas.action` covers both directions). Infra uses it to re-type a
-  /// logged action (e.g. for replay cues).
+  /// Parses a raw action JSON map into this version's action type — the input
+  /// mirror of [serializeAction] (the TS twin's `schemas.action` covers both
+  /// directions). Infra uses it to re-type a logged action (e.g. for replay
+  /// cues).
   TAction parseAction(Map<String, dynamic> json);
 
   /// Serialises a typed action into the JSON map submitted to the server.
   ///
   /// Infra holds rules units erased and cannot call a concrete `toJson`, so
-  /// the unit owns this codec step. The returned map is the action `data` the
-  /// TS `applyAction` hook consumes — identical whether the move came from a
-  /// human tap, a local bot, or a server bot, because every producer routes
-  /// through this one seam. Implement by delegating to the Freezed `toJson`.
+  /// the unit owns this serialization step. The returned map is the action
+  /// `data` the TS `applyAction` hook consumes — identical whether the move
+  /// came from a human tap, a local bot, or a server bot, because every
+  /// producer routes through this one seam.
   Map<String, dynamic> serializeAction(TAction action);
 
   /// Validates local legality of an action for client-side UX feedback.

@@ -73,7 +73,7 @@ class RpsModule extends GameModule {
 }
 
 /// The only setting RPS has. Whatever this reports is sent as the game's
-/// `config` at creation and arrives back as [RpsConfig] for the match's whole
+/// `config` at creation and arrives back as [RpsV1Config] for the match's whole
 /// life — the server validates it against the TS `configSchema`, so an
 /// out-of-range value is rejected there, not trusted from here.
 class _TargetWinsPicker extends StatefulWidget {

@@ -69,6 +69,9 @@ dependencies:
   dio_smart_retry: ^7.0.1
   firebase_auth: ^6.5.6
   web_socket_channel: ^3.0.3
+  args: ^2.7.0
+  code_builder: ^4.11.1
+  dart_style: ^3.1.8
 
 dev_dependencies:
   flutter_test:

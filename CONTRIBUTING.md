@@ -24,7 +24,6 @@ And the example, which is its own package with its own resolution:
 ```bash
 cd example
 flutter pub get
-dart run build_runner build --delete-conflicting-outputs   # its models are Freezed
 flutter analyze && flutter test
 ```
 
@@ -45,9 +44,9 @@ branch that releases.
 
 ## The CI gate
 
-Two jobs. The framework: `pub get` → format check → codegen (both packages) →
+Two jobs. The framework: `pub get` → format check → framework codegen →
 `dart fix --apply` → **`git diff --exit-code`** → analyze → test. The example:
-resolve, format, codegen, analyze, test.
+resolve, regenerate payloads from `game-contract.json`, format, analyze, test.
 
 That diff check is the load-bearing step: it fails the build if generated code
 or applied fixes were not committed.
@@ -66,16 +65,10 @@ framework is exercised the way a real game uses it — through the barrel, with 
 `GameContentContext` built by hand. Its `test/board_test.dart` is the worked
 answer to "how do I test a game screen", so keep it working.
 
-Its `fixtures/v1/rps.json` is a copy of the server's, and the server runs the
-same file against the authoritative TypeScript unit. See the fixture note below:
-changing one copy without the other is the failure mode.
-
-Its payload types are **Freezed**, like a real game's, so it has its own
-`build_runner` step and its own `build.yaml`. That file deliberately sets no
-`field_rename`: this game's wire keys are camelCase, while the framework package
-uses `field_rename: snake` for the engine's own snake_case vocabulary. Copying
-one into the other is a real way to break a codec, and the example is where that
-distinction is demonstrated rather than described.
+Its payload types and `fixtures/v1/rps.json` are generated from the server
+example's deterministic `game-contract.json`. Regenerate with
+`dart run eigen_flutter:generate_payloads`; never hand-edit generated payloads
+or fixture copies.
 
 It is also a **published artifact**. pub.dev renders `example/` on the package
 page, so it is documentation with a compiler attached — which is the point, but
@@ -109,22 +102,16 @@ The example needs its own copy (with one more `../`), because
 `dependency_overrides` applies only to the root package and the example is its
 own root.
 
-**A wire change that fails to compile here is the engine telling you it broke
-the wire.** Generated enums carry no `unknown` sentinel and parse strictly, so a
-new member is a compile error by design. That needs a coordinated
-schema-version bump across both repos, not a fix here.
+Generated engine API enums include `unknownDefaultOpenApi` for read-side forward
+compatibility. Exhaustive switches must handle it, normally by presenting an
+update-required state. It must never be serialized back to the server.
 
-## Twin fixtures — the coupling CI cannot see
+## Game contract and twin fixtures
 
-A game's rules exist twice: TypeScript on the server, Dart here. The JSON
-fixtures that pin their agreement are **duplicated into both repos with no
-sharing mechanism** — for RPS, `example/fixtures/v1/rps.json` here and
-`examples/rps/src/rules/fixtures/v1/rps.json` in `eigen-server`.
-
-Editing a fixture in one repo leaves that repo green while the other holds a
-stale copy, and nothing fails until the other repo's CI next runs — possibly
-days later, on someone else's PR. **A rules change is a two-repo change**, and
-the fixture edit is the part that must land in both.
+A game's Worker emits schemas and validated fixtures into one deterministic
+`game-contract.json`. The Flutter generator emits payload classes, typed rules
+bases, and fixture copies from that artifact. In separate repositories, pin the
+artifact by checksum and run the generator in `--check` mode in CI.
 
 ## Describing your change
 

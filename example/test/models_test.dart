@@ -8,13 +8,12 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:json_annotation/json_annotation.dart';
 import 'package:rps_example/rps.dart';
 
 void main() {
-  group('RpsObservation', () {
+  group('RpsV1Observation', () {
     test('parses the live shape, where the opponent commit is absent', () {
-      final obs = RpsObservation.fromJson(const {
+      final obs = RpsV1Observation.fromJson(const {
         'round': 2,
         'wins': [1, 0],
         'lastRound': {
@@ -26,15 +25,15 @@ void main() {
 
       expect(obs.round, 2);
       expect(obs.wins, [1, 0]);
-      expect(obs.lastRound?.moves, [RpsMove.rock, RpsMove.scissors]);
+      expect(obs.lastRound?.moves, [RpsV1Move.rock, RpsV1Move.scissors]);
       expect(obs.lastRound?.winner, 0);
-      expect(obs.yourMove, RpsMove.paper);
+      expect(obs.yourMove, RpsV1Move.paper);
       expect(obs.commits, isNull, reason: 'hidden during live play');
       expect(obs.committedBy(0), isTrue);
     });
 
     test('parses the replay shape, where both commits are revealed', () {
-      final obs = RpsObservation.fromJson(const {
+      final obs = RpsV1Observation.fromJson(const {
         'round': 1,
         'wins': [0, 0],
         'lastRound': null,
@@ -42,7 +41,7 @@ void main() {
       });
 
       expect(obs.yourMove, isNull);
-      expect(obs.commits, [RpsMove.rock, null]);
+      expect(obs.commits, [RpsV1Move.rock, null]);
       expect(obs.committedBy(0), isTrue);
       expect(obs.committedBy(1), isFalse);
     });
@@ -54,48 +53,45 @@ void main() {
         'lastRound': null,
         'yourMove': 'rock',
       };
-      expect(RpsObservation.fromJson(json), RpsObservation.fromJson(json));
+      expect(RpsV1Observation.fromJson(json), RpsV1Observation.fromJson(json));
       expect(
-        RpsObservation.fromJson(json).hashCode,
-        RpsObservation.fromJson(json).hashCode,
+        RpsV1Observation.fromJson(json).hashCode,
+        RpsV1Observation.fromJson(json).hashCode,
       );
     });
 
     test('rejects a move the TypeScript enum cannot produce', () {
-      // Closed sets, on purpose: there is no `unknownEnumValue`, so a member
-      // added server-side throws here instead of rendering an empty board.
-      // `checked: true` is what names the field in the message.
       expect(
-        () => RpsObservation.fromJson(const {
+        () => RpsV1Observation.fromJson(const {
           'round': 1,
           'wins': [0, 0],
           'lastRound': null,
           'yourMove': 'dynamite',
         }),
         throwsA(
-          isA<CheckedFromJsonException>().having(
-            (e) => e.key,
-            'key',
-            'yourMove',
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains('RpsV1Observation.yourMove'),
           ),
         ),
       );
     });
   });
 
-  group('RpsAction', () {
+  group('RpsV1Action', () {
     test('round-trips through the wire shape', () {
-      const action = RpsAction(move: RpsMove.scissors);
+      final action = RpsV1Action(move: RpsV1Move.scissors);
       expect(action.toJson(), {'move': 'scissors'});
-      expect(RpsAction.fromJson(action.toJson()), action);
+      expect(RpsV1Action.fromJson(action.toJson()), action);
     });
   });
 
-  test('RpsMove.beats matches the TypeScript beats() helper', () {
-    expect(RpsMove.rock.beats(RpsMove.scissors), isTrue);
-    expect(RpsMove.scissors.beats(RpsMove.paper), isTrue);
-    expect(RpsMove.paper.beats(RpsMove.rock), isTrue);
-    for (final move in RpsMove.values) {
+  test('RpsV1Move.beats matches the TypeScript beats() helper', () {
+    expect(RpsV1Move.rock.beats(RpsV1Move.scissors), isTrue);
+    expect(RpsV1Move.scissors.beats(RpsV1Move.paper), isTrue);
+    expect(RpsV1Move.paper.beats(RpsV1Move.rock), isTrue);
+    for (final move in RpsV1Move.values) {
       expect(move.beats(move), isFalse, reason: 'a matching throw draws');
     }
   });

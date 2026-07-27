@@ -5,7 +5,7 @@
 /// consumed by BOTH sides: `@eigen/testkit`'s runner runs each case against
 /// the TS unit in the game's Worker (schemas + `applyAction` +
 /// `computeObservation` + the two predicates), while this library runs the
-/// same file against the Dart twin (the payload codec,
+/// same file against the Dart twin (generated payload parsing,
 /// [GameRules.isValidAction], [GameRules.previewAction], and the predicate
 /// twins). A behavioral divergence then fails one side's tests instead of
 /// degrading UX in production. The fixture file format is documented in
@@ -45,9 +45,8 @@
 /// }
 /// ```
 ///
-/// The `expected.observation` comparison relies on the observation type's
-/// value equality (`==`) — Freezed models provide this; hand-written types
-/// must override `==`/`hashCode` for preview cases to be checkable.
+/// The `expected.observation` comparison relies on value equality (`==`).
+/// Eigen's generated payload classes provide deep equality for collections.
 library;
 
 import 'dart:convert';

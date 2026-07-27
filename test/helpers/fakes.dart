@@ -46,9 +46,9 @@ class SampleConfig {
 
 /// The schema-version-1 rules unit of the sample game.
 ///
-/// This is the template downstream games follow: the payload codec plus pure,
-/// infra-free action-legality logic that a game package can unit-test in
-/// isolation.
+/// Real games inherit these JSON methods from their generated rules base. This
+/// handwritten test fixture implements them directly so it has no generated
+/// artifact.
 class SampleRules
     extends GameRules<SampleObservation, SampleAction, SampleConfig> {
   const SampleRules();

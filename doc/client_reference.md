@@ -272,8 +272,8 @@ A game ships two same-shaped registries, one per language:
 
 - a **TypeScript `GameModule`** — `GameRules` units keyed by `schema_version`,
   each bundling the payload schemas and the authoritative hooks;
-- a **Dart `GameModule`** — the same keys, client units (payload codec,
-  legality, optimistic preview, rendering) plus the version-independent
+- a **Dart `GameModule`** — the same keys, client units (generated payload
+  parsing, legality, optimistic preview, rendering) plus the version-independent
   creation/about UI.
 
 **A version is a self-contained unit and the framework owns all dispatch.** Every
@@ -284,7 +284,7 @@ sides (reusing unchanged pieces by import), not editing `v1`.
 | Member | TS `GameRules` | Dart `GameRules` |
 |---|---|---|
 | `initialState`, `applyAction`, `applyLifecycle`, `computeObservation` | ✅ authoritative | — (the client consumes observations) |
-| `schemas` (payload contracts) | ✅ | ✅ as the codec: `parseConfig` / `parseObservation` / `parseAction` / `serializeAction` |
+| `schemas` (payload contracts) | ✅ | ✅ as generated types and a rules base implementing `parseConfig` / `parseObservation` / `parseAction` / `serializeAction` |
 | `isValidAction` | — (`applyAction` *is* the check) | ✅ UX-only transcription of its legality half |
 | `previewAction` | — (`applyAction` is the truth) | ✅ required; the game's own optimistic projection (null ⇒ server-driven) |
 | `ratingPool`, `botSeatable` | ✅ enforced | ✅ display-only twin — keep in sync |
@@ -297,13 +297,8 @@ against both units and fail a test on divergence (§9).
 ## 7. The Dart `GameRules` unit
 
 ```dart
-class MyGameRulesV1
-    extends GameRules<ObservationData, ActionData, GameConfigData> {
+class MyGameRulesV1 extends MyGameV1RulesBase {
   const MyGameRulesV1();
-
-  @override
-  GamePayloadCodec<ObservationData, ActionData, GameConfigData>
-      get payloadCodec => const MyGamePayloadCodec();
 
   // Legality — the transcribed legality half of the TS applyAction.
   @override
@@ -377,6 +372,13 @@ and config as separate inputs, so never put them in the payload.
 `serializeAction` is the **single** place a typed action becomes JSON, which is
 what keeps the producers from drifting.
 
+The payload generator is an executable shipped by `eigen_flutter`, not an
+app-side builder. A game app declares only `eigen_flutter`; it does not add
+`code_builder`, `dart_style`, `freezed`, `json_serializable`, or `build_runner`
+for game payloads. The executable owns those implementation dependencies,
+maps the game contract into Eigen's small semantic model, emits Dart through
+`code_builder`, and formats the result in memory with `dart_style`.
+
 ## 8. Creation UI — `GameModule`
 
 ```dart
@@ -432,7 +434,8 @@ class MyGameModule extends GameModule {
 
 **Twin-drift fixtures** are the net. One set of shared JSON fixtures per schema
 version runs against *both* units — the TS runner drives `applyAction` +
-`computeObservation`, the Dart runner drives the codec, `isValidAction`, and
+`computeObservation`, the Dart runner drives generated parsing,
+`isValidAction`, and
 `previewAction`. `expected.observation` is the shared behavioural anchor both
 sides are compared through.
 

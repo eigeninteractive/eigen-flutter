@@ -7,5 +7,12 @@ library;
 
 export 'src/rps_module.dart' show RpsModule;
 export 'src/v1/models.dart'
-    show RpsAction, RpsConfig, RpsMove, RpsObservation, RpsRound;
+    show
+        RpsV1Action,
+        RpsV1Config,
+        RpsV1Move,
+        RpsV1MoveRules,
+        RpsV1Observation,
+        RpsV1ObservationRules,
+        RpsV1Round;
 export 'src/v1/rules.dart' show RpsRulesV1;

@@ -14,7 +14,7 @@ a generated REST client plus one WebSocket per game.
 [`example/`](example/) is a complete game — Rock–Paper–Scissors, in about 500
 lines — and it is the fastest way to see what building on this package actually
 involves. Its server half is `examples/rps` in the engine repo, and the two are
-checked against each other by shared JSON fixtures that both languages run.
+checked against each other through the generated `game-contract.json`.
 
 RPS is deliberately the *hardest* small case: simultaneous commitment, hidden
 information, and nothing worth predicting. So the example also shows the two
@@ -25,7 +25,6 @@ correct answer.
 ```bash
 cd example
 flutter pub get
-dart run build_runner build --delete-conflicting-outputs
 flutter test
 ```
 
@@ -33,7 +32,7 @@ flutter test
 
 | Doc | What it is |
 |---|---|
-| [`docs/client_reference.md`](docs/client_reference.md) | **Start here.** The client: transport and the frame stream, the Dart rules contract, the app shell, and everything involved in shipping an app (Firebase, assets, deep links, CI, store release). |
+| [`doc/client_reference.md`](doc/client_reference.md) | **Start here.** The client: transport and the frame stream, the Dart rules contract, the app shell, and everything involved in shipping an app (Firebase, assets, deep links, CI, store release). |
 | `docs/architecture.md` in `eigen-server` | How the server works, end to end. |
 | `docs/building_a_game.md` in `eigen-server` | The authoritative TypeScript rules contract — the other half of a game. |
 | `docs/todo.md` in `eigen-server` | The single tracker for what's left, across both repos. |
@@ -52,7 +51,7 @@ eigen-flutter/
 │   ├── shared/              # shared widgets, providers, data
 │   └── testing/             # the Dart half of the twin-fixture runner
 ├── example/                 # Rock–Paper–Scissors: a complete game, its own package
-└── docs/client_reference.md
+└── doc/client_reference.md
 
 The generated REST client (`eigen_api`) is NOT here. It is generated and
 published by the engine repo, which owns the wire contract, and consumed from
@@ -61,37 +60,41 @@ pub.dev like any other dependency.
 
 ## Using the engine in an app
 
-Until this package is published to pub.dev, clone it as a **sibling** of your app
-and depend on it by **path** — the same in local and CI:
+Game apps consume the published package:
 
 ```yaml
-# in your app's pubspec.yaml
 dependencies:
-  eigen_flutter:
-    path: ../eigen-flutter
+  eigen_flutter: ^0.1.0
 ```
 
-Generated code (`*.g.dart`, `*.freezed.dart`) **is committed** — a fresh clone
-compiles without a build step, and the published package ships it (consumers
-never run `build_runner` on a dependency). Regenerate after changing any
-annotated class; CI runs `build_runner` and fails if the result is not
-committed.
+Before the first publication, engine contributors may use a gitignored
+`pubspec_overrides.yaml` pointing to a sibling checkout. That is a development
+override, not the implementor architecture or a published manifest.
 
 ```bash
-cd eigen-flutter && flutter pub get
+flutter pub get
 ```
 
 Then:
 
-1. Implement a **Dart `GameModule`** (per-version `GameRules` units + the
-   creation/about UI) under `lib/game/`, and register it in `main.dart` via
+1. Implement the authoritative **TypeScript `GameModule`** and emit its
+   `game-contract.json`.
+2. Generate immutable Dart payloads, typed rules bases, and fixtures:
+
+   ```bash
+   dart run eigen_flutter:generate_payloads \
+     --contract game-contract.json \
+     --output lib/game/generated/payloads.dart \
+     --fixtures-output test/fixtures
+   ```
+
+3. Implement the **Dart `GameModule`** (legality/preview and UI) under
+   `lib/game/`, and register it in `main.dart` via
    `runEngineApp(module: const MyGameModule(), config: AppConfig(…), …)`.
-2. Implement the matching **TypeScript `GameModule`** in your Worker — that is
-   the authoritative half. Keep the two honest with shared twin fixtures.
-3. Configure the app: `.env` (`API_BASE_URL` and friends), `flutterfire
+4. Configure the app: `.env` (`API_BASE_URL` and friends), `flutterfire
    configure`, branding assets, deep-link host.
 
-Full walkthrough in [`docs/client_reference.md`](docs/client_reference.md) —
+Full walkthrough in [`doc/client_reference.md`](doc/client_reference.md) —
 Part II for the game contract, Part IV for shipping.
 
 ### One dependency, one import
@@ -164,11 +167,9 @@ dependency bump here rather than a silent drift between two copies of a file.
 `../eigen-server/clients/dart`. `flutter pub get` picks it up; the published
 manifest never sees it.
 
-**Wire enums are closed sets.** Generated enums carry no `unknown` sentinel and
-parse strictly, so adding a member to any enum on the wire is a breaking change
-needing a schema-version bump and a coordinated release. That is deliberate: it
-turns a silent runtime failure into a loud build failure.
-`test/shared/api_contract_test.dart` pins the sets.
+Generated engine API enums decode new wire members as
+`unknownDefaultOpenApi`. Callers handle that member by presenting the existing
+update-required flow; it is read-side only and must never be sent back.
 
 ## Versioning
 

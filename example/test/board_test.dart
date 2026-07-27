@@ -89,7 +89,7 @@ void main() {
       _harness(
         rules.buildContent(
           _context(
-            observation: RpsObservation.fromJson(const {
+            observation: RpsV1Observation.fromJson(const {
               'round': 1,
               'wins': [0, 0],
               'lastRound': null,
@@ -110,7 +110,7 @@ void main() {
       _harness(
         rules.buildContent(
           _context(
-            observation: RpsObservation.fromJson(const {
+            observation: RpsV1Observation.fromJson(const {
               'round': 2,
               'wins': [1, 0],
               'lastRound': {
@@ -156,7 +156,7 @@ void main() {
   });
 }
 
-final _fresh = RpsObservation.fromJson(const {
+final _fresh = RpsV1Observation.fromJson(const {
   'round': 1,
   'wins': [0, 0],
   'lastRound': null,
@@ -165,14 +165,14 @@ final _fresh = RpsObservation.fromJson(const {
 
 /// A [GameContentContext] for seat 0 of a two-player match.
 GameContentContext _context({
-  required RpsObservation observation,
+  required RpsV1Observation observation,
   required List<int> pendingPlayers,
   GameStatus gameStatus = GameStatus.active,
   List<Outcome> outcomes = const [],
   Future<ActionSubmitResult> Function(Map<String, dynamic>)? onAction,
 }) {
   return GameContentContext(
-    config: const RpsConfig(targetWins: 3),
+    config: RpsV1Config(targetWins: 3),
     frame: GameFrame(
       observation: observation,
       pendingPlayers: pendingPlayers,

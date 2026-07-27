@@ -1,6 +1,6 @@
 /// Schema version 1 of Rock–Paper–Scissors on the client — the Dart twin of
 /// the same-named TypeScript unit in
-/// `eigen-server/examples/rps/src/rules/v1.ts`.
+/// `eigen-server/examples/rps/src/module/v1.ts`.
 ///
 /// The two halves split by authority, not by feature. The TS unit owns
 /// everything that decides anything: `initialState`, `applyAction`,
@@ -23,21 +23,8 @@ import 'board.dart';
 import 'models.dart';
 
 /// The v1 rules unit, registered under key `1` in [RpsModule.versions].
-class RpsRulesV1 extends GameRules<RpsObservation, RpsAction, RpsConfig> {
+class RpsRulesV1 extends RpsV1RulesBase {
   const RpsRulesV1();
-
-  @override
-  RpsConfig parseConfig(Map<String, dynamic> json) => RpsConfig.fromJson(json);
-
-  @override
-  RpsObservation parseObservation(Map<String, dynamic> json) =>
-      RpsObservation.fromJson(json);
-
-  @override
-  RpsAction parseAction(Map<String, dynamic> json) => RpsAction.fromJson(json);
-
-  @override
-  Map<String, dynamic> serializeAction(RpsAction action) => action.toJson();
 
   /// The legality half of the TS `applyAction`, transcribed.
   ///
@@ -48,11 +35,11 @@ class RpsRulesV1 extends GameRules<RpsObservation, RpsAction, RpsConfig> {
   /// is all this check needs.
   @override
   bool isValidAction({
-    required RpsObservation obs,
+    required RpsV1Observation obs,
     required List<int> pending,
-    required RpsAction data,
+    required RpsV1Action data,
     required int playerIndex,
-    required RpsConfig config,
+    required RpsV1Config config,
   }) => pending.contains(playerIndex) && !obs.committedBy(playerIndex);
 
   /// Always null — RPS cannot predict its own next observation, and saying so
@@ -79,12 +66,12 @@ class RpsRulesV1 extends GameRules<RpsObservation, RpsAction, RpsConfig> {
   /// submission*, which you can always know; [previewAction] is optimism about
   /// *the resulting position*, which here you cannot.
   @override
-  RpsObservation? previewAction({
-    required RpsObservation obs,
+  RpsV1Observation? previewAction({
+    required RpsV1Observation obs,
     required List<int> pending,
-    required RpsAction data,
+    required RpsV1Action data,
     required int playerIndex,
-    required RpsConfig config,
+    required RpsV1Config config,
   }) => null;
 
   @override
