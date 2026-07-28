@@ -105,5 +105,9 @@ flutter test
 - [Dart API reference](https://pub.dev/documentation/eigen_flutter/latest/)
 - [Versions and compatibility](https://eigeninteractive.com/docs/reference/compatibility)
 
-Engine contributors should use [CONTRIBUTING.md](CONTRIBUTING.md) for local
-workspace, generation, validation, and release commands.
+## Working on the framework
+
+- [CONTRIBUTING.md](CONTRIBUTING.md): local setup, generation, validation,
+  changelog entries, and pull requests.
+- [MAINTAINERS.md](MAINTAINERS.md): pub.dev setup, releases, version tags, and
+  failure recovery.
