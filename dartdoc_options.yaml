@@ -1,0 +1,9 @@
+dartdoc:
+  # These are the two supported import surfaces. The app shell's implementation
+  # libraries live under lib/ for now, but they are not part of the API a game
+  # implementor should discover or depend on.
+  include:
+    - eigen_flutter
+    - eigen_flutter.testing
+  errors:
+    - unresolved-doc-reference

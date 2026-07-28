@@ -56,7 +56,8 @@ String _$gameRepositoryHash() => r'876f2c91a563f9542ed11e76beff4c65cf491fd7';
 
 /// The active [GameModule].
 ///
-/// Override in [ProviderScope] via:
+/// [runEngineApp] registers the game module for normal apps. Widget tests that
+/// construct their own `ProviderScope` can override it directly:
 /// ```dart
 /// currentGameModuleProvider.overrideWithValue(const TicTacToeModule())
 /// ```
@@ -67,7 +68,8 @@ final currentGameModuleProvider = CurrentGameModuleProvider._();
 
 /// The active [GameModule].
 ///
-/// Override in [ProviderScope] via:
+/// [runEngineApp] registers the game module for normal apps. Widget tests that
+/// construct their own `ProviderScope` can override it directly:
 /// ```dart
 /// currentGameModuleProvider.overrideWithValue(const TicTacToeModule())
 /// ```
@@ -78,7 +80,8 @@ final class CurrentGameModuleProvider
     with $Provider<GameModule> {
   /// The active [GameModule].
   ///
-  /// Override in [ProviderScope] via:
+  /// [runEngineApp] registers the game module for normal apps. Widget tests that
+  /// construct their own `ProviderScope` can override it directly:
   /// ```dart
   /// currentGameModuleProvider.overrideWithValue(const TicTacToeModule())
   /// ```

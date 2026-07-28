@@ -1,10 +1,32 @@
+// Dartdoc selects the two supported package entry points by library name.
+// ignore_for_file: unnecessary_library_name
+
 /// Eigen Engine — a whitelabel turn-based multiplayer game engine.
 ///
-/// A game app depends on this package, implements a [GameModule] (typically in
-/// its own game package), and boots with [runEngineApp]. This barrel exports
-/// the public surface a game/app needs: the entry point, the composition-root
-/// config, and the game contract.
-library;
+/// A game app depends on this package, implements a [GameModule], and boots
+/// with [runEngineApp]:
+///
+/// ```dart
+/// import 'package:eigen_flutter/eigen_flutter.dart';
+///
+/// Future<void> main() => runEngineApp(
+///   module: const MyGameModule(),
+///   config: appConfig,
+///   firebaseOptions: firebaseOptions,
+///   onBackgroundMessage: onBackgroundMessage,
+/// );
+/// ```
+///
+/// This library is the supported app import. It exposes the entry point,
+/// composition-root configuration, game contract, wire vocabulary, and shared
+/// game UI without exposing the app shell's repositories or transport.
+///
+/// Start with the
+/// [Eigen quickstart](https://eigeninteractive.com/docs/getting-started/quickstart)
+/// and use the
+/// [task guides](https://eigeninteractive.com/docs/build-a-game/the-contract)
+/// for end-to-end TypeScript and Dart examples.
+library eigen_flutter;
 
 /// The wire types a game renders from.
 ///
@@ -57,6 +79,8 @@ export 'core/game/players_context.dart';
 export 'core/game/timing_context.dart';
 export 'features/game/providers/game_providers.dart'
     show currentGameModuleProvider;
+export 'features/game/presentation/widgets/timer_builders.dart'
+    show PlayerTimerBuilder, TurnTimerBuilder;
 
 /// Shared UI a game composes with. Seat rendering in particular belongs here:
 /// avatar URLs may be relative to the API host, and routing every avatar

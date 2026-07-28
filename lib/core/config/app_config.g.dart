@@ -10,7 +10,8 @@ part of 'app_config.dart';
 // ignore_for_file: type=lint, type=warning
 /// The active [AppConfig].
 ///
-/// Override in [ProviderScope] via:
+/// [runEngineApp] registers the config for normal apps. Widget tests that
+/// construct their own `ProviderScope` can override it directly:
 /// ```dart
 /// appConfigProvider.overrideWithValue(
 ///   AppConfig(
@@ -32,7 +33,8 @@ final appConfigProvider = AppConfigProvider._();
 
 /// The active [AppConfig].
 ///
-/// Override in [ProviderScope] via:
+/// [runEngineApp] registers the config for normal apps. Widget tests that
+/// construct their own `ProviderScope` can override it directly:
 /// ```dart
 /// appConfigProvider.overrideWithValue(
 ///   AppConfig(
@@ -54,7 +56,8 @@ final class AppConfigProvider
     with $Provider<AppConfig> {
   /// The active [AppConfig].
   ///
-  /// Override in [ProviderScope] via:
+  /// [runEngineApp] registers the config for normal apps. Widget tests that
+  /// construct their own `ProviderScope` can override it directly:
   /// ```dart
   /// appConfigProvider.overrideWithValue(
   ///   AppConfig(

@@ -274,7 +274,7 @@ abstract class GameRules<TObs, TAction, TConfig> {
   /// All JSON parsing is done before this call: [GameContentContext.config]
   /// carries the parsed config and [GameContentContext.frame] the parsed
   /// observation (`frame.observation` is guaranteed non-null when called from
-  /// [game_screen.dart]). Cast both to your concrete types once, at the top.
+  /// the game screen). Cast both to your concrete types once, at the top.
   ///
   /// [GameContentContext.onInvalidAction] is provided by infra and should be
   /// called when the game rejects a move client-side ([isValidAction]
@@ -353,7 +353,8 @@ abstract class GameModule {
   /// upfront, then sets min = max = chosen count so joining flips the game to
   /// `ready` at exactly the right threshold).
   ///
-  /// The default returns [creationSpec.minPlayers] and [creationSpec.maxPlayers].
+  /// The default returns [GameCreationSpec.minPlayers] and
+  /// [GameCreationSpec.maxPlayers].
   (int min, int max) playersForConfig(Map<String, dynamic> config) =>
       (creationSpec.minPlayers, creationSpec.maxPlayers);
 

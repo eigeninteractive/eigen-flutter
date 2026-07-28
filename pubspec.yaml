@@ -3,7 +3,7 @@ description: "Eigen Engine — whitelabel Flutter client for turn-based multipla
 version: 0.1.0
 homepage: https://eigeninteractive.com
 repository: https://github.com/eigeninteractive/eigen-flutter
-documentation: https://eigeninteractive.com/docs/client/overview
+documentation: https://eigeninteractive.com/docs/reference/dart
 issue_tracker: https://github.com/eigeninteractive/eigen-flutter/issues
 
 # `cider` keeps CHANGELOG.md and the version above in step, Keep-a-Changelog

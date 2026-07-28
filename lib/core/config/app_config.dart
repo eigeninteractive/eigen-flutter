@@ -6,8 +6,8 @@ part 'app_config.g.dart';
 /// Whitelabel configuration for one game app built on the engine.
 ///
 /// The single composition-root config object, set once via [appConfigProvider]
-/// in `main.dart` alongside the game module override. It groups the app's
-/// configurable concerns by responsibility:
+/// by [runEngineApp]. It groups the app's configurable concerns by
+/// responsibility:
 ///
 /// - [branding] — user-facing identity (name, theme seed).
 /// - [engine] — runtime backend/integration values the framework needs.
@@ -94,7 +94,8 @@ class Branding {
 
 /// The active [AppConfig].
 ///
-/// Override in [ProviderScope] via:
+/// [runEngineApp] registers the config for normal apps. Widget tests that
+/// construct their own `ProviderScope` can override it directly:
 /// ```dart
 /// appConfigProvider.overrideWithValue(
 ///   AppConfig(

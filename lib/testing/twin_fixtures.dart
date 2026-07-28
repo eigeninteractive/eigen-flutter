@@ -1,15 +1,18 @@
+// Dartdoc selects the two supported package entry points by library name.
+// ignore_for_file: unnecessary_library_name
+
 /// Twin-drift fixture runner — the Dart half of the shared JSON fixtures
 /// that keep a version unit's TS and Dart [GameRules] twins in sync.
 ///
 /// One fixture file per concern lives under `fixtures/v<N>/*.json` and is
-/// consumed by BOTH sides: `@eigen/testkit`'s runner runs each case against
-/// the TS unit in the game's Worker (schemas + `applyAction` +
+/// consumed by both sides: `@eigeninteractive/testkit` runs each case against
+/// the TypeScript unit in the game's Worker (schemas + `applyAction` +
 /// `computeObservation` + the two predicates), while this library runs the
 /// same file against the Dart twin (generated payload parsing,
 /// [GameRules.isValidAction], [GameRules.previewAction], and the predicate
 /// twins). A behavioral divergence then fails one side's tests instead of
 /// degrading UX in production. The fixture file format is documented in
-/// `@eigen/testkit`'s `twin-fixtures.ts`, the TS half.
+/// the [Eigen testing guide](https://eigeninteractive.com/docs/build-a-game/testing).
 ///
 /// Loading and running are separate steps on purpose. A fixture file is
 /// hand-written JSON, so [loadTwinFixtureSuites] validates it into the typed
@@ -47,7 +50,7 @@
 ///
 /// The `expected.observation` comparison relies on value equality (`==`).
 /// Eigen's generated payload classes provide deep equality for collections.
-library;
+library eigen_flutter.testing;
 
 import 'dart:convert';
 import 'dart:io';

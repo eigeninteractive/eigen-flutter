@@ -82,8 +82,8 @@ class BudgetConfig extends TimingModeConfig {
 
 /// Declarative description of what is valid when creating a game of this type.
 ///
-/// Returned by [GameModule.creationSpec]. [NewGameDialog] reads this to
-/// render only the controls that apply.
+/// Returned by [GameModule.creationSpec]. The engine-owned creation dialog
+/// reads this to render only the controls that apply.
 class GameCreationSpec {
   const GameCreationSpec({
     required this.minPlayers,

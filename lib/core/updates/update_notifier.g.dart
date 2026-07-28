@@ -107,7 +107,7 @@ final class UpdateNotifierProvider
   }
 }
 
-String _$updateNotifierHash() => r'f02f9b5ffeceb4c5f31080f7284b9bfb5e1fcb3b';
+String _$updateNotifierHash() => r'5f1991bbb36ba6789bda6697a074ab872e34d86b';
 
 /// Drives background update checks and explicit compatibility updates.
 ///

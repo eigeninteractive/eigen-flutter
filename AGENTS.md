@@ -22,7 +22,7 @@ There is also a Claude Code skill for writing game rules:
 
 ```
 /plugin marketplace add eigeninteractive/eigen-server
-/plugin install eigen@eigen
+/plugin install eigen@eigeninteractive
 ```
 
 # AI rules for Flutter

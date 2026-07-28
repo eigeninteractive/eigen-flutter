@@ -25,8 +25,9 @@ Uri? gameReplayLink(String gameId, {required String? appHost}) =>
 ///
 /// The server serves `/terms`, `/privacy` and `/delete-account` on the same
 /// host as the app's deep links. That is safe because the app's App Links
-/// intent-filter is scoped to the `/join` and `/game` prefixes (see
-/// `client_reference.md` §21), so legal paths are never intercepted and open in
-/// the browser. Opened with `LaunchMode.inAppBrowserView` as belt and braces.
+/// intent-filter is scoped to the `/join` and `/game` prefixes (see the
+/// [deep-link guide](https://eigeninteractive.com/docs/ship-it/deep-links)), so
+/// legal paths are never intercepted and open in the browser. Opened with
+/// `LaunchMode.inAppBrowserView` as belt and braces.
 Uri? legalPageUrl(String path, {required String? appHost}) =>
     appHost != null ? Uri.https(appHost, path) : null;

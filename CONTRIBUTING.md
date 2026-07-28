@@ -45,8 +45,9 @@ branch that releases.
 ## The CI gate
 
 Two jobs. The framework: `pub get` → format check → framework codegen →
-`dart fix --apply` → **`git diff --exit-code`** → analyze → test. The example:
-resolve, regenerate payloads from `game-contract.json`, format, analyze, test.
+`dart fix --apply` → **`git diff --exit-code`** → analyze → dartdoc dry run →
+test. The example: resolve, regenerate payloads from `game-contract.json`,
+format, analyze, test.
 
 That diff check is the load-bearing step: it fails the build if generated code
 or applied fixes were not committed.
@@ -145,7 +146,8 @@ A change with no user-visible effect needs no entry.
 
 ## Releasing to pub.dev
 
-Tag-driven, and `cider` does the bookkeeping:
+After the first publication, releases are tag-driven and `cider` does the
+bookkeeping:
 
 ```bash
 cider bump minor      # or: patch · breaking
@@ -172,11 +174,34 @@ on the pub.dev package page (Admin → Automated publishing) with repository
 trusts the workflow's short-lived GitHub identity. There is no pub credential in
 GitHub secrets.
 
+The first version is the one exception: pub.dev requires a new package to be
+published interactively with `dart pub publish`. Publish it from a clean,
+fully validated checkout, then transfer it to the verified publisher and
+enable the GitHub repository/tag pattern above. Automated publishing handles
+subsequent versions.
+
 One package. `eigen_api` is released by the engine repo, so there is no lockstep
 to coordinate and no publish order to get right — bumping the `eigen_api`
 constraint here is an ordinary dependency change with an ordinary changelog line.
 
 ### Before you tag
+
+Run the two publication-specific checks locally:
+
+```bash
+dart doc --dry-run .
+dart pub publish --dry-run
+```
+
+`dartdoc_options.yaml` limits the hosted reference to the supported
+`eigen_flutter` and `eigen_flutter.testing` libraries and treats unresolved
+references as errors. pub.dev generates and hosts the HTML automatically; do
+not commit `doc/api` or copy it into `eigen-web`.
+
+After publication, verify the version's documentation status in the pub.dev
+Versions tab. The Eigen documentation links to
+`https://pub.dev/documentation/eigen_flutter/latest/`, while pub.dev retains a
+separate reference for every older package version.
 
 `pubspec_overrides.yaml` is gitignored, so it cannot reach the published
 manifest — but if you added a `dependency_overrides:` block to `pubspec.yaml`
