@@ -1,5 +1,6 @@
 import 'dart:developer' as developer;
 
+import 'package:flutter/foundation.dart';
 import 'package:in_app_review/in_app_review.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:eigen_flutter/core/storage/shared_preferences_provider.dart';
@@ -37,6 +38,8 @@ class ReviewNotifier extends _$ReviewNotifier {
   }
 
   Future<void> _maybeRequestReview() async {
+    // Browser stores do not expose the native in-app review API.
+    if (kIsWeb) return;
     try {
       final review = InAppReview.instance;
       if (await review.isAvailable()) {

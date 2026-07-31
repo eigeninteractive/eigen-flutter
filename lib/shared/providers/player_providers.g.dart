@@ -126,12 +126,12 @@ final class PlayerBatchLoaderProvider
 
 String _$playerBatchLoaderHash() => r'b304409a3f6b309cde08d35a10fd8138c53ce989';
 
-/// Globally cached public player identity by ID, persisted to SQLite.
+/// Globally cached public player identity by ID, persisted locally.
 ///
 /// Works for both human users and bots — the batch endpoint covers both.
 /// `keepAlive: true` keeps the result in memory for the session lifetime.
-/// `@JsonPersist()` adds SQLite persistence so cold-start lookups resolve
-/// from cache (~5 ms) before the network response arrives, eliminating
+/// `@JsonPersist()` adds platform persistence so cold-start lookups resolve
+/// from cache before the network response arrives, eliminating
 /// per-player spinners when re-entering the app.
 ///
 /// Player identity is public data — the cache is never cleared on sign-out.
@@ -141,12 +141,12 @@ String _$playerBatchLoaderHash() => r'b304409a3f6b309cde08d35a10fd8138c53ce989';
 @JsonPersist()
 final playerInfoCacheProvider = PlayerInfoCacheFamily._();
 
-/// Globally cached public player identity by ID, persisted to SQLite.
+/// Globally cached public player identity by ID, persisted locally.
 ///
 /// Works for both human users and bots — the batch endpoint covers both.
 /// `keepAlive: true` keeps the result in memory for the session lifetime.
-/// `@JsonPersist()` adds SQLite persistence so cold-start lookups resolve
-/// from cache (~5 ms) before the network response arrives, eliminating
+/// `@JsonPersist()` adds platform persistence so cold-start lookups resolve
+/// from cache before the network response arrives, eliminating
 /// per-player spinners when re-entering the app.
 ///
 /// Player identity is public data — the cache is never cleared on sign-out.
@@ -154,12 +154,12 @@ final playerInfoCacheProvider = PlayerInfoCacheFamily._();
 @JsonPersist()
 final class PlayerInfoCacheProvider
     extends $AsyncNotifierProvider<PlayerInfoCache, Player> {
-  /// Globally cached public player identity by ID, persisted to SQLite.
+  /// Globally cached public player identity by ID, persisted locally.
   ///
   /// Works for both human users and bots — the batch endpoint covers both.
   /// `keepAlive: true` keeps the result in memory for the session lifetime.
-  /// `@JsonPersist()` adds SQLite persistence so cold-start lookups resolve
-  /// from cache (~5 ms) before the network response arrives, eliminating
+  /// `@JsonPersist()` adds platform persistence so cold-start lookups resolve
+  /// from cache before the network response arrives, eliminating
   /// per-player spinners when re-entering the app.
   ///
   /// Player identity is public data — the cache is never cleared on sign-out.
@@ -200,14 +200,14 @@ final class PlayerInfoCacheProvider
   }
 }
 
-String _$playerInfoCacheHash() => r'0a7496a056fc698a5513e77798769acd2df6d196';
+String _$playerInfoCacheHash() => r'2f016bab4efdf1d03ed17d5bdb3b71dfa9050048';
 
-/// Globally cached public player identity by ID, persisted to SQLite.
+/// Globally cached public player identity by ID, persisted locally.
 ///
 /// Works for both human users and bots — the batch endpoint covers both.
 /// `keepAlive: true` keeps the result in memory for the session lifetime.
-/// `@JsonPersist()` adds SQLite persistence so cold-start lookups resolve
-/// from cache (~5 ms) before the network response arrives, eliminating
+/// `@JsonPersist()` adds platform persistence so cold-start lookups resolve
+/// from cache before the network response arrives, eliminating
 /// per-player spinners when re-entering the app.
 ///
 /// Player identity is public data — the cache is never cleared on sign-out.
@@ -232,12 +232,12 @@ final class PlayerInfoCacheFamily extends $Family
         isAutoDispose: false,
       );
 
-  /// Globally cached public player identity by ID, persisted to SQLite.
+  /// Globally cached public player identity by ID, persisted locally.
   ///
   /// Works for both human users and bots — the batch endpoint covers both.
   /// `keepAlive: true` keeps the result in memory for the session lifetime.
-  /// `@JsonPersist()` adds SQLite persistence so cold-start lookups resolve
-  /// from cache (~5 ms) before the network response arrives, eliminating
+  /// `@JsonPersist()` adds platform persistence so cold-start lookups resolve
+  /// from cache before the network response arrives, eliminating
   /// per-player spinners when re-entering the app.
   ///
   /// Player identity is public data — the cache is never cleared on sign-out.
@@ -251,12 +251,12 @@ final class PlayerInfoCacheFamily extends $Family
   String toString() => r'playerInfoCacheProvider';
 }
 
-/// Globally cached public player identity by ID, persisted to SQLite.
+/// Globally cached public player identity by ID, persisted locally.
 ///
 /// Works for both human users and bots — the batch endpoint covers both.
 /// `keepAlive: true` keeps the result in memory for the session lifetime.
-/// `@JsonPersist()` adds SQLite persistence so cold-start lookups resolve
-/// from cache (~5 ms) before the network response arrives, eliminating
+/// `@JsonPersist()` adds platform persistence so cold-start lookups resolve
+/// from cache before the network response arrives, eliminating
 /// per-player spinners when re-entering the app.
 ///
 /// Player identity is public data — the cache is never cleared on sign-out.

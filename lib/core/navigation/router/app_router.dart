@@ -54,6 +54,10 @@ extension NotificationNavigation on GoRouter {
 ///   - Branch 5: /settings
 ///     - /settings/profile
 final List<RouteBase> appRoutes = [
+  // The web app is hosted at the game origin. Give its root a real route so a
+  // cold load does not depend on the router's exception fallback.
+  GoRoute(path: '/', redirect: (context, state) => '/home'),
+
   // Login route - outside shell (no drawer)
   GoRoute(
     path: '/login',

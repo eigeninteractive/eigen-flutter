@@ -65,6 +65,10 @@ class _PreGameContent extends ConsumerWidget {
               color: colorScheme.onSurfaceVariant,
             ),
           ),
+          if (gamePlayersAsync.value?.mySeat is Seated) ...[
+            const SizedBox(height: 16),
+            const GameNotificationNudge(),
+          ],
           ...[
             const SizedBox(height: 16),
             Container(

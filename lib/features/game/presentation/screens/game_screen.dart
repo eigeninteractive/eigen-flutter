@@ -19,6 +19,7 @@ import 'package:eigen_flutter/core/game/game_module.dart';
 import 'package:eigen_flutter/core/game/players_context.dart';
 import 'package:eigen_flutter/core/game/my_seat.dart';
 import 'package:eigen_flutter/core/game/timing_context.dart';
+import 'package:eigen_flutter/core/notifications/game_notification_nudge.dart';
 import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
 import 'package:eigen_api/eigen_api.dart';
 

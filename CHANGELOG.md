@@ -38,6 +38,9 @@ describe the starting state rather than changes from a previous version.
   safe, while gameplay-critical values block only the affected surface and
   offer a native Play update on Android or a browser reload on web.
 - Firebase auth (Google + guest), FCM push, Crashlytics and Analytics wiring.
+  Auth and notification capability share one required Firebase project; the
+  player permission prompt remains an explicit opt-in and delivery remains
+  best-effort.
 - Avatar upload and display against the worker-served avatar URL, via
   `cached_network_image`.
 - Rock–Paper–Scissors under `example/` — a complete game, and the worked answer
@@ -49,6 +52,15 @@ describe the starting state rather than changes from a previous version.
 
 ### Changed
 
+- FCM registration now uses Firebase Installation IDs end-to-end. Web calls
+  Firebase's current `register` API through a narrow compatibility adapter;
+  Android uses native FID auto-registration configured by the package's Android
+  plugin, so consuming apps do not edit their generated manifest or Gradle
+  properties. The app no longer requests, refreshes, or persists deprecated
+  registration tokens.
+- Notification opt-in is a contextual non-modal card for seated multiplayer
+  players. The platform permission state drives the UI directly; blocked users
+  get an explicit Settings recovery path.
 - **The backend is the Eigen engine on Cloudflare Workers, not Supabase.** The
   data layer talks to the Worker over REST and WebSocket; the transport half is
   the generated `eigen_api` client, published from the engine repo at the

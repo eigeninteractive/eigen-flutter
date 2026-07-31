@@ -211,6 +211,7 @@ Widget _harness(Widget content) => ProviderScope(
         engine: EngineConfig(
           apiBaseUrl: 'https://example.invalid',
           googleWebClientId: 'test',
+          firebaseVapidKey: 'test-vapid-key',
         ),
       ),
     ),

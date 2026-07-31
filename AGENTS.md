@@ -241,7 +241,7 @@ void main() {
   Riverpod 3.0, providing cleaner syntax and better type safety.
 - **Run Build Runner:** After creating providers, run:
   ```shell
-  dart run build_runner watch --delete-conflicting-outputs
+  dart run build_runner watch
   ```
 - **Part Directive:** Always include `part 'filename.g.dart';` at the top of
   files using code generation.
@@ -787,7 +787,7 @@ class GoodController extends _$GoodController {
   run the build command:
 
   ```shell
-  dart run build_runner build --delete-conflicting-outputs
+  dart run build_runner build
   ```
 
 ## Testing

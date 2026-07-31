@@ -30,12 +30,12 @@ PlayerBatchLoader playerBatchLoader(Ref ref) {
   return loader;
 }
 
-/// Globally cached public player identity by ID, persisted to SQLite.
+/// Globally cached public player identity by ID, persisted locally.
 ///
 /// Works for both human users and bots — the batch endpoint covers both.
 /// `keepAlive: true` keeps the result in memory for the session lifetime.
-/// `@JsonPersist()` adds SQLite persistence so cold-start lookups resolve
-/// from cache (~5 ms) before the network response arrives, eliminating
+/// `@JsonPersist()` adds platform persistence so cold-start lookups resolve
+/// from cache before the network response arrives, eliminating
 /// per-player spinners when re-entering the app.
 ///
 /// Player identity is public data — the cache is never cleared on sign-out.
@@ -48,11 +48,12 @@ class PlayerInfoCache extends _$PlayerInfoCache {
     persist(
       ref.watch(storageProvider.future),
       options: const StorageOptions(
-        cacheTime: StorageCacheTime.unsafe_forever,
+        cacheTime: StorageCacheTime(Duration(days: 30)),
         // Cache-schema version for the persisted Player. Bumped to 2 when the
         // hand-written PlayerInfo was replaced by the generated Player. This
-        // cache is intentionally NOT cleared on sign-out (player identity is
-        // public data), so the destroyKey bump is the only invalidation lever.
+        // cache is intentionally NOT cleared on sign-out because player
+        // identity is public data. Expiry plus the web backend's hard entry
+        // cap prevents an unbounded per-opponent LocalStorage cache.
         destroyKey: '2',
       ),
     );

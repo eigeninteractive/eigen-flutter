@@ -19,24 +19,27 @@ import 'package:flutter/material.dart';
 
 import 'rps.dart';
 
+const _firebaseVapidKey = String.fromEnvironment('FIREBASE_VAPID_KEY');
+
 Future<void> main() async {
   await runEngineApp(
     // The game. One value, one line — this is the seam the whole framework is
     // built around.
     module: const RpsModule(),
-    config: const AppConfig(
-      branding: Branding(
+    config: AppConfig(
+      branding: const Branding(
         appName: 'Rock Paper Scissors',
         seedColor: Colors.teal,
       ),
-      engine: EngineConfig(
+      engine: const EngineConfig(
         // Origin only: every route already carries its `/api/engine` prefix,
         // and the game socket is this same origin with the scheme swapped to
         // `wss`. In a real app these come from compile-time secrets (envied)
         // rather than literals, which is what `EngineConfig` exists for.
-        apiBaseUrl: 'https://rps.example.workers.dev',
+        apiBaseUrl: 'https://rps.example.com',
         googleWebClientId: 'REPLACE_ME.apps.googleusercontent.com',
         appHost: 'rps.example.com',
+        firebaseVapidKey: _firebaseVapidKey,
       ),
     ),
     firebaseOptions: _firebaseOptions,

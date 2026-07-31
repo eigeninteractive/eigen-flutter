@@ -32,8 +32,8 @@ import 'package:eigen_flutter/shared/data/player_repository.dart';
 class PlayerBatchLoader {
   PlayerBatchLoader(
     this._fetch, {
-    Duration window = const Duration(milliseconds: 8),
-  }) : _window = window;
+    this._window = const Duration(milliseconds: 8),
+  });
 
   /// Fetches the given ids in one request. Ids that match nothing are simply
   /// absent from the result (a purged account is a normal outcome, not an

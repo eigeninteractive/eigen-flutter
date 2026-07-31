@@ -8,27 +8,36 @@ part of 'storage_provider.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// SQLite storage backend for all persisted Riverpod providers.
-/// Opened once and kept alive for the app lifetime.
+/// Platform storage backend for persisted Riverpod providers.
+///
+/// Native apps use Riverpod's SQLite adapter; web uses browser LocalStorage
+/// through SharedPreferencesAsync. Both store the same JSON + expiry metadata
+/// behind Riverpod's Storage contract.
 
 @ProviderFor(storage)
 final storageProvider = StorageProvider._();
 
-/// SQLite storage backend for all persisted Riverpod providers.
-/// Opened once and kept alive for the app lifetime.
+/// Platform storage backend for persisted Riverpod providers.
+///
+/// Native apps use Riverpod's SQLite adapter; web uses browser LocalStorage
+/// through SharedPreferencesAsync. Both store the same JSON + expiry metadata
+/// behind Riverpod's Storage contract.
 
 final class StorageProvider
     extends
         $FunctionalProvider<
-          AsyncValue<JsonSqFliteStorage>,
-          JsonSqFliteStorage,
-          FutureOr<JsonSqFliteStorage>
+          AsyncValue<Storage<String, String>>,
+          Storage<String, String>,
+          FutureOr<Storage<String, String>>
         >
     with
-        $FutureModifier<JsonSqFliteStorage>,
-        $FutureProvider<JsonSqFliteStorage> {
-  /// SQLite storage backend for all persisted Riverpod providers.
-  /// Opened once and kept alive for the app lifetime.
+        $FutureModifier<Storage<String, String>>,
+        $FutureProvider<Storage<String, String>> {
+  /// Platform storage backend for persisted Riverpod providers.
+  ///
+  /// Native apps use Riverpod's SQLite adapter; web uses browser LocalStorage
+  /// through SharedPreferencesAsync. Both store the same JSON + expiry metadata
+  /// behind Riverpod's Storage contract.
   StorageProvider._()
     : super(
         from: null,
@@ -45,14 +54,14 @@ final class StorageProvider
 
   @$internal
   @override
-  $FutureProviderElement<JsonSqFliteStorage> $createElement(
+  $FutureProviderElement<Storage<String, String>> $createElement(
     $ProviderPointer pointer,
   ) => $FutureProviderElement(pointer);
 
   @override
-  FutureOr<JsonSqFliteStorage> create(Ref ref) {
+  FutureOr<Storage<String, String>> create(Ref ref) {
     return storage(ref);
   }
 }
 
-String _$storageHash() => r'83e5d090360055e1dd025d22bae63cf4483e5737';
+String _$storageHash() => r'ddcf81be4a07ce53bf91fbb07e81b143dcea879a';

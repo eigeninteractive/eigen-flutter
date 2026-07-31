@@ -17,8 +17,8 @@ cider:
     version: v%version%
 
 environment:
-  sdk: ^3.9.2
-  flutter: ">=3.0.0"
+  sdk: ^3.12.0
+  flutter: ">=3.44.0"
 
 dependencies:
   flutter:
@@ -39,16 +39,16 @@ dependencies:
   image_cropper: ^12.2.1
   share_plus: ^13.1.0
   flutter_native_splash: ^2.4.7
-  in_app_update: ^4.2.5
+  in_app_update: ^5.0.0
   in_app_review: ^2.0.11
   connectivity_plus: ^7.1.1
-  firebase_core: ^4.9.0
+  firebase_core: ^4.12.1
   firebase_analytics: ^12.4.1
   firebase_crashlytics: ^5.2.2
-  firebase_messaging: ^16.2.2
-  firebase_app_installations: ^0.4.2+4
-  flutter_local_notifications: ^21.0.0
-  app_settings: ^7.0.0
+  firebase_messaging: ^16.4.3
+  firebase_app_installations: ^0.4.2+6
+  flutter_local_notifications: ^22.2.0
+  app_settings: ^8.0.3
   url_launcher: ^6.3.2
   web: ^1.1.1
   riverpod_sqflite: ^0.4.3
@@ -72,6 +72,8 @@ dependencies:
   args: ^2.7.0
   code_builder: ^4.11.1
   dart_style: ^3.1.8
+  flutter_web_plugins:
+    sdk: flutter
 
 dev_dependencies:
   flutter_test:
@@ -86,6 +88,18 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # The Android implementation carries build-time configuration only: its
+  # library manifest enables FID-based FCM registration and its Gradle
+  # dependency keeps the native Firebase SDK on the required release.
+  plugin:
+    platforms:
+      android:
+        package: com.eigeninteractive.eigen_flutter
+        pluginClass: EigenFlutterPlugin
+
+  assets:
+    - assets/vendor/cropperjs/
 
   # Inter is bundled as a package font so consuming apps get it automatically
   # and it renders offline from the first frame (no runtime fetch). All weights

@@ -21,14 +21,14 @@ enum UpgradeOutcome {
   /// ratings, and friends are preserved.
   linked,
 
-  /// The Google account already existed, so the session switched into it and
-  /// the guest's data was abandoned.
-  switchedToExisting,
+  /// The Google identity already belongs to an account. The UI must ask before
+  /// abandoning guest progress and calling [AuthController.switchToExisting].
+  existingAccount,
 }
 
 /// Provider for AuthService instance
 @Riverpod(keepAlive: true)
-AuthService authService(Ref ref) {
+AuthGateway authService(Ref ref) {
   final googleWebClientId = ref
       .watch(appConfigProvider)
       .engine
@@ -81,6 +81,9 @@ bool isAnonymous(Ref ref) {
 /// Manages operation state (loading/error) for auth actions like sign-in/sign-out
 @Riverpod(keepAlive: true)
 class AuthController extends _$AuthController {
+  AuthCredential? _pendingExistingAccountCredential;
+  bool _hasPendingExistingAccount = false;
+
   @override
   AsyncValue<void> build() {
     // No initial state - this controller only manages operation state
@@ -112,8 +115,9 @@ class AuthController extends _$AuthController {
   /// On success the user id is preserved, so games/ratings/friends carry over;
   /// the DB trigger backfills email/name/avatar and we invalidate the cached
   /// identity so the new values surface immediately. If the Google account
-  /// already exists, we switch into it instead — clearing the abandoned guest's
-  /// local data and FCM token first, matching [signOut]'s teardown.
+  /// already exists, returns [UpgradeOutcome.existingAccount] without changing
+  /// the session. The UI must obtain explicit confirmation and then call
+  /// [switchToExisting].
   ///
   /// Returns which path ran so the caller can tailor its confirmation; throws
   /// on failure (e.g. the user cancels the Google sheet).
@@ -134,20 +138,68 @@ class AuthController extends _$AuthController {
         unawaited(analytics.setAccountType(isGuest: false));
         state = const AsyncData(null);
         return UpgradeOutcome.linked;
-      } on AccountExistsException {
-        // Abandon the guest session and switch into the existing account. The
-        // resulting signedIn event re-identifies and re-tags account_type via
-        // app_startup; no guestUpgraded event — the guest's data was not kept.
-        if (guestId != null) await deleteUserData(ref, guestId);
-        await ref.read(notificationServiceProvider).deleteCurrentInstallation();
-        await authService.switchToExistingGoogleAccount();
+      } on AccountExistsException catch (error) {
+        _pendingExistingAccountCredential = error.credential;
+        _hasPendingExistingAccount = true;
         state = const AsyncData(null);
-        return UpgradeOutcome.switchedToExisting;
+        return UpgradeOutcome.existingAccount;
       }
     } catch (e, stackTrace) {
       state = AsyncError(e, stackTrace);
       rethrow;
     }
+  }
+
+  /// Abandons the guest session and signs into the existing Google account
+  /// selected by the preceding [upgradeToGoogle] attempt.
+  ///
+  /// This is deliberately separate from conflict detection so the UI can
+  /// explain that guest progress cannot be transferred and obtain consent
+  /// before any local teardown or account switch occurs.
+  Future<void> switchToExisting() async {
+    if (!_hasPendingExistingAccount) {
+      throw StateError('No existing Google account switch is pending.');
+    }
+
+    state = const AsyncLoading();
+    final credential = _pendingExistingAccountCredential;
+    final guestId = ref.read(currentUserProvider)?.id;
+    try {
+      await ref
+          .read(authServiceProvider)
+          .switchToExistingGoogleAccount(credential);
+      // Keep the guest session and its local state intact until the account
+      // switch really succeeds. The signed-in auth event re-registers this
+      // installation for the destination account.
+      if (guestId != null) {
+        try {
+          await deleteUserData(ref, guestId);
+        } catch (error, stackTrace) {
+          // The identity switch has already succeeded. These values are only
+          // disposable guest cache entries, so a cleanup failure must not make
+          // the UI report the sign-in itself as failed.
+          developer.log(
+            'Guest cache cleanup after account switch failed (ignored)',
+            name: 'auth.providers',
+            error: error,
+            stackTrace: stackTrace,
+          );
+        }
+      }
+      state = const AsyncData(null);
+    } catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    } finally {
+      _pendingExistingAccountCredential = null;
+      _hasPendingExistingAccount = false;
+    }
+  }
+
+  /// Keeps the current guest session after the user declines an account switch.
+  void cancelExistingAccountSwitch() {
+    _pendingExistingAccountCredential = null;
+    _hasPendingExistingAccount = false;
   }
 
   /// Permanently deletes the current user's account.

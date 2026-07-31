@@ -1,12 +1,14 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:eigen_api/eigen_api.dart';
+import 'package:eigen_flutter/features/profile/presentation/image_cropper_assets.dart'
+    if (dart.library.js_interop) 'package:eigen_flutter/features/profile/presentation/image_cropper_assets_web.dart';
 import 'package:eigen_flutter/features/profile/providers/profile_providers.dart';
 import 'package:eigen_flutter/features/rating/presentation/widgets/player_ratings.dart';
+import 'package:eigen_flutter/shared/widgets/player_avatar.dart';
 
 /// Profile screen: cinematic hero, per-pool rating cards, link to history.
 ///
@@ -131,7 +133,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
-  Future<CroppedFile?> _cropImage(String sourcePath) {
+  Future<CroppedFile?> _cropImage(String sourcePath) async {
+    await loadImageCropperAssets();
+    if (!mounted) return null;
+
     return ImageCropper().cropImage(
       sourcePath: sourcePath,
       aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
@@ -264,35 +269,11 @@ class _AvatarDisplay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (avatarUrl == null) return _PersonIconCircle(radius: radius);
-
-    return CachedNetworkImage(
-      imageUrl: avatarUrl!,
-      imageBuilder: (_, imageProvider) =>
-          CircleAvatar(radius: radius, backgroundImage: imageProvider),
-      placeholder: (_, _) => _PersonIconCircle(radius: radius),
-      errorWidget: (_, _, _) => _PersonIconCircle(radius: radius),
-    );
-  }
-}
-
-class _PersonIconCircle extends StatelessWidget {
-  const _PersonIconCircle({required this.radius});
-
-  final double radius;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: colorScheme.surfaceContainerHighest,
-      child: Icon(
-        Icons.person_outline,
-        size: radius,
-        color: colorScheme.onSurfaceVariant,
-      ),
-    );
+    // PlayerAvatar is the one URL boundary for the app: it resolves the
+    // Worker's relative `/avatars/{uid}` path before CachedNetworkImage sees
+    // it. The old profile-only widget skipped that step and worked only when a
+    // bucket publicBaseUrl happened to make avatarUrl absolute.
+    return PlayerAvatar(avatarUrl: avatarUrl, radius: radius);
   }
 }
 

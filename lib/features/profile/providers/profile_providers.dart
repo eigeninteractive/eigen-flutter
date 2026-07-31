@@ -30,7 +30,7 @@ AvatarStorageService avatarStorageService(Ref ref) {
 
 /// The signed-in user's own profile.
 ///
-/// Kept alive and persisted to SQLite so the profile loads from cache on cold
+/// Kept alive and persisted locally so the profile loads from cache on cold
 /// start (no spinner). The network fetch runs in the background and silently
 /// refreshes state when it completes.
 ///
@@ -49,8 +49,8 @@ class CurrentUserProfile extends _$CurrentUserProfile {
       throw StateError('User not authenticated');
     }
 
-    // Stale-while-revalidate: SQLite cache races the network fetch. Cache
-    // (~5ms) typically wins first, eliminating the cold-start spinner. The
+    // Stale-while-revalidate: the local cache races the network fetch. Cache
+    // typically wins first, eliminating the cold-start spinner. The
     // network result overwrites silently; if the network wins first, the stale
     // cache is discarded automatically via the didChange guard in persist().
     persist(

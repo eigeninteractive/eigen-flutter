@@ -1,0 +1,12 @@
+{
+  "name": "Rock Paper Scissors",
+  "short_name": "RPS",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#00695c",
+  "theme_color": "#00695c",
+  "description": "The Eigen reference game",
+  "orientation": "any",
+  "prefer_related_applications": false,
+  "icons": []
+}

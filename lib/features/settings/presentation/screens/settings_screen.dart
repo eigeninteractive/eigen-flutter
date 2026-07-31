@@ -1,10 +1,11 @@
 import 'package:app_settings/app_settings.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:eigen_flutter/core/config/app_config.dart';
 import 'package:eigen_flutter/core/errors/error_messages.dart';
+import 'package:eigen_flutter/core/notifications/firebase_notification_service.dart';
 import 'package:eigen_flutter/core/notifications/notification_provider.dart';
 import 'package:eigen_flutter/core/theme/theme_provider.dart';
 import 'package:eigen_flutter/core/utils/deep_links.dart';
@@ -129,16 +130,33 @@ class _NotificationsSection extends ConsumerWidget {
         subtitle: const Text('Could not check permission status'),
       ),
       data: (status) => switch (status) {
-        AuthorizationStatus.authorized ||
-        AuthorizationStatus.provisional => const _EnabledSection(),
-        AuthorizationStatus.denied => const _DeniedTile(),
-        _ => const _NotDeterminedTile(),
+        NotificationPermissionState.unavailable => const _UnavailableTile(),
+        NotificationPermissionState.promptable => const _NotDeterminedTile(),
+        NotificationPermissionState.enabled => const _EnabledSection(),
+        NotificationPermissionState.blocked => const _DeniedTile(),
       },
     );
   }
 }
 
-/// Shown when notifications are granted. Lists the three categories so the
+/// Shown when this browser lacks Web Push support.
+class _UnavailableTile extends StatelessWidget {
+  const _UnavailableTile();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Icon(
+        Icons.notifications_off_outlined,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+      title: const Text('Notifications'),
+      subtitle: const Text('Notifications aren’t available here'),
+    );
+  }
+}
+
+/// Shown when notifications are granted. Lists the categories so the
 /// user knows what each channel controls; a link opens system settings for
 /// per-channel management (Android) or the app settings page (iOS).
 class _EnabledSection extends StatelessWidget {
@@ -156,16 +174,26 @@ class _EnabledSection extends StatelessWidget {
             color: colorScheme.primary,
           ),
           title: const Text('Notifications'),
-          subtitle: const Text('Tap to manage in Settings'),
-          trailing: const Icon(Icons.chevron_right, size: 18),
-          onTap: () =>
-              AppSettings.openAppSettings(type: AppSettingsType.notification),
+          subtitle: Text(
+            kIsWeb ? 'Enabled in this browser' : 'Tap to manage in Settings',
+          ),
+          trailing: kIsWeb ? null : const Icon(Icons.chevron_right, size: 18),
+          onTap: kIsWeb
+              ? null
+              : () => AppSettings.openAppSettings(
+                  type: AppSettingsType.notification,
+                ),
         ),
         const Divider(height: 1, indent: 56),
         const _CategoryRow(
           icon: Icons.sports_esports_outlined,
           label: 'Your Turn',
           description: 'When it\'s your move in a game',
+        ),
+        const _CategoryRow(
+          icon: Icons.emoji_events_outlined,
+          label: 'Game Updates',
+          description: 'When a game starts or finishes',
         ),
         const _CategoryRow(
           icon: Icons.group_add_outlined,
@@ -195,20 +223,33 @@ class _DeniedTile extends StatelessWidget {
         color: Theme.of(context).colorScheme.onSurfaceVariant,
       ),
       title: const Text('Notifications'),
-      subtitle: const Text('Disabled — tap to open Settings'),
-      trailing: const Icon(Icons.open_in_new, size: 18),
-      onTap: () =>
-          AppSettings.openAppSettings(type: AppSettingsType.notification),
+      subtitle: Text(
+        kIsWeb
+            ? 'Blocked — enable notifications in this site’s browser settings'
+            : 'Disabled — tap to open Settings',
+      ),
+      trailing: kIsWeb ? null : const Icon(Icons.open_in_new, size: 18),
+      onTap: kIsWeb
+          ? null
+          : () =>
+                AppSettings.openAppSettings(type: AppSettingsType.notification),
     );
   }
 }
 
 /// Shown when the user has not yet been asked for permission.
-class _NotDeterminedTile extends ConsumerWidget {
+class _NotDeterminedTile extends ConsumerStatefulWidget {
   const _NotDeterminedTile();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_NotDeterminedTile> createState() => _NotDeterminedTileState();
+}
+
+class _NotDeterminedTileState extends ConsumerState<_NotDeterminedTile> {
+  bool _requesting = false;
+
+  @override
+  Widget build(BuildContext context) {
     return ListTile(
       leading: Icon(
         Icons.notifications_outlined,
@@ -217,13 +258,62 @@ class _NotDeterminedTile extends ConsumerWidget {
       title: const Text('Notifications'),
       subtitle: const Text('Stay updated with game alerts'),
       trailing: FilledButton.tonal(
-        onPressed: () async {
-          await ref.read(notificationServiceProvider).requestPermission();
-          ref.invalidate(notificationPermissionStatusProvider);
-        },
-        child: const Text('Enable'),
+        onPressed: _requesting ? null : _requestPermission,
+        child: _requesting
+            ? const SizedBox.square(
+                dimension: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Text('Enable'),
       ),
     );
+  }
+
+  Future<void> _requestPermission() async {
+    setState(() => _requesting = true);
+    try {
+      final state = await ref
+          .read(notificationServiceProvider)
+          .requestPermission();
+      if (!mounted) return;
+      switch (state) {
+        case NotificationPermissionState.blocked:
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Notifications weren’t enabled.')),
+          );
+        case NotificationPermissionState.unavailable:
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Notifications aren’t available here.'),
+            ),
+          );
+        case NotificationPermissionState.promptable ||
+            NotificationPermissionState.enabled:
+          break;
+      }
+    } on NotificationRegistrationException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Permission was granted, but notification setup didn’t finish. '
+            'We’ll retry automatically.',
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not enable notifications. Please try again.'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        ref.invalidate(notificationPermissionStatusProvider);
+        setState(() => _requesting = false);
+      }
+    }
   }
 }
 
@@ -460,17 +550,34 @@ class _UpgradeAccountCard extends ConsumerWidget {
       final outcome = await ref
           .read(authControllerProvider.notifier)
           .upgradeToGoogle();
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(switch (outcome) {
-            UpgradeOutcome.linked =>
-              'Account created — your games, ratings, and friends are saved.',
-            UpgradeOutcome.switchedToExisting =>
-              'Signed in to your existing account. Guest progress wasn\'t '
-                  'transferred.',
-          }),
-        ),
-      );
+      switch (outcome) {
+        case UpgradeOutcome.linked:
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Account created — your games, ratings, and friends are saved.',
+              ),
+            ),
+          );
+        case UpgradeOutcome.existingAccount:
+          if (!context.mounted) return;
+          final shouldSwitch = await showExistingAccountSwitchDialog(context);
+          if (!shouldSwitch) {
+            ref
+                .read(authControllerProvider.notifier)
+                .cancelExistingAccountSwitch();
+            return;
+          }
+          await ref.read(authControllerProvider.notifier).switchToExisting();
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Signed in to your existing account. Guest progress wasn\'t '
+                'transferred.',
+              ),
+            ),
+          );
+      }
     } catch (e) {
       messenger.showSnackBar(
         SnackBar(
@@ -480,6 +587,35 @@ class _UpgradeAccountCard extends ConsumerWidget {
       );
     }
   }
+}
+
+/// Confirms the destructive half of a guest-to-existing-account transition.
+///
+/// Kept as a separate function so the behavior is directly widget-testable and
+/// every caller presents the same warning before guest progress is abandoned.
+@visibleForTesting
+Future<bool> showExistingAccountSwitchDialog(BuildContext context) async {
+  return await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Sign in to your existing account?'),
+          content: const Text(
+            'That Google account already exists. You can sign in to it, but '
+            'this guest’s games, ratings, and friends cannot be transferred.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Keep playing as guest'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Sign in'),
+            ),
+          ],
+        ),
+      ) ??
+      false;
 }
 
 class _DeleteAccountTile extends StatelessWidget {

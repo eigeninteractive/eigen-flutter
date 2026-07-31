@@ -16,8 +16,8 @@ final authServiceProvider = AuthServiceProvider._();
 /// Provider for AuthService instance
 
 final class AuthServiceProvider
-    extends $FunctionalProvider<AuthService, AuthService, AuthService>
-    with $Provider<AuthService> {
+    extends $FunctionalProvider<AuthGateway, AuthGateway, AuthGateway>
+    with $Provider<AuthGateway> {
   /// Provider for AuthService instance
   AuthServiceProvider._()
     : super(
@@ -35,24 +35,24 @@ final class AuthServiceProvider
 
   @$internal
   @override
-  $ProviderElement<AuthService> $createElement($ProviderPointer pointer) =>
+  $ProviderElement<AuthGateway> $createElement($ProviderPointer pointer) =>
       $ProviderElement(pointer);
 
   @override
-  AuthService create(Ref ref) {
+  AuthGateway create(Ref ref) {
     return authService(ref);
   }
 
   /// {@macro riverpod.override_with_value}
-  Override overrideWithValue(AuthService value) {
+  Override overrideWithValue(AuthGateway value) {
     return $ProviderOverride(
       origin: this,
-      providerOverride: $SyncValueProvider<AuthService>(value),
+      providerOverride: $SyncValueProvider<AuthGateway>(value),
     );
   }
 }
 
-String _$authServiceHash() => r'7000ac9eb1c57ade347f65c3f9f562f1e5356bd4';
+String _$authServiceHash() => r'15d3682203a7cc48a19f41b4fcf3edc5740b4943';
 
 /// The signed-in user's id, or null when signed out.
 ///
@@ -310,7 +310,7 @@ final class AuthControllerProvider
   }
 }
 
-String _$authControllerHash() => r'd8d7ee4b80d28cbb4bd9b665ae2fb30c6d3493b3';
+String _$authControllerHash() => r'c0f0ab6d1f8388972015d51a9b09b1a4982fde38';
 
 /// Authentication controller for managing auth operations
 /// Manages operation state (loading/error) for auth actions like sign-in/sign-out

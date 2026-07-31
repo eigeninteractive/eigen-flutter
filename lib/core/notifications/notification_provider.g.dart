@@ -59,9 +59,9 @@ final class NotificationServiceProvider
 }
 
 String _$notificationServiceHash() =>
-    r'0a59809050d48ef9de99e5d185e98551455d442b';
+    r'7df0b76d7328f6a26c91324e6274442479c9e77b';
 
-/// Current notification permission status.
+/// Current app-facing notification permission and capability state.
 ///
 /// Auto-disposes so it is re-fetched on demand. Invalidate this provider
 /// in [AppLifecycleListener.onResume] so the Settings screen reflects any
@@ -71,7 +71,7 @@ String _$notificationServiceHash() =>
 final notificationPermissionStatusProvider =
     NotificationPermissionStatusProvider._();
 
-/// Current notification permission status.
+/// Current app-facing notification permission and capability state.
 ///
 /// Auto-disposes so it is re-fetched on demand. Invalidate this provider
 /// in [AppLifecycleListener.onResume] so the Settings screen reflects any
@@ -80,14 +80,14 @@ final notificationPermissionStatusProvider =
 final class NotificationPermissionStatusProvider
     extends
         $FunctionalProvider<
-          AsyncValue<AuthorizationStatus>,
-          AuthorizationStatus,
-          FutureOr<AuthorizationStatus>
+          AsyncValue<NotificationPermissionState>,
+          NotificationPermissionState,
+          FutureOr<NotificationPermissionState>
         >
     with
-        $FutureModifier<AuthorizationStatus>,
-        $FutureProvider<AuthorizationStatus> {
-  /// Current notification permission status.
+        $FutureModifier<NotificationPermissionState>,
+        $FutureProvider<NotificationPermissionState> {
+  /// Current app-facing notification permission and capability state.
   ///
   /// Auto-disposes so it is re-fetched on demand. Invalidate this provider
   /// in [AppLifecycleListener.onResume] so the Settings screen reflects any
@@ -108,15 +108,61 @@ final class NotificationPermissionStatusProvider
 
   @$internal
   @override
-  $FutureProviderElement<AuthorizationStatus> $createElement(
+  $FutureProviderElement<NotificationPermissionState> $createElement(
     $ProviderPointer pointer,
   ) => $FutureProviderElement(pointer);
 
   @override
-  FutureOr<AuthorizationStatus> create(Ref ref) {
+  FutureOr<NotificationPermissionState> create(Ref ref) {
     return notificationPermissionStatus(ref);
   }
 }
 
 String _$notificationPermissionStatusHash() =>
-    r'06f8156292d039d50f4922bbf8aa6f8c315ac9d6';
+    r'8a8b2340d9b64426b6075aaf9f256d6bb7c9029c';
+
+/// Notification nudge appropriate for this install's next waiting-room frame.
+
+@ProviderFor(notificationNudge)
+final notificationNudgeProvider = NotificationNudgeProvider._();
+
+/// Notification nudge appropriate for this install's next waiting-room frame.
+
+final class NotificationNudgeProvider
+    extends
+        $FunctionalProvider<
+          AsyncValue<NotificationNudgeState>,
+          NotificationNudgeState,
+          FutureOr<NotificationNudgeState>
+        >
+    with
+        $FutureModifier<NotificationNudgeState>,
+        $FutureProvider<NotificationNudgeState> {
+  /// Notification nudge appropriate for this install's next waiting-room frame.
+  NotificationNudgeProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'notificationNudgeProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$notificationNudgeHash();
+
+  @$internal
+  @override
+  $FutureProviderElement<NotificationNudgeState> $createElement(
+    $ProviderPointer pointer,
+  ) => $FutureProviderElement(pointer);
+
+  @override
+  FutureOr<NotificationNudgeState> create(Ref ref) {
+    return notificationNudge(ref);
+  }
+}
+
+String _$notificationNudgeHash() => r'd4b0cbd4baadd4ad16a52ddee4a6d1a7a80d9b5b';

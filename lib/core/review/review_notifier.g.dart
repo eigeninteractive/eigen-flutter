@@ -51,7 +51,7 @@ final class ReviewNotifierProvider
   ReviewNotifier create() => ReviewNotifier();
 }
 
-String _$reviewNotifierHash() => r'3dc6f27f569f91f075bf029272cfc165a2d01b47';
+String _$reviewNotifierHash() => r'e0ee98e96c30b19655744ddcd875f38167187a7c';
 
 /// Tracks total wins and gates in-app review prompts.
 ///

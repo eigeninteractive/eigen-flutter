@@ -126,8 +126,8 @@ String _$currentGameModuleHash() => r'261bd79bd7189c66d74b3bb73e5877a5c1db946b';
 /// `keepAlive`: static reference data that changes rarely (bots are registered
 /// by an operator), so it is fetched once and reused for the session.
 ///
-/// `@JsonPersist()` caches it to SQLite so the pickers resolve from cache
-/// (~5 ms) on cold start, before the network refresh lands. The catalog is
+/// `@JsonPersist()` caches it locally so the pickers resolve from cache on cold
+/// start, before the network refresh lands. The catalog is
 /// deployment-global public reference data - like [PlayerInfoCache] it is not
 /// user-scoped and not cleared on sign-out, so the auto-derived global storage
 /// key is correct.
@@ -141,8 +141,8 @@ final availableBotsProvider = AvailableBotsProvider._();
 /// `keepAlive`: static reference data that changes rarely (bots are registered
 /// by an operator), so it is fetched once and reused for the session.
 ///
-/// `@JsonPersist()` caches it to SQLite so the pickers resolve from cache
-/// (~5 ms) on cold start, before the network refresh lands. The catalog is
+/// `@JsonPersist()` caches it locally so the pickers resolve from cache on cold
+/// start, before the network refresh lands. The catalog is
 /// deployment-global public reference data - like [PlayerInfoCache] it is not
 /// user-scoped and not cleared on sign-out, so the auto-derived global storage
 /// key is correct.
@@ -154,8 +154,8 @@ final class AvailableBotsProvider
   /// `keepAlive`: static reference data that changes rarely (bots are registered
   /// by an operator), so it is fetched once and reused for the session.
   ///
-  /// `@JsonPersist()` caches it to SQLite so the pickers resolve from cache
-  /// (~5 ms) on cold start, before the network refresh lands. The catalog is
+  /// `@JsonPersist()` caches it locally so the pickers resolve from cache on cold
+  /// start, before the network refresh lands. The catalog is
   /// deployment-global public reference data - like [PlayerInfoCache] it is not
   /// user-scoped and not cleared on sign-out, so the auto-derived global storage
   /// key is correct.
@@ -178,15 +178,15 @@ final class AvailableBotsProvider
   AvailableBots create() => AvailableBots();
 }
 
-String _$availableBotsHash() => r'8110c1a9b87cbbe07dae8ee2e1a8ec33a67783e9';
+String _$availableBotsHash() => r'80df589c86cecbc78bdaaf267080ec8d199b0557';
 
 /// The bot catalog for this deployment - the pickers' source of truth.
 ///
 /// `keepAlive`: static reference data that changes rarely (bots are registered
 /// by an operator), so it is fetched once and reused for the session.
 ///
-/// `@JsonPersist()` caches it to SQLite so the pickers resolve from cache
-/// (~5 ms) on cold start, before the network refresh lands. The catalog is
+/// `@JsonPersist()` caches it locally so the pickers resolve from cache on cold
+/// start, before the network refresh lands. The catalog is
 /// deployment-global public reference data - like [PlayerInfoCache] it is not
 /// user-scoped and not cleared on sign-out, so the auto-derived global storage
 /// key is correct.

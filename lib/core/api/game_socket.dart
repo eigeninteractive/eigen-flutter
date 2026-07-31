@@ -6,6 +6,33 @@ import 'package:eigen_api/eigen_api.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+/// Builds the browser-compatible authenticated socket URI.
+///
+/// WebSocket browser APIs cannot attach an Authorization header to the HTTP
+/// upgrade, so the Firebase ID token is carried in the query string. Uri's
+/// query encoder protects tokens and game ids containing reserved characters.
+Uri buildGameSocketUri({
+  required String apiBaseUrl,
+  required String gameId,
+  required String token,
+}) {
+  final base = Uri.parse(apiBaseUrl);
+  final socketScheme = switch (base.scheme) {
+    'https' => 'wss',
+    'http' => 'ws',
+    _ => throw ArgumentError.value(
+      apiBaseUrl,
+      'apiBaseUrl',
+      'must use http or https',
+    ),
+  };
+  return base.replace(
+    scheme: socketScheme,
+    path: '/api/engine/games/$gameId/socket',
+    queryParameters: {'token': token},
+  );
+}
+
 /// One message from a game's socket, or the signal that the socket (re)opened.
 ///
 /// The server never reads from this socket — every client-to-server command
@@ -72,14 +99,11 @@ final class GameSocketFrame extends GameSocketEvent {
 /// attempt, so a reconnect after a long background period presents a fresh one.
 class GameSocket {
   GameSocket({
-    required String baseUrl,
-    required FirebaseAuth auth,
-    Duration initialBackoff = const Duration(milliseconds: 500),
-    Duration maxBackoff = const Duration(seconds: 30),
-  }) : _baseUrl = baseUrl,
-       _auth = auth,
-       _initialBackoff = initialBackoff,
-       _maxBackoff = maxBackoff;
+    required this._baseUrl,
+    required this._auth,
+    this._initialBackoff = const Duration(milliseconds: 500),
+    this._maxBackoff = const Duration(seconds: 30),
+  });
 
   final String _baseUrl;
   final FirebaseAuth _auth;
@@ -135,11 +159,10 @@ class GameSocket {
 
   /// `https://host` → `wss://host/api/engine/games/{id}/socket?token=…`.
   Uri _socketUri(String gameId, String token) {
-    final base = Uri.parse(_baseUrl);
-    return base.replace(
-      scheme: base.scheme == 'https' ? 'wss' : 'ws',
-      path: '/api/engine/games/$gameId/socket',
-      queryParameters: {'token': token},
+    return buildGameSocketUri(
+      apiBaseUrl: _baseUrl,
+      gameId: gameId,
+      token: token,
     );
   }
 

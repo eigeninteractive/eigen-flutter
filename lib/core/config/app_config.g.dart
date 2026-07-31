@@ -22,6 +22,7 @@ part of 'app_config.dart';
 ///     engine: EngineConfig(
 ///       apiBaseUrl: Env.apiBaseUrl,
 ///       googleWebClientId: Env.googleWebClientId,
+///       firebaseVapidKey: Env.firebaseVapidKey,
 ///     ),
 ///   ),
 /// )
@@ -45,6 +46,7 @@ final appConfigProvider = AppConfigProvider._();
 ///     engine: EngineConfig(
 ///       apiBaseUrl: Env.apiBaseUrl,
 ///       googleWebClientId: Env.googleWebClientId,
+///       firebaseVapidKey: Env.firebaseVapidKey,
 ///     ),
 ///   ),
 /// )
@@ -68,6 +70,7 @@ final class AppConfigProvider
   ///     engine: EngineConfig(
   ///       apiBaseUrl: Env.apiBaseUrl,
   ///       googleWebClientId: Env.googleWebClientId,
+  ///       firebaseVapidKey: Env.firebaseVapidKey,
   ///     ),
   ///   ),
   /// )

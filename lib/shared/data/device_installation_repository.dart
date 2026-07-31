@@ -4,10 +4,9 @@ import 'package:flutter/foundation.dart';
 
 /// The current user's push registrations — one per Firebase installation id.
 ///
-/// Pushes are targeted at the FID rather than a registration token, so the
-/// server needs the FID for every install the user is signed in on. The
-/// notification service owns *when* to register and unregister; this class only
-/// owns how it is written.
+/// Pushes are targeted at the FID, so the server needs the FID for every
+/// install the user is signed in on. The notification service owns *when* to
+/// register and unregister; this class only owns how it is written.
 class DeviceInstallationRepository {
   DeviceInstallationRepository(this._api);
 

@@ -40,11 +40,28 @@ class _AppStartupState extends ConsumerState<AppStartup> {
     _lifecycleListener = AppLifecycleListener(
       onResume: () {
         ref.read(updateProvider.notifier).checkForUpdate();
-        // Re-check permission in case the user changed it in system Settings.
+        // Reconcile permission and FCM registration in case the user changed
+        // notification access in system/browser settings while we were away.
+        unawaited(_syncNotifications());
         ref.invalidate(notificationPermissionStatusProvider);
       },
     );
     unawaited(_initNotifications());
+  }
+
+  Future<void> _syncNotifications() async {
+    try {
+      await ref
+          .read(notificationServiceProvider)
+          .syncPermissionAndRegistration();
+    } catch (e, stack) {
+      developer.log(
+        'Notification registration sync failed',
+        name: 'app.startup',
+        error: e,
+        stackTrace: stack,
+      );
+    }
   }
 
   /// Registers the navigation listener BEFORE initialize() so that the
@@ -77,9 +94,9 @@ class _AppStartupState extends ConsumerState<AppStartup> {
   Future<void> _removeNativeSplashWhenReady() async {
     try {
       final authState = await ref.read(authStateChangesProvider.future);
-      // If authenticated, wait for the profile SQLite cache to restore before
-      // revealing the home screen. Cap at 2 s — SQLite resolves in ~5 ms so
-      // this only triggers when there is no local cache AND no network.
+      // If authenticated, wait for the profile cache to restore before
+      // revealing the home screen. Cap at 2 s so this only triggers when
+      // there is no local cache AND no network.
       if (authState.user != null) {
         await ref
             .read(currentUserProfileProvider.future)
@@ -117,7 +134,7 @@ class _AppStartupState extends ConsumerState<AppStartup> {
               unawaited(
                 ref.read(notificationServiceProvider).registerInstallation(),
               );
-              // Fire-and-forget: starts the SQLite cache restore + network
+              // Fire-and-forget: starts the local cache restore + network
               // fetch before any screen renders. keepAlive ensures the result
               // is reused by all subsequent watchers.
               ref.read(currentUserProfileProvider.future).ignore();

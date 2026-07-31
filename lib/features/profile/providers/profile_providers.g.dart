@@ -115,7 +115,7 @@ String _$avatarStorageServiceHash() =>
 
 /// The signed-in user's own profile.
 ///
-/// Kept alive and persisted to SQLite so the profile loads from cache on cold
+/// Kept alive and persisted locally so the profile loads from cache on cold
 /// start (no spinner). The network fetch runs in the background and silently
 /// refreshes state when it completes.
 ///
@@ -131,7 +131,7 @@ final currentUserProfileProvider = CurrentUserProfileProvider._();
 
 /// The signed-in user's own profile.
 ///
-/// Kept alive and persisted to SQLite so the profile loads from cache on cold
+/// Kept alive and persisted locally so the profile loads from cache on cold
 /// start (no spinner). The network fetch runs in the background and silently
 /// refreshes state when it completes.
 ///
@@ -145,7 +145,7 @@ final class CurrentUserProfileProvider
     extends $AsyncNotifierProvider<CurrentUserProfile, Profile> {
   /// The signed-in user's own profile.
   ///
-  /// Kept alive and persisted to SQLite so the profile loads from cache on cold
+  /// Kept alive and persisted locally so the profile loads from cache on cold
   /// start (no spinner). The network fetch runs in the background and silently
   /// refreshes state when it completes.
   ///
@@ -178,7 +178,7 @@ String _$currentUserProfileHash() =>
 
 /// The signed-in user's own profile.
 ///
-/// Kept alive and persisted to SQLite so the profile loads from cache on cold
+/// Kept alive and persisted locally so the profile loads from cache on cold
 /// start (no spinner). The network fetch runs in the background and silently
 /// refreshes state when it completes.
 ///

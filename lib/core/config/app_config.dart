@@ -38,7 +38,7 @@ class EngineConfig {
   const EngineConfig({
     required this.apiBaseUrl,
     required this.googleWebClientId,
-    this.firebaseVapidKey,
+    required this.firebaseVapidKey,
     this.appHost,
   });
 
@@ -53,8 +53,13 @@ class EngineConfig {
   /// Google Sign-In web/server client id.
   final String googleWebClientId;
 
-  /// VAPID public key for FCM Web Push (Flutter web only); null on mobile.
-  final String? firebaseVapidKey;
+  /// VAPID public key for FCM Web Push.
+  ///
+  /// Eigen's standard app targets Android and web, so notification capability
+  /// is part of the deployment contract rather than an optional integration.
+  /// Android does not consume this value; web startup rejects an empty key.
+  /// The key is public and belongs to the same Firebase project as Auth.
+  final String firebaseVapidKey;
 
   /// The game's public host, e.g. `strategy.eigeninteractive.com` or a
   /// customer's own domain; null disables the features built on it.
@@ -106,6 +111,7 @@ class Branding {
 ///     engine: EngineConfig(
 ///       apiBaseUrl: Env.apiBaseUrl,
 ///       googleWebClientId: Env.googleWebClientId,
+///       firebaseVapidKey: Env.firebaseVapidKey,
 ///     ),
 ///   ),
 /// )

@@ -78,7 +78,7 @@ Review the resulting `pubspec.yaml` and `CHANGELOG.md`, then run:
 
 ```bash
 flutter pub get
-dart run build_runner build --delete-conflicting-outputs
+dart run build_runner build
 dart format --output=none --set-exit-if-changed \
   $(git ls-files '*.dart' ':!:**/*.g.dart' ':!:**/*.freezed.dart')
 flutter analyze

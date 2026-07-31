@@ -49,8 +49,8 @@ GameModule currentGameModule(Ref ref) => throw UnimplementedError(
 /// `keepAlive`: static reference data that changes rarely (bots are registered
 /// by an operator), so it is fetched once and reused for the session.
 ///
-/// `@JsonPersist()` caches it to SQLite so the pickers resolve from cache
-/// (~5 ms) on cold start, before the network refresh lands. The catalog is
+/// `@JsonPersist()` caches it locally so the pickers resolve from cache on cold
+/// start, before the network refresh lands. The catalog is
 /// deployment-global public reference data - like [PlayerInfoCache] it is not
 /// user-scoped and not cleared on sign-out, so the auto-derived global storage
 /// key is correct.
@@ -62,7 +62,7 @@ class AvailableBots extends _$AvailableBots {
     persist(
       ref.watch(storageProvider.future),
       options: const StorageOptions(
-        cacheTime: StorageCacheTime.unsafe_forever,
+        cacheTime: StorageCacheTime(Duration(days: 7)),
         // Bumped to '3': bots are now the generated Bot, which dropped the
         // is_local flag along with client-driven bots.
         destroyKey: '3',

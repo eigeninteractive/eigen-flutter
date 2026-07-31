@@ -10,6 +10,7 @@ import 'package:eigen_flutter/core/api/retry_policy.dart';
 import 'package:eigen_flutter/core/config/app_config.dart';
 import 'package:eigen_flutter/core/game/game_module.dart';
 import 'package:eigen_flutter/core/navigation/providers/navigation_providers.dart';
+import 'package:eigen_flutter/core/navigation/url_strategy.dart';
 import 'package:eigen_flutter/core/startup/app_startup.dart';
 import 'package:eigen_flutter/core/theme/app_theme.dart';
 import 'package:eigen_flutter/core/theme/theme_provider.dart';
@@ -34,22 +35,39 @@ Future<void> runEngineApp({
   required FirebaseOptions firebaseOptions,
   required Future<void> Function(RemoteMessage) onBackgroundMessage,
 }) async {
+  if (kIsWeb && config.engine.firebaseVapidKey.trim().isEmpty) {
+    throw StateError(
+      'FIREBASE_VAPID_KEY is required for Eigen web apps. '
+      'Generate a Web Push certificate in Firebase Console and pass its '
+      'public key with --dart-define=FIREBASE_VAPID_KEY=....',
+    );
+  }
+
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  configureUrlStrategy();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
   await Firebase.initializeApp(options: firebaseOptions);
   // Crash reporting and analytics are disabled in non-release builds so dev
-  // events never reach production dashboards.
-  await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
-    kReleaseMode,
-  );
+  // events never reach production dashboards. Crashlytics has no web
+  // implementation; browser errors remain visible in the console and hosting
+  // observability instead of calling a missing platform channel at startup.
+  if (!kIsWeb) {
+    await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
+      kReleaseMode,
+    );
+    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+    PlatformDispatcher.instance.onError = (error, stack) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      return true;
+    };
+  }
   await FirebaseAnalytics.instance.setAnalyticsCollectionEnabled(kReleaseMode);
-  FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
-  PlatformDispatcher.instance.onError = (error, stack) {
-    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-    return true;
-  };
-  FirebaseMessaging.onBackgroundMessage(onBackgroundMessage);
+  // Web background delivery runs in firebase-messaging-sw.js, not a Dart
+  // isolate. Registering this callback is only meaningful on native clients.
+  if (!kIsWeb) {
+    FirebaseMessaging.onBackgroundMessage(onBackgroundMessage);
+  }
 
   // The engine client needs no initialisation of its own: the HTTP client and
   // the game socket are built lazily from `config.engine.apiBaseUrl` by

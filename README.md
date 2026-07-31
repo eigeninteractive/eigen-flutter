@@ -40,8 +40,26 @@ import 'package:eigen_flutter/eigen_flutter.dart';
 Do not depend on `eigen_api` directly or deep-import `core/`, `features/`, or
 `shared/`. The barrel is the supported game-facing API.
 
+On Android, `flutter_local_notifications` requires core-library desugaring in
+the application module. `create-eigen-game` configures it automatically. For a
+hand-created app, add this to `android/app/build.gradle.kts`:
+
+```kotlin
+android {
+    compileOptions {
+        isCoreLibraryDesugaringEnabled = true
+    }
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+}
+```
+
 Boot the app with your module, branding, Worker origin, and generated Firebase
-configuration:
+configuration. Eigen's standard app targets Android and web, so the public Web
+Push key is required deployment configuration; it belongs to the same Firebase
+project used for authentication:
 
 ```dart
 Future<void> main() => runEngineApp(
@@ -51,6 +69,7 @@ Future<void> main() => runEngineApp(
     engine: EngineConfig(
       apiBaseUrl: 'https://game.example.com',
       googleWebClientId: 'your-client-id.apps.googleusercontent.com',
+      firebaseVapidKey: const String.fromEnvironment('FIREBASE_VAPID_KEY'),
     ),
   ),
   firebaseOptions: DefaultFirebaseOptions.currentPlatform,
@@ -93,7 +112,13 @@ the valid “do not predict this move” path:
 cd example
 flutter pub get
 flutter test
+flutter build web --release
 ```
+
+The package treats Android and web as supported targets. The generated scaffold
+includes the browser Firebase Messaging service worker, Firebase Auth's web
+popup flow, cross-origin Worker setup, and a release web build in CI. See
+[Deploy the web app](https://eigeninteractive.com/docs/ship-it/deploy-the-web-app).
 
 ## Documentation
 
@@ -102,6 +127,7 @@ flutter test
 - [Payload generation](https://eigeninteractive.com/docs/build-a-game/schemas)
 - [Rendering a game](https://eigeninteractive.com/docs/build-a-game/rendering)
 - [Testing both halves](https://eigeninteractive.com/docs/build-a-game/testing)
+- [Deploy the web app](https://eigeninteractive.com/docs/ship-it/deploy-the-web-app)
 - [Dart API reference](https://pub.dev/documentation/eigen_flutter/latest/)
 - [Versions and compatibility](https://eigeninteractive.com/docs/reference/compatibility)
 

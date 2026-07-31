@@ -64,12 +64,25 @@ submissions land in either order.
 ```bash
 flutter pub get
 flutter test
+flutter build web --release
 ```
 
 Playing it against a real server needs two things this repository deliberately
 does not contain: a Firebase project (`flutterfire configure` writes
 `lib/firebase_options.dart`) and a deployed worker. Fill in `lib/main.dart`
 once you have both.
+
+For an interactive browser run, use the fixed OAuth/Worker origin:
+
+```bash
+flutter run -d chrome --web-hostname localhost --web-port 7357 \
+  --dart-define=FIREBASE_VAPID_KEY=YOUR_PUBLIC_VAPID_KEY
+```
+
+Replace the public Firebase placeholders in
+`web/firebase-messaging-sw.js` first. See the
+[web deployment guide](https://eigeninteractive.com/docs/ship-it/deploy-the-web-app)
+for Firebase authorized domains, Worker CORS and hosting rules.
 
 > **`dependency_overrides` in `pubspec.yaml`** is temporary. `eigen_flutter`
 > depends on `eigen_api` by version, but the override that points it at the
