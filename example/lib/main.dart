@@ -6,10 +6,10 @@
 /// what it is called, what colour it is, and where its server lives.
 ///
 /// To run it against a real server you need two things this repository
-/// deliberately does not contain: a Firebase project (`flutterfire configure`
-/// writes `firebase_options.dart`) and a deployed Eigen worker (see the RPS
-/// example Worker in `eigen-server/examples/rps`). Replace [_firebaseOptions]
-/// and fill `app-config.json` before running it.
+/// deliberately does not contain: a Firebase project and a deployed Eigen
+/// worker (see the RPS example Worker in `eigen-server/examples/rps`). Run the
+/// package's Firebase configuration executable and fill `app-config.json`
+/// before running it.
 library;
 
 import 'package:eigen_flutter/eigen_flutter.dart';
@@ -17,6 +17,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
+import 'firebase_options.dart';
 import 'rps.dart';
 
 const _apiBaseUrl = String.fromEnvironment('API_BASE_URL');
@@ -45,20 +46,10 @@ Future<void> main() async {
         firebaseVapidKey: _firebaseVapidKey,
       ),
     ),
-    firebaseOptions: _firebaseOptions,
+    firebaseOptions: DefaultFirebaseOptions.currentPlatform,
     onBackgroundMessage: _onBackgroundMessage,
   );
 }
-
-/// Placeholder. Delete this and import the `DefaultFirebaseOptions` that
-/// `flutterfire configure` generates into `lib/firebase_options.dart` — a file
-/// that is app-specific and may be committed or reconstructed in CI.
-const _firebaseOptions = FirebaseOptions(
-  apiKey: 'REPLACE_ME',
-  appId: 'REPLACE_ME',
-  messagingSenderId: 'REPLACE_ME',
-  projectId: 'REPLACE_ME',
-);
 
 /// FCM delivers background messages on a separate isolate, so this must be a
 /// top-level function marked as an entry point and must re-initialise Firebase
@@ -68,5 +59,5 @@ const _firebaseOptions = FirebaseOptions(
 /// nothing to do here beyond making the isolate valid.
 @pragma('vm:entry-point')
 Future<void> _onBackgroundMessage(RemoteMessage message) async {
-  await Firebase.initializeApp(options: _firebaseOptions);
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 }

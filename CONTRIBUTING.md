@@ -30,9 +30,11 @@ No Firebase project or `.env` is needed. Applications inject runtime values
 through `EngineConfig`.
 
 > [!WARNING]
-> Never commit `.env`, `lib/firebase_options.dart`,
-> `google-services.json`, `GoogleService-Info.plist`, keystores, or `.p8` keys.
-> CI generates placeholder configuration where analysis requires it.
+> Never commit a real game's `.env`, Firebase client files, keystores, or `.p8`
+> keys to this engine repository. Firebase client identifiers are public, but
+> they belong in the consuming game repository. The checked-in RPS example
+> keeps only throwing placeholders so analysis and browser compilation work
+> without an engine-owned Firebase project.
 
 ## Branching
 

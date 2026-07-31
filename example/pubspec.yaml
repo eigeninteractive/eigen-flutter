@@ -12,11 +12,11 @@ dependencies:
     sdk: flutter
   eigen_flutter:
     path: ../
-  # An app declares these two itself: `flutterfire configure` writes
-  # `firebase_options.dart` against `firebase_core`, and the background-message
-  # handler passed to `runEngineApp` is typed by `firebase_messaging`. The
-  # framework depends on both as well, but a package must not import through
-  # its dependency's dependencies.
+  # An app declares these two itself: `eigen_flutter:configure_firebase` runs
+  # FlutterFire to write `firebase_options.dart` against `firebase_core`, and
+  # the background-message handler passed to `runEngineApp` is typed by
+  # `firebase_messaging`. The framework depends on both as well, but a package
+  # must not import through its dependency's dependencies.
   firebase_core: ^4.9.0
   firebase_messaging: ^16.2.2
 

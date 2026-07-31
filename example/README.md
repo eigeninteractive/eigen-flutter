@@ -68,10 +68,18 @@ flutter build web --release --dart-define-from-file=app-config.json
 ```
 
 Playing it against a real server needs two things this repository deliberately
-does not contain: a Firebase project (`flutterfire configure` writes
-`lib/firebase_options.dart`) and a deployed worker. Fill the public values in
-`app-config.json` once you have both. Required values start empty so an
-incorrectly configured app fails at startup with one actionable error.
+does not contain: a Firebase project and a deployed worker. Configure Firebase
+without copying its Web identifiers by hand:
+
+```bash
+dart run eigen_flutter:configure_firebase
+```
+
+The command runs FlutterFire for Android and Web, then generates
+`web/firebase-config.js` from the same selected Web app. Fill the remaining
+public values, including the VAPID key, in `app-config.json` once you have both
+services. Required values start empty so an incorrectly configured app fails at
+startup with one actionable error.
 
 For an interactive browser run, use the fixed OAuth/Worker origin:
 
@@ -80,8 +88,7 @@ flutter run -d chrome --web-hostname localhost --web-port 7357 \
   --dart-define-from-file=app-config.json
 ```
 
-Replace the public Firebase placeholders in
-`web/firebase-messaging-sw.js` first. See the
+Configure Firebase and the VAPID key first. See the
 [web deployment guide](https://eigeninteractive.com/docs/ship-it/deploy-the-web-app)
 for Firebase authorized domains, Worker CORS and hosting rules.
 

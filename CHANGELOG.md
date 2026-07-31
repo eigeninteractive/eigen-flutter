@@ -22,6 +22,8 @@ describe the starting state rather than changes from a previous version.
 
 ### Added
 
+- `configure_firebase`, which runs FlutterFire and generates the messaging
+  service worker's public Web configuration from the selected Firebase app.
 - `runEngineApp(...)` entry point, with `AppConfig` / `EngineConfig` / `Branding`
   as the composition-root config. The framework reads every runtime value from
   `EngineConfig` and never from the app's `Env`, so this package needs no

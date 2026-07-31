@@ -93,6 +93,17 @@ flutter run --dart-define-from-file=app-config.json
 Missing or malformed required values are reported together before Firebase or
 any engine service starts. Keep actual secrets on the Worker.
 
+Connect a game app to Firebase with the package executable:
+
+```bash
+dart run eigen_flutter:configure_firebase
+```
+
+It runs FlutterFire for Android and web, then derives
+`web/firebase-config.js` for the messaging service worker from the Web app
+FlutterFire selected. The public VAPID key remains in `app-config.json` because
+it is not part of Firebase's app SDK configuration.
+
 ## The game boundary
 
 The authoritative TypeScript module declares `state`, `observation`, `action`,
