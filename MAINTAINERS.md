@@ -5,6 +5,8 @@ pub.dev and repository release settings, or recover a failed release.
 
 For local setup, code generation, testing, changelog entries, and pull-request
 expectations, start with [CONTRIBUTING.md](CONTRIBUTING.md).
+Temporary compatibility code that cannot yet be removed because of upstream
+packages is tracked in [doc/blockers.md](doc/blockers.md).
 
 ## Release relationship
 
