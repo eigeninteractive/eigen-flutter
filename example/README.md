@@ -64,25 +64,33 @@ submissions land in either order.
 ```bash
 flutter pub get
 flutter test
-flutter build web --release
+flutter build web --release --dart-define-from-file=app-config.json
 ```
 
 Playing it against a real server needs two things this repository deliberately
 does not contain: a Firebase project (`flutterfire configure` writes
-`lib/firebase_options.dart`) and a deployed worker. Fill in `lib/main.dart`
-once you have both.
+`lib/firebase_options.dart`) and a deployed worker. Fill the public values in
+`app-config.json` once you have both. Required values start empty so an
+incorrectly configured app fails at startup with one actionable error.
 
 For an interactive browser run, use the fixed OAuth/Worker origin:
 
 ```bash
 flutter run -d chrome --web-hostname localhost --web-port 7357 \
-  --dart-define=FIREBASE_VAPID_KEY=YOUR_PUBLIC_VAPID_KEY
+  --dart-define-from-file=app-config.json
 ```
 
 Replace the public Firebase placeholders in
 `web/firebase-messaging-sw.js` first. See the
 [web deployment guide](https://eigeninteractive.com/docs/ship-it/deploy-the-web-app)
 for Firebase authorized domains, Worker CORS and hosting rules.
+
+Use that same file for an Android release:
+
+```bash
+flutter build appbundle --release \
+  --dart-define-from-file=app-config.json
+```
 
 > **`dependency_overrides` in `pubspec.yaml`** is temporary. `eigen_flutter`
 > depends on `eigen_api` by version, but the override that points it at the

@@ -49,25 +49,27 @@ GameModule currentGameModule(Ref ref) => throw UnimplementedError(
 /// `keepAlive`: static reference data that changes rarely (bots are registered
 /// by an operator), so it is fetched once and reused for the session.
 ///
-/// `@JsonPersist()` caches it locally so the pickers resolve from cache on cold
-/// start, before the network refresh lands. The catalog is
-/// deployment-global public reference data - like [PlayerInfoCache] it is not
-/// user-scoped and not cleared on sign-out, so the auto-derived global storage
-/// key is correct.
+/// Native apps cache it locally so the pickers resolve before the network
+/// refresh lands. Web keeps it only for the current browser session. The
+/// catalog is deployment-global public reference data - like
+/// [PlayerInfoCache] it is not user-scoped and not cleared on sign-out, so the
+/// auto-derived global storage key is correct.
 @Riverpod(keepAlive: true)
 @JsonPersist()
 class AvailableBots extends _$AvailableBots {
   @override
   Future<List<Bot>> build() async {
-    persist(
-      ref.watch(storageProvider.future),
-      options: const StorageOptions(
-        cacheTime: StorageCacheTime(Duration(days: 7)),
-        // Bumped to '3': bots are now the generated Bot, which dropped the
-        // is_local flag along with client-driven bots.
-        destroyKey: '3',
-      ),
-    );
+    if (persistentApiCacheEnabled) {
+      persist(
+        ref.watch(storageProvider.future),
+        options: const StorageOptions(
+          cacheTime: StorageCacheTime(Duration(days: 7)),
+          // Bumped to '3': bots are now the generated Bot, which dropped the
+          // is_local flag along with client-driven bots.
+          destroyKey: '3',
+        ),
+      );
+    }
 
     return ref.watch(gameRepositoryProvider).getBots();
   }

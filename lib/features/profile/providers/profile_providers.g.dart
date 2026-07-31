@@ -115,9 +115,9 @@ String _$avatarStorageServiceHash() =>
 
 /// The signed-in user's own profile.
 ///
-/// Kept alive and persisted locally so the profile loads from cache on cold
-/// start (no spinner). The network fetch runs in the background and silently
-/// refreshes state when it completes.
+/// Kept alive for the session and persisted on native so the profile can load
+/// from cache on cold start. Web fetches it again after a browser reload. The
+/// network result remains authoritative on every platform.
 ///
 /// Every mutation below re-reads the profile from the server rather than
 /// patching state locally. That is not caution for its own sake: the server
@@ -131,9 +131,9 @@ final currentUserProfileProvider = CurrentUserProfileProvider._();
 
 /// The signed-in user's own profile.
 ///
-/// Kept alive and persisted locally so the profile loads from cache on cold
-/// start (no spinner). The network fetch runs in the background and silently
-/// refreshes state when it completes.
+/// Kept alive for the session and persisted on native so the profile can load
+/// from cache on cold start. Web fetches it again after a browser reload. The
+/// network result remains authoritative on every platform.
 ///
 /// Every mutation below re-reads the profile from the server rather than
 /// patching state locally. That is not caution for its own sake: the server
@@ -145,9 +145,9 @@ final class CurrentUserProfileProvider
     extends $AsyncNotifierProvider<CurrentUserProfile, Profile> {
   /// The signed-in user's own profile.
   ///
-  /// Kept alive and persisted locally so the profile loads from cache on cold
-  /// start (no spinner). The network fetch runs in the background and silently
-  /// refreshes state when it completes.
+  /// Kept alive for the session and persisted on native so the profile can load
+  /// from cache on cold start. Web fetches it again after a browser reload. The
+  /// network result remains authoritative on every platform.
   ///
   /// Every mutation below re-reads the profile from the server rather than
   /// patching state locally. That is not caution for its own sake: the server
@@ -174,13 +174,13 @@ final class CurrentUserProfileProvider
 }
 
 String _$currentUserProfileHash() =>
-    r'68d65cbb780a06da9a7f6517ef0aca49e7f2cc44';
+    r'3264845c76f771032e4febe7c7000377a648c36f';
 
 /// The signed-in user's own profile.
 ///
-/// Kept alive and persisted locally so the profile loads from cache on cold
-/// start (no spinner). The network fetch runs in the background and silently
-/// refreshes state when it completes.
+/// Kept alive for the session and persisted on native so the profile can load
+/// from cache on cold start. Web fetches it again after a browser reload. The
+/// network result remains authoritative on every platform.
 ///
 /// Every mutation below re-reads the profile from the server rather than
 /// patching state locally. That is not caution for its own sake: the server

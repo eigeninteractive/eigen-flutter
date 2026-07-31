@@ -30,9 +30,9 @@ AvatarStorageService avatarStorageService(Ref ref) {
 
 /// The signed-in user's own profile.
 ///
-/// Kept alive and persisted locally so the profile loads from cache on cold
-/// start (no spinner). The network fetch runs in the background and silently
-/// refreshes state when it completes.
+/// Kept alive for the session and persisted on native so the profile can load
+/// from cache on cold start. Web fetches it again after a browser reload. The
+/// network result remains authoritative on every platform.
 ///
 /// Every mutation below re-reads the profile from the server rather than
 /// patching state locally. That is not caution for its own sake: the server
@@ -49,20 +49,21 @@ class CurrentUserProfile extends _$CurrentUserProfile {
       throw StateError('User not authenticated');
     }
 
-    // Stale-while-revalidate: the local cache races the network fetch. Cache
-    // typically wins first, eliminating the cold-start spinner. The
-    // network result overwrites silently; if the network wins first, the stale
-    // cache is discarded automatically via the didChange guard in persist().
-    persist(
-      ref.watch(storageProvider.future),
-      key: profileCacheKey(user.id),
-      options: const StorageOptions(
-        cacheTime: StorageCacheTime.unsafe_forever,
-        // Cache-schema version for the persisted profile. Bumped to 2 when the
-        // hand-written UserProfile was replaced by the generated Profile.
-        destroyKey: '2',
-      ),
-    );
+    // Native stale-while-revalidate: the local cache races the network fetch.
+    // The network result overwrites silently; if it wins first, Riverpod's
+    // didChange guard discards the slower cached value.
+    if (persistentApiCacheEnabled) {
+      persist(
+        ref.watch(storageProvider.future),
+        key: profileCacheKey(user.id),
+        options: const StorageOptions(
+          cacheTime: StorageCacheTime.unsafe_forever,
+          // Cache-schema version for the persisted profile. Bumped to 2 when
+          // the hand-written UserProfile was replaced by generated Profile.
+          destroyKey: '2',
+        ),
+      );
+    }
 
     return ref.watch(profileRepositoryProvider).getProfile();
   }

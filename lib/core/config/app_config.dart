@@ -13,10 +13,10 @@ part 'app_config.g.dart';
 /// - [engine] — runtime backend/integration values the framework needs.
 ///
 /// Keeping each concern as its own value object is what stops this from
-/// decaying into a junk drawer of unrelated flags. The app reads its
-/// compile-time secrets from `Env` (envied) and passes them in here, so the
-/// framework never depends on the app's `Env` directly — the seam that lets the
-/// framework live in its own package.
+/// decaying into a junk drawer of unrelated flags. A consuming app reads its
+/// public build-time values from Dart compilation environment declarations and
+/// passes them in here, so the framework remains independent of how the app is
+/// built.
 @immutable
 class AppConfig {
   const AppConfig({required this.branding, required this.engine});
@@ -30,9 +30,9 @@ class AppConfig {
 
 /// Runtime configuration the framework needs to talk to its backends.
 ///
-/// These values originate as compile-time secrets in the app's `Env` (envied)
-/// and are injected here at the composition root, so framework code reads them
-/// from [appConfigProvider] instead of importing the app's `Env`.
+/// These are public deployment values, not secrets. A scaffolded app supplies
+/// them with `--dart-define-from-file=app-config.json` and injects them at the
+/// composition root.
 @immutable
 class EngineConfig {
   const EngineConfig({
@@ -70,6 +70,64 @@ class EngineConfig {
   /// deep-link prefixes, so legal URLs on this same host open in the browser
   /// rather than being intercepted.
   final String? appHost;
+
+  /// Validates the deployment values before any engine service starts.
+  ///
+  /// [isWeb] controls the platform-specific Web Push requirement. Invalid
+  /// values throw one [StateError] listing every problem and the scaffold's
+  /// standard configuration command.
+  void validate({required bool isWeb}) {
+    final errors = <String>[];
+    final workerOrigin = Uri.tryParse(apiBaseUrl);
+    if (_isUnset(apiBaseUrl)) {
+      errors.add('API_BASE_URL is required');
+    } else if (workerOrigin == null ||
+        !workerOrigin.hasAuthority ||
+        !const {'http', 'https'}.contains(workerOrigin.scheme) ||
+        workerOrigin.host.isEmpty ||
+        workerOrigin.userInfo.isNotEmpty ||
+        workerOrigin.path.isNotEmpty ||
+        workerOrigin.hasQuery ||
+        workerOrigin.hasFragment) {
+      errors.add(
+        'API_BASE_URL must be an HTTP(S) origin with no path, query, '
+        'fragment, credentials, or trailing slash',
+      );
+    }
+
+    if (_isUnset(googleWebClientId)) {
+      errors.add('GOOGLE_WEB_CLIENT_ID is required');
+    }
+    if (isWeb && _isUnset(firebaseVapidKey)) {
+      errors.add('FIREBASE_VAPID_KEY is required for web');
+    }
+
+    final host = appHost;
+    if (host != null && !_isValidHost(host)) {
+      errors.add('APP_HOST must be a hostname without a scheme, port, or path');
+    }
+
+    if (errors.isEmpty) return;
+    throw StateError(
+      'Invalid Eigen app configuration:\n'
+      '${errors.map((error) => '- $error').join('\n')}\n'
+      'Set these public values in app-config.json and run or build with '
+      '--dart-define-from-file=app-config.json.',
+    );
+  }
+}
+
+bool _isUnset(String value) =>
+    value.trim().isEmpty || value.contains('REPLACE_ME');
+
+bool _isValidHost(String value) {
+  if (_isUnset(value) || value != value.trim()) return false;
+  final uri = Uri.tryParse('https://$value');
+  return uri != null &&
+      uri.host == value &&
+      uri.path.isEmpty &&
+      !uri.hasQuery &&
+      !uri.hasFragment;
 }
 
 /// User-facing identity for the app shell.
@@ -102,6 +160,10 @@ class Branding {
 /// [runEngineApp] registers the config for normal apps. Widget tests that
 /// construct their own `ProviderScope` can override it directly:
 /// ```dart
+/// const apiBaseUrl = String.fromEnvironment('API_BASE_URL');
+/// const googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
+/// const firebaseVapidKey = String.fromEnvironment('FIREBASE_VAPID_KEY');
+///
 /// appConfigProvider.overrideWithValue(
 ///   AppConfig(
 ///     branding: const Branding(
@@ -109,9 +171,9 @@ class Branding {
 ///       seedColor: Colors.deepPurple,
 ///     ),
 ///     engine: EngineConfig(
-///       apiBaseUrl: Env.apiBaseUrl,
-///       googleWebClientId: Env.googleWebClientId,
-///       firebaseVapidKey: Env.firebaseVapidKey,
+///       apiBaseUrl: apiBaseUrl,
+///       googleWebClientId: googleWebClientId,
+///       firebaseVapidKey: firebaseVapidKey,
 ///     ),
 ///   ),
 /// )

@@ -30,13 +30,12 @@ PlayerBatchLoader playerBatchLoader(Ref ref) {
   return loader;
 }
 
-/// Globally cached public player identity by ID, persisted locally.
+/// Globally cached public player identity by ID.
 ///
 /// Works for both human users and bots — the batch endpoint covers both.
 /// `keepAlive: true` keeps the result in memory for the session lifetime.
-/// `@JsonPersist()` adds platform persistence so cold-start lookups resolve
-/// from cache before the network response arrives, eliminating
-/// per-player spinners when re-entering the app.
+/// Native apps also restore it from the local API cache before the network
+/// response arrives. Web fetches fresh data after a browser reload.
 ///
 /// Player identity is public data — the cache is never cleared on sign-out.
 /// Bump [StorageOptions.destroyKey] if [Player]'s JSON schema changes.
@@ -45,18 +44,19 @@ PlayerBatchLoader playerBatchLoader(Ref ref) {
 class PlayerInfoCache extends _$PlayerInfoCache {
   @override
   Future<Player> build({required String id}) async {
-    persist(
-      ref.watch(storageProvider.future),
-      options: const StorageOptions(
-        cacheTime: StorageCacheTime(Duration(days: 30)),
-        // Cache-schema version for the persisted Player. Bumped to 2 when the
-        // hand-written PlayerInfo was replaced by the generated Player. This
-        // cache is intentionally NOT cleared on sign-out because player
-        // identity is public data. Expiry plus the web backend's hard entry
-        // cap prevents an unbounded per-opponent LocalStorage cache.
-        destroyKey: '2',
-      ),
-    );
+    if (persistentApiCacheEnabled) {
+      persist(
+        ref.watch(storageProvider.future),
+        options: const StorageOptions(
+          cacheTime: StorageCacheTime(Duration(days: 30)),
+          // Cache-schema version for the persisted Player. Bumped to 2 when the
+          // hand-written PlayerInfo was replaced by the generated Player. This
+          // cache is intentionally not cleared on sign-out because player
+          // identity is public data.
+          destroyKey: '2',
+        ),
+      );
+    }
 
     // Through the batch loader, not the repository directly: a build here runs
     // synchronously for every id a screen watches, so the loader coalesces the

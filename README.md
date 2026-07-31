@@ -62,20 +62,36 @@ Push key is required deployment configuration; it belongs to the same Firebase
 project used for authentication:
 
 ```dart
+const apiBaseUrl = String.fromEnvironment('API_BASE_URL');
+const googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
+const firebaseVapidKey = String.fromEnvironment('FIREBASE_VAPID_KEY');
+const appHost = String.fromEnvironment('APP_HOST');
+
 Future<void> main() => runEngineApp(
   module: const MyGameModule(),
-  config: const AppConfig(
-    branding: Branding(appName: 'My Game', seedColor: Colors.indigo),
+  config: AppConfig(
+    branding: const Branding(appName: 'My Game', seedColor: Colors.indigo),
     engine: EngineConfig(
-      apiBaseUrl: 'https://game.example.com',
-      googleWebClientId: 'your-client-id.apps.googleusercontent.com',
-      firebaseVapidKey: const String.fromEnvironment('FIREBASE_VAPID_KEY'),
+      apiBaseUrl: apiBaseUrl,
+      googleWebClientId: googleWebClientId,
+      firebaseVapidKey: firebaseVapidKey,
+      appHost: appHost.isEmpty ? null : appHost,
     ),
   ),
   firebaseOptions: DefaultFirebaseOptions.currentPlatform,
   onBackgroundMessage: onBackgroundMessage,
 );
 ```
+
+These are public build-time values. Scaffolded apps keep them in
+`app-config.json` and use the same command option for Android and web:
+
+```bash
+flutter run --dart-define-from-file=app-config.json
+```
+
+Missing or malformed required values are reported together before Firebase or
+any engine service starts. Keep actual secrets on the Worker.
 
 ## The game boundary
 

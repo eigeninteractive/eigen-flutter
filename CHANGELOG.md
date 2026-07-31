@@ -52,6 +52,12 @@ describe the starting state rather than changes from a previous version.
 
 ### Changed
 
+- Public app deployment values now use Dart compilation environment
+  declarations and one cross-platform `app-config.json`; startup reports
+  missing or malformed required values before initializing engine services.
+- Persisted Riverpod API snapshots are native-only. Web keeps provider data for
+  the browser session and refetches after reload, while preferences, Firebase
+  Auth, and notification bookkeeping retain their own browser persistence.
 - FCM registration now uses Firebase Installation IDs end-to-end. Web calls
   Firebase's current `register` API through a narrow compatibility adapter;
   Android uses native FID auto-registration configured by the package's Android

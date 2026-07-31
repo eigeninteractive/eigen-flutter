@@ -13,6 +13,10 @@ part of 'app_config.dart';
 /// [runEngineApp] registers the config for normal apps. Widget tests that
 /// construct their own `ProviderScope` can override it directly:
 /// ```dart
+/// const apiBaseUrl = String.fromEnvironment('API_BASE_URL');
+/// const googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
+/// const firebaseVapidKey = String.fromEnvironment('FIREBASE_VAPID_KEY');
+///
 /// appConfigProvider.overrideWithValue(
 ///   AppConfig(
 ///     branding: const Branding(
@@ -20,9 +24,9 @@ part of 'app_config.dart';
 ///       seedColor: Colors.deepPurple,
 ///     ),
 ///     engine: EngineConfig(
-///       apiBaseUrl: Env.apiBaseUrl,
-///       googleWebClientId: Env.googleWebClientId,
-///       firebaseVapidKey: Env.firebaseVapidKey,
+///       apiBaseUrl: apiBaseUrl,
+///       googleWebClientId: googleWebClientId,
+///       firebaseVapidKey: firebaseVapidKey,
 ///     ),
 ///   ),
 /// )
@@ -37,6 +41,10 @@ final appConfigProvider = AppConfigProvider._();
 /// [runEngineApp] registers the config for normal apps. Widget tests that
 /// construct their own `ProviderScope` can override it directly:
 /// ```dart
+/// const apiBaseUrl = String.fromEnvironment('API_BASE_URL');
+/// const googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
+/// const firebaseVapidKey = String.fromEnvironment('FIREBASE_VAPID_KEY');
+///
 /// appConfigProvider.overrideWithValue(
 ///   AppConfig(
 ///     branding: const Branding(
@@ -44,9 +52,9 @@ final appConfigProvider = AppConfigProvider._();
 ///       seedColor: Colors.deepPurple,
 ///     ),
 ///     engine: EngineConfig(
-///       apiBaseUrl: Env.apiBaseUrl,
-///       googleWebClientId: Env.googleWebClientId,
-///       firebaseVapidKey: Env.firebaseVapidKey,
+///       apiBaseUrl: apiBaseUrl,
+///       googleWebClientId: googleWebClientId,
+///       firebaseVapidKey: firebaseVapidKey,
 ///     ),
 ///   ),
 /// )
@@ -61,6 +69,10 @@ final class AppConfigProvider
   /// [runEngineApp] registers the config for normal apps. Widget tests that
   /// construct their own `ProviderScope` can override it directly:
   /// ```dart
+  /// const apiBaseUrl = String.fromEnvironment('API_BASE_URL');
+  /// const googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
+  /// const firebaseVapidKey = String.fromEnvironment('FIREBASE_VAPID_KEY');
+  ///
   /// appConfigProvider.overrideWithValue(
   ///   AppConfig(
   ///     branding: const Branding(
@@ -68,9 +80,9 @@ final class AppConfigProvider
   ///       seedColor: Colors.deepPurple,
   ///     ),
   ///     engine: EngineConfig(
-  ///       apiBaseUrl: Env.apiBaseUrl,
-  ///       googleWebClientId: Env.googleWebClientId,
-  ///       firebaseVapidKey: Env.firebaseVapidKey,
+  ///       apiBaseUrl: apiBaseUrl,
+  ///       googleWebClientId: googleWebClientId,
+  ///       firebaseVapidKey: firebaseVapidKey,
   ///     ),
   ///   ),
   /// )

@@ -126,11 +126,11 @@ String _$currentGameModuleHash() => r'261bd79bd7189c66d74b3bb73e5877a5c1db946b';
 /// `keepAlive`: static reference data that changes rarely (bots are registered
 /// by an operator), so it is fetched once and reused for the session.
 ///
-/// `@JsonPersist()` caches it locally so the pickers resolve from cache on cold
-/// start, before the network refresh lands. The catalog is
-/// deployment-global public reference data - like [PlayerInfoCache] it is not
-/// user-scoped and not cleared on sign-out, so the auto-derived global storage
-/// key is correct.
+/// Native apps cache it locally so the pickers resolve before the network
+/// refresh lands. Web keeps it only for the current browser session. The
+/// catalog is deployment-global public reference data - like
+/// [PlayerInfoCache] it is not user-scoped and not cleared on sign-out, so the
+/// auto-derived global storage key is correct.
 
 @ProviderFor(AvailableBots)
 @JsonPersist()
@@ -141,11 +141,11 @@ final availableBotsProvider = AvailableBotsProvider._();
 /// `keepAlive`: static reference data that changes rarely (bots are registered
 /// by an operator), so it is fetched once and reused for the session.
 ///
-/// `@JsonPersist()` caches it locally so the pickers resolve from cache on cold
-/// start, before the network refresh lands. The catalog is
-/// deployment-global public reference data - like [PlayerInfoCache] it is not
-/// user-scoped and not cleared on sign-out, so the auto-derived global storage
-/// key is correct.
+/// Native apps cache it locally so the pickers resolve before the network
+/// refresh lands. Web keeps it only for the current browser session. The
+/// catalog is deployment-global public reference data - like
+/// [PlayerInfoCache] it is not user-scoped and not cleared on sign-out, so the
+/// auto-derived global storage key is correct.
 @JsonPersist()
 final class AvailableBotsProvider
     extends $AsyncNotifierProvider<AvailableBots, List<Bot>> {
@@ -154,11 +154,11 @@ final class AvailableBotsProvider
   /// `keepAlive`: static reference data that changes rarely (bots are registered
   /// by an operator), so it is fetched once and reused for the session.
   ///
-  /// `@JsonPersist()` caches it locally so the pickers resolve from cache on cold
-  /// start, before the network refresh lands. The catalog is
-  /// deployment-global public reference data - like [PlayerInfoCache] it is not
-  /// user-scoped and not cleared on sign-out, so the auto-derived global storage
-  /// key is correct.
+  /// Native apps cache it locally so the pickers resolve before the network
+  /// refresh lands. Web keeps it only for the current browser session. The
+  /// catalog is deployment-global public reference data - like
+  /// [PlayerInfoCache] it is not user-scoped and not cleared on sign-out, so the
+  /// auto-derived global storage key is correct.
   AvailableBotsProvider._()
     : super(
         from: null,
@@ -178,18 +178,18 @@ final class AvailableBotsProvider
   AvailableBots create() => AvailableBots();
 }
 
-String _$availableBotsHash() => r'80df589c86cecbc78bdaaf267080ec8d199b0557';
+String _$availableBotsHash() => r'd4eaac975b707baaf0483ae7d9beb2cb7a00cab2';
 
 /// The bot catalog for this deployment - the pickers' source of truth.
 ///
 /// `keepAlive`: static reference data that changes rarely (bots are registered
 /// by an operator), so it is fetched once and reused for the session.
 ///
-/// `@JsonPersist()` caches it locally so the pickers resolve from cache on cold
-/// start, before the network refresh lands. The catalog is
-/// deployment-global public reference data - like [PlayerInfoCache] it is not
-/// user-scoped and not cleared on sign-out, so the auto-derived global storage
-/// key is correct.
+/// Native apps cache it locally so the pickers resolve before the network
+/// refresh lands. Web keeps it only for the current browser session. The
+/// catalog is deployment-global public reference data - like
+/// [PlayerInfoCache] it is not user-scoped and not cleared on sign-out, so the
+/// auto-derived global storage key is correct.
 
 @JsonPersist()
 abstract class _$AvailableBotsBase extends $AsyncNotifier<List<Bot>> {

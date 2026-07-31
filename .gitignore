@@ -21,12 +21,11 @@ pubspec.lock
 *.log
 custom_lint.log
 
-# Secrets & instance-specific config — NEVER commit these.
+# Local environment, generated Firebase files, and signing credentials.
 #
-# The framework itself needs none of them, but CI writes `.env` and
-# `firebase_options.dart` from secrets in order to analyze, and a consuming app
-# generates the whole set via `flutterfire configure`. Without these rules a
-# local run of the same steps would happily commit real credentials.
+# Firebase client options are public identifiers, but they are instance-specific
+# in this framework repository. Consuming apps may commit them or reconstruct
+# them in CI. Signing keys and Worker credentials remain secret.
 .env
 .env.*
 !.env.example

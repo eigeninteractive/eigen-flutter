@@ -9,7 +9,7 @@
 /// deliberately does not contain: a Firebase project (`flutterfire configure`
 /// writes `firebase_options.dart`) and a deployed Eigen worker (see the RPS
 /// example Worker in `eigen-server/examples/rps`). Replace [_firebaseOptions]
-/// and `apiBaseUrl` below with yours.
+/// and fill `app-config.json` before running it.
 library;
 
 import 'package:eigen_flutter/eigen_flutter.dart';
@@ -19,7 +19,10 @@ import 'package:flutter/material.dart';
 
 import 'rps.dart';
 
+const _apiBaseUrl = String.fromEnvironment('API_BASE_URL');
+const _googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
 const _firebaseVapidKey = String.fromEnvironment('FIREBASE_VAPID_KEY');
+const _appHost = String.fromEnvironment('APP_HOST');
 
 Future<void> main() async {
   await runEngineApp(
@@ -31,14 +34,14 @@ Future<void> main() async {
         appName: 'Rock Paper Scissors',
         seedColor: Colors.teal,
       ),
-      engine: const EngineConfig(
+      engine: EngineConfig(
         // Origin only: every route already carries its `/api/engine` prefix,
         // and the game socket is this same origin with the scheme swapped to
-        // `wss`. In a real app these come from compile-time secrets (envied)
-        // rather than literals, which is what `EngineConfig` exists for.
-        apiBaseUrl: 'https://rps.example.com',
-        googleWebClientId: 'REPLACE_ME.apps.googleusercontent.com',
-        appHost: 'rps.example.com',
+        // `wss`. These public build-time values are injected once here rather
+        // than read throughout the framework.
+        apiBaseUrl: _apiBaseUrl,
+        googleWebClientId: _googleWebClientId,
+        appHost: _appHost.isEmpty ? null : _appHost,
         firebaseVapidKey: _firebaseVapidKey,
       ),
     ),
@@ -49,7 +52,7 @@ Future<void> main() async {
 
 /// Placeholder. Delete this and import the `DefaultFirebaseOptions` that
 /// `flutterfire configure` generates into `lib/firebase_options.dart` — a file
-/// that is app-specific and, like every other Firebase artifact, gitignored.
+/// that is app-specific and may be committed or reconstructed in CI.
 const _firebaseOptions = FirebaseOptions(
   apiKey: 'REPLACE_ME',
   appId: 'REPLACE_ME',

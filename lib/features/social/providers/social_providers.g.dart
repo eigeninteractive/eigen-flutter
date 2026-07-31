@@ -57,8 +57,8 @@ String _$socialRepositoryHash() => r'15c29990c79f1e77bbd76c340e675898cf60936e';
 
 /// The caller's accepted friends.
 ///
-/// Persisted: the friend list is stable, and rendering it from cache on cold
-/// start avoids a spinner on a screen that rarely changes between sessions.
+/// Native apps persist this stable list to avoid a cold-start spinner. Web
+/// keeps it only for the current browser session and refetches after reload.
 
 @ProviderFor(Friends)
 @JsonPersist()
@@ -66,15 +66,15 @@ final friendsProvider = FriendsProvider._();
 
 /// The caller's accepted friends.
 ///
-/// Persisted: the friend list is stable, and rendering it from cache on cold
-/// start avoids a spinner on a screen that rarely changes between sessions.
+/// Native apps persist this stable list to avoid a cold-start spinner. Web
+/// keeps it only for the current browser session and refetches after reload.
 @JsonPersist()
 final class FriendsProvider
     extends $AsyncNotifierProvider<Friends, List<Friend>> {
   /// The caller's accepted friends.
   ///
-  /// Persisted: the friend list is stable, and rendering it from cache on cold
-  /// start avoids a spinner on a screen that rarely changes between sessions.
+  /// Native apps persist this stable list to avoid a cold-start spinner. Web
+  /// keeps it only for the current browser session and refetches after reload.
   FriendsProvider._()
     : super(
         from: null,
@@ -94,12 +94,12 @@ final class FriendsProvider
   Friends create() => Friends();
 }
 
-String _$friendsHash() => r'e08415853469b641faabba84894df31de6943886';
+String _$friendsHash() => r'6a6805257e33660e4f5e74e02d0af8867359b6e8';
 
 /// The caller's accepted friends.
 ///
-/// Persisted: the friend list is stable, and rendering it from cache on cold
-/// start avoids a spinner on a screen that rarely changes between sessions.
+/// Native apps persist this stable list to avoid a cold-start spinner. Web
+/// keeps it only for the current browser session and refetches after reload.
 
 @JsonPersist()
 abstract class _$FriendsBase extends $AsyncNotifier<List<Friend>> {

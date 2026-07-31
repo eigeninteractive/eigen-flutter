@@ -8,20 +8,16 @@ part of 'storage_provider.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// Platform storage backend for persisted Riverpod providers.
+/// Native storage backend for persisted Riverpod API snapshots.
 ///
-/// Native apps use Riverpod's SQLite adapter; web uses browser LocalStorage
-/// through SharedPreferencesAsync. Both store the same JSON + expiry metadata
-/// behind Riverpod's Storage contract.
+/// Do not read this provider unless [persistentApiCacheEnabled] is true.
 
 @ProviderFor(storage)
 final storageProvider = StorageProvider._();
 
-/// Platform storage backend for persisted Riverpod providers.
+/// Native storage backend for persisted Riverpod API snapshots.
 ///
-/// Native apps use Riverpod's SQLite adapter; web uses browser LocalStorage
-/// through SharedPreferencesAsync. Both store the same JSON + expiry metadata
-/// behind Riverpod's Storage contract.
+/// Do not read this provider unless [persistentApiCacheEnabled] is true.
 
 final class StorageProvider
     extends
@@ -33,11 +29,9 @@ final class StorageProvider
     with
         $FutureModifier<Storage<String, String>>,
         $FutureProvider<Storage<String, String>> {
-  /// Platform storage backend for persisted Riverpod providers.
+  /// Native storage backend for persisted Riverpod API snapshots.
   ///
-  /// Native apps use Riverpod's SQLite adapter; web uses browser LocalStorage
-  /// through SharedPreferencesAsync. Both store the same JSON + expiry metadata
-  /// behind Riverpod's Storage contract.
+  /// Do not read this provider unless [persistentApiCacheEnabled] is true.
   StorageProvider._()
     : super(
         from: null,

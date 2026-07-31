@@ -20,8 +20,8 @@ SocialRepository socialRepository(Ref ref) {
 
 /// The caller's accepted friends.
 ///
-/// Persisted: the friend list is stable, and rendering it from cache on cold
-/// start avoids a spinner on a screen that rarely changes between sessions.
+/// Native apps persist this stable list to avoid a cold-start spinner. Web
+/// keeps it only for the current browser session and refetches after reload.
 @Riverpod(keepAlive: true)
 @JsonPersist()
 class Friends extends _$Friends {
@@ -34,17 +34,19 @@ class Friends extends _$Friends {
     final user = ref.watch(currentUserProvider);
     if (user == null) throw StateError('User not authenticated');
 
-    persist(
-      ref.watch(storageProvider.future),
-      key: friendshipsCacheKey(user.id),
-      options: const StorageOptions(
-        cacheTime: StorageCacheTime.unsafe_forever,
-        // Cache-schema version for the persisted list. Bumped to 2 when the
-        // hand-written Friendship was replaced by the generated Friend, whose
-        // shape carries the other user's identity rather than a pair of ids.
-        destroyKey: '2',
-      ),
-    );
+    if (persistentApiCacheEnabled) {
+      persist(
+        ref.watch(storageProvider.future),
+        key: friendshipsCacheKey(user.id),
+        options: const StorageOptions(
+          cacheTime: StorageCacheTime.unsafe_forever,
+          // Cache-schema version for the persisted list. Bumped to 2 when the
+          // hand-written Friendship was replaced by the generated Friend,
+          // whose shape carries the other user's identity rather than ids.
+          destroyKey: '2',
+        ),
+      );
+    }
 
     return ref.watch(socialRepositoryProvider).getFriends();
   }

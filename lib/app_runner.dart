@@ -35,13 +35,7 @@ Future<void> runEngineApp({
   required FirebaseOptions firebaseOptions,
   required Future<void> Function(RemoteMessage) onBackgroundMessage,
 }) async {
-  if (kIsWeb && config.engine.firebaseVapidKey.trim().isEmpty) {
-    throw StateError(
-      'FIREBASE_VAPID_KEY is required for Eigen web apps. '
-      'Generate a Web Push certificate in Firebase Console and pass its '
-      'public key with --dart-define=FIREBASE_VAPID_KEY=....',
-    );
-  }
+  config.engine.validate(isWeb: kIsWeb);
 
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   configureUrlStrategy();
