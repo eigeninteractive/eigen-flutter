@@ -1,0 +1,24 @@
+version: 2
+
+# Keeps the pinned GitHub Actions current. Without this they silently drift:
+# major tags like `actions/checkout@v7` float across patches but never across
+# majors, so a workflow keeps working while falling years behind — which is
+# exactly how this repo ended up on `pnpm/action-setup@v4` after the workspace
+# moved to pnpm 11 (v6 is where pnpm 11 support landed).
+#
+# Grouped into one pull request and run monthly: action majors are infrequent
+# and reviewing seven separate bumps is worse than reviewing one.
+#
+# npm/pub dependencies are deliberately NOT managed here. Those are pinned by
+# lockfiles the release pipeline validates, and a bot bumping them competes with
+# Changesets over what a release means.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"

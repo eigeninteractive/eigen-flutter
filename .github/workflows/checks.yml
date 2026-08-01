@@ -1,0 +1,147 @@
+name: Checks
+
+# The single definition of "is this commit good?", invoked three ways:
+#
+#   - on every pull request;
+#   - on every push to `main`;
+#   - by `release.yml` via `workflow_call`, so a tagged commit clears exactly
+#     the same bar before anything reaches pub.dev.
+#
+# Unlike eigen-server, the `push: [main]` trigger is NOT redundant here.
+# Releases are tag-triggered rather than main-triggered, so without it a merge
+# to `main` would go unverified until someone cut a tag.
+#
+# `workflow_call` re-executes these jobs rather than reusing an earlier result —
+# a tag can point at any commit, so the run gating a publish has to be against
+# the tagged tree.
+#
+# Validates the Flutter/Dart engine package in isolation so `main` stays green
+# for the apps that depend on it. No secrets needed — the engine reads no
+# env/Firebase config itself (apps inject runtime config via EngineConfig).
+# The server it talks to is validated in the eigen-server repo's own CI.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_call:
+
+# A pull request's run is superseded freely; a run gating a release is not.
+# Keyed on the SHA rather than the ref so a called run never shares a group
+# with release.yml's own.
+concurrency:
+  group: checks-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: .fvmrc
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # Hand-written source only. `dart format` has no exclude flag, and
+      # `build_runner` output does not always survive it — so listing the
+      # files keeps the check on hand-written sources only — the committed
+      # generated code is already formatted by its builders and is verified
+      # instead by the build_runner + git-diff drift guard below.
+      - name: Check formatting
+        run: >
+          dart format --output=none --set-exit-if-changed
+          $(git ls-files '*.dart' ':!:**/*.g.dart' ':!:**/*.freezed.dart')
+
+      - name: Generate code
+        run: dart run build_runner build
+
+      - name: Apply fixes
+        run: dart fix --apply
+
+      - name: Check no pending fixes
+        run: git diff --exit-code
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Check API documentation
+        run: dart doc --dry-run .
+
+      - name: Test
+        run: flutter test
+
+  # The RPS example is its own package with its own resolution, so the job
+  # above does not reach it. It is also the only place the framework is
+  # exercised the way a real game uses it — through the barrel, against a
+  # hand-built GameContentContext — and its twin fixtures are the Dart half of
+  # a contract the server's CI checks from the other side.
+  example:
+    name: Example (RPS / ${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [tests, web]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: .fvmrc
+          channel: stable
+          cache: true
+
+      # The example resolves `eigen_flutter` by path, so the framework's own
+      # generated code has to exist before anything here can analyze.
+      - name: Install dependencies
+        run: |
+          flutter pub get
+          dart run build_runner build --delete-conflicting-outputs
+          flutter pub get --directory example
+
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed .
+        working-directory: example
+
+      - name: Analyze
+        run: flutter analyze
+        working-directory: example
+
+      # Exercise behavior selected only by a browser compilation.
+      - name: Test browser integrations
+        if: matrix.target == 'web'
+        run: >
+          flutter test --platform chrome
+          test/core/api/game_socket_test.dart
+
+      # A VM widget test can pass while a dependency still imports dart:io or
+      # calls an unsupported plugin. Compile the real app entrypoint and its
+      # service-worker/bootstrap assets as a release web app on every change.
+      - name: Build web
+        if: matrix.target == 'web'
+        run: >
+          flutter build web --release
+          --dart-define-from-file=app-config.json
+        working-directory: example
+
+      - name: Check packaged Cropper.js assets
+        if: matrix.target == 'web'
+        run: >
+          test -f
+          build/web/assets/packages/eigen_flutter/assets/vendor/cropperjs/cropper.min.js
+        working-directory: example
+
+      - name: Test
+        if: matrix.target == 'tests'
+        run: flutter test
+        working-directory: example

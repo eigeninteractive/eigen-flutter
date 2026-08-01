@@ -1,0 +1,91 @@
+name: Release
+
+# Publishes `eigen_flutter` to pub.dev on a version tag.
+#
+#   cider bump minor && cider release   # updates CHANGELOG.md + pubspec version
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# Tag-triggered rather than push-triggered because that is what pub.dev's
+# automated publishing requires: it trusts a GitHub OIDC token only when the
+# token's ref is a TAG matching the pattern configured on the package. Configure
+# it once at Admin → Automated publishing with repository
+# `eigeninteractive/eigen-flutter` and tag pattern `v{{version}}`. No pub
+# credential is stored in GitHub secrets at all — the OIDC identity IS the
+# authentication.
+#
+# One package. `eigen_api` — the generated REST client — is published by the
+# ENGINE repo (eigen-server/clients/dart), because that is where the wire
+# contract lives. This package consumes it as an ordinary versioned dependency,
+# so routine releases are independent. For the first publication only,
+# `eigen_api` must already exist on pub.dev so this package can resolve its
+# declared dependency without the local development override.
+#
+# Generated code (`*.g.dart`, `*.freezed.dart`) is committed, so the tarball
+# compiles for consumers and publishing needs no `.pubignore` — `dart pub
+# publish` falls back to `.gitignore`, which excludes build output and
+# credentials while keeping the generated sources. `checks.yml` proves that
+# committed output is current, so nothing is regenerated below.
+on:
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # Required for pub.dev's OIDC-based automated publishing.
+  id-token: write
+
+jobs:
+  # The same gate every pull request clears, re-run against the tagged commit.
+  # A tag can point at any commit, so this is a fresh execution rather than a
+  # lookup of whatever the branch run concluded. Sharing the definition — not
+  # re-typing format/analyze/test here — is the point: a check added to
+  # checks.yml automatically guards releases too.
+  gate:
+    name: Checks
+    uses: ./.github/workflows/checks.yml
+
+  publish:
+    name: Publish to pub.dev
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: .fvmrc
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Tag matches pubspec version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg=$(grep -m1 '^version:' pubspec.yaml | awk '{print $2}')
+          [ "$tag" = "$pkg" ] || {
+            echo "::error::tag v$tag does not match pubspec version $pkg"; exit 1; }
+
+      # The published package must resolve against the REAL eigen_api on
+      # pub.dev, not the local checkout `dependency_overrides` points at. A
+      # publish that silently used the override would ship a package whose
+      # constraint has never been tested.
+      - name: No dependency overrides in the published manifest
+        run: |
+          grep -q '^dependency_overrides:' pubspec.yaml && {
+            echo "::error file=pubspec.yaml::dependency_overrides is still active. Remove it before tagging a release."; exit 1; }
+          exit 0
+
+      # Surfaces score-affecting problems (missing docs, unresolved links,
+      # platform support) before they are permanent — pub.dev versions cannot be
+      # unpublished, only retracted.
+      - name: Dry run
+        run: dart pub publish --dry-run
+
+      - name: Publish
+        run: dart pub publish --force
