@@ -1,0 +1,69 @@
+name: Tag
+
+# Turns a merged release pull request into the tag that publishes it.
+#
+# The tag is not a convention here, it is the mechanism: pub.dev's automated
+# publishing trusts a GitHub OIDC token only when the token's ref is a TAG
+# matching the pattern configured on the package. `release.yml` therefore
+# cannot run on a branch push, and something has to create the tag. Doing it
+# here rather than by hand removes the one release step with no safety net —
+# a mistyped or forgotten tag.
+#
+# Deliberately keyed on the FILE rather than on the pull request that changed
+# it. The version in pubspec.yaml is the fact; how it got there does not
+# matter, so a hand-edited bump releases exactly like a dispatched one and
+# there is no second path to keep working.
+#
+# The tag must be pushed with the App token. A tag pushed by GITHUB_TOKEN does
+# not trigger further workflow runs, so `release.yml` would never fire and the
+# release would stall silently.
+on:
+  push:
+    branches: [main]
+    paths: [pubspec.yaml]
+
+concurrency:
+  group: tag
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  tag:
+    name: Tag the released version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write # push the tag
+
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          # Tags are the state this job reads. Without them every run would
+          # think nothing had ever been released.
+          fetch-depth: 0
+
+      # pubspec.yaml also changes for ordinary dependency edits — an `eigen_api`
+      # constraint bump, say. Those leave `version:` alone, the tag already
+      # exists, and this exits cleanly. Being idempotent is what lets the
+      # trigger stay this simple.
+      - name: Tag if this version is new
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          v=$(grep -m1 '^version:' pubspec.yaml | awk '{print $2}')
+          [ -n "$v" ] || { echo "::error file=pubspec.yaml::no version: line"; exit 1; }
+
+          if git rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
+            echo "v$v is already tagged — nothing to release."
+            exit 0
+          fi
+
+          echo "Tagging v$v; release.yml will publish it."
+          git tag "v$v"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "v$v"

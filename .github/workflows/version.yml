@@ -1,0 +1,105 @@
+name: Version
+
+# Opens the release pull request. Run it from Actions → Version → Run workflow,
+# or `gh workflow run version.yml -f bump=minor`.
+#
+# This is the only manual decision in a release: which bump. Everything after it
+# is automatic — merging the pull request this opens tags the commit
+# (`tag.yml`), and the tag publishes to pub.dev (`release.yml`).
+#
+# `cider` owns the arithmetic and the changelog. Contributors have already
+# written the consumer-facing lines with `cider log` during their own pull
+# requests, so `cider release` only dates and links the accumulated `Unreleased`
+# section. Nothing here composes prose from commit messages.
+#
+# Each run starts from a fresh `main`, so bumps never compound: dispatching
+# `patch` twice without merging produces 0.1.1 both times, not 0.1.2.
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Which part of the version to raise
+        required: true
+        type: choice
+        options:
+          # `breaking` rather than `major` while pre-1.0: it advances 0.1.x to
+          # 0.2.0, which is what a consumer's `^0.1.0` constraint actually
+          # protects against. `major` would claim 1.0.0 and a stability
+          # milestone this package has not made.
+          - patch
+          - minor
+          - breaking
+
+concurrency:
+  group: version
+  cancel-in-progress: false
+
+# The App token below carries every permission this needs. GITHUB_TOKEN gets
+# none: a pull request it opened would receive no checks, and `main` requires
+# them.
+permissions: {}
+
+jobs:
+  version:
+    name: Open the release pull request
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write # push the release branch
+          permission-pull-requests: write # open the release pull request
+
+      - uses: actions/checkout@v7
+        with:
+          # Persisted deliberately, unlike everywhere else: the push below uses
+          # it. It is the App's short-lived token, not GITHUB_TOKEN.
+          token: ${{ steps.app-token.outputs.token }}
+
+      # cider only rewrites pubspec.yaml and CHANGELOG.md, so this needs Dart
+      # rather than the whole Flutter SDK. The pull request it opens is what
+      # runs the real gate.
+      - uses: dart-lang/setup-dart@v1
+
+      - name: Install cider
+        run: |
+          dart pub global activate cider
+          echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
+
+      - name: Bump the version and close the changelog section
+        id: bump
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          cider bump "$BUMP"
+          cider release
+          echo "version=$(cider version)" >> "$GITHUB_OUTPUT"
+
+      - name: Open the release pull request
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BUMP: ${{ inputs.bump }}
+          V: ${{ steps.bump.outputs.version }}
+        run: |
+          git config user.name "eigen-release[bot]"
+          git config user.email "eigen-release[bot]@users.noreply.github.com"
+
+          # -C and --force so re-dispatching the same bump refreshes an open
+          # pull request instead of failing on an existing branch.
+          git switch -C "release/v$V"
+          git commit -am "Release v$V"
+          git push --force -u origin "release/v$V"
+
+          gh pr view "release/v$V" >/dev/null 2>&1 && {
+            echo "Refreshed the existing pull request for v$V."; exit 0; }
+
+          body="Raises \`eigen_flutter\` to **v$V** (\`$BUMP\`) and dates the changelog section.
+
+          Merging this tags \`v$V\`, which publishes to pub.dev. Published versions
+          cannot be unpublished — only retracted — so read the changelog diff before
+          merging."
+
+          gh pr create --base main --title "Release v$V" --body "$body"
