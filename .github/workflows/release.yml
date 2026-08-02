@@ -7,18 +7,15 @@ name: Release
 #
 # Tag-triggered rather than push-triggered because that is what pub.dev's
 # automated publishing requires: it trusts a GitHub OIDC token only when the
-# token's ref is a TAG matching the pattern configured on the package. Configure
-# it once at Admin → Automated publishing with repository
-# `eigeninteractive/eigen-flutter` and tag pattern `v{{version}}`. No pub
-# credential is stored in GitHub secrets at all — the OIDC identity IS the
-# authentication.
+# token's ref is a TAG matching the pattern configured on the package — set at
+# Admin → Automated publishing to repository `eigeninteractive/eigen-flutter`,
+# tag pattern `v{{version}}`. No pub credential is stored in GitHub secrets at
+# all — the OIDC identity IS the authentication.
 #
 # One package. `eigen_api` — the generated REST client — is published by the
 # ENGINE repo (eigen-server/clients/dart), because that is where the wire
 # contract lives. This package consumes it as an ordinary versioned dependency,
-# so routine releases are independent. For the first publication only,
-# `eigen_api` must already exist on pub.dev so this package can resolve its
-# declared dependency without the local development override.
+# so the two release independently.
 #
 # Generated code (`*.g.dart`, `*.freezed.dart`) is committed, so the tarball
 # compiles for consumers and publishing needs no `.pubignore` — `dart pub
