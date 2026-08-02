@@ -78,11 +78,33 @@ jobs:
             echo "::error file=pubspec.yaml::dependency_overrides is still active. Remove it before tagging a release."; exit 1; }
           exit 0
 
+      # Makes the pipeline idempotent. `dart pub publish` fails on a version
+      # that already exists, which turns every harmless re-run — a retried job,
+      # a re-pushed tag, a version published by hand before this automation
+      # existed — into a red release someone has to explain.
+      #
+      # Checking first turns those into a clean skip, and keeps the state that
+      # matters (what is on pub.dev) authoritative over the state that does not
+      # (which refs happen to exist in this repository).
+      - name: Is this version already on pub.dev?
+        id: published
+        run: |
+          v=$(grep -m1 '^version:' pubspec.yaml | awk '{print $2}')
+          if curl -sf https://pub.dev/api/packages/eigen_flutter \
+               | jq -e --arg v "$v" '.versions[] | select(.version == $v)' >/dev/null; then
+            echo "::notice::eigen_flutter $v is already on pub.dev — skipping publish."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # Surfaces score-affecting problems (missing docs, unresolved links,
       # platform support) before they are permanent — pub.dev versions cannot be
       # unpublished, only retracted.
       - name: Dry run
+        if: steps.published.outputs.skip == 'false'
         run: dart pub publish --dry-run
 
       - name: Publish
+        if: steps.published.outputs.skip == 'false'
         run: dart pub publish --force

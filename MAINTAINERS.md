@@ -44,65 +44,80 @@ credential exists in repository secrets — the OIDC identity is the
 authentication, and the workflow needs `permissions.id-token: write` to obtain
 it.
 
-## Preparing a routine release
+The release workflows do need the **eigen-release** GitHub App, which is
+installed across the organisation. Two values must resolve in this repository,
+either set here or inherited from the organisation:
 
-Contributors maintain the `Unreleased` changelog section with `cider log`.
-Review those entries and choose the package bump:
+| | |
+|---|---|
+| `vars.RELEASE_APP_CLIENT_ID` | the App's client ID (`Iv23…`), not the deprecated App ID |
+| `secrets.RELEASE_APP_PRIVATE_KEY` | the App's PEM private key |
 
-```bash
-cider bump patch       # compatible correction or addition
-cider bump breaking    # breaking change while pre-1.0
-cider release          # date and link the Unreleased section
-```
+Organisation level is preferable: `eigen-server` needs the same pair, and one
+copy means one place to rotate the key.
 
-While pre-1.0, use `cider bump breaking`, not `major`, for a breaking release.
-It advances `0.1.x` to `0.2.0`, which matches the protection provided by a
-consumer's `^0.1.0` constraint. `major` would jump to `1.0.0` and claim a
-stability milestone.
+## Releasing
 
-Review the resulting `pubspec.yaml` and `CHANGELOG.md`, then run:
+Releasing is one decision — which bump — and one review. There are no local
+commands, and nothing to remember to run afterwards.
 
-```bash
-flutter pub get
-dart run build_runner build
-dart format --output=none --set-exit-if-changed \
-  $(git ls-files '*.dart' ':!:**/*.g.dart' ':!:**/*.freezed.dart')
-flutter analyze
-flutter test
-(cd example && flutter pub get && flutter analyze && flutter test)
-dart doc --dry-run .
-dart pub publish --dry-run
-```
+1. **Dispatch the bump.** Actions → **Version** → Run workflow, or:
 
-The release must resolve the published `eigen_api`, not a sibling checkout.
-Remove any local `pubspec_overrides.yaml` before this validation even though it
-is gitignored.
+   ```bash
+   gh workflow run version.yml -f bump=minor
+   ```
 
-Commit the version and changelog:
+   `version.yml` runs `cider bump` and `cider release` on a fresh `main` and
+   opens a **Release vX.Y.Z** pull request. Because each run starts from
+   `main`, dispatching twice cannot compound bumps.
 
-```bash
-git add pubspec.yaml CHANGELOG.md
-git commit -m "Release $(cider version)"
-git push origin HEAD
-```
+2. **Review and merge it.** The pull request is the release decision, and the
+   last reversible moment: pub.dev versions cannot be unpublished, only
+   retracted. Read the dated `CHANGELOG.md` section as a consumer would, and
+   confirm the bump matches what actually changed.
 
-Merge the release commit to `main` before tagging it.
+3. **Everything after that is automatic.** `tag.yml` sees `version:` change on
+   `main` and pushes `vX.Y.Z`; the tag triggers `release.yml`, which reruns the
+   full gate against the tag, verifies the tag matches the pubspec, and
+   publishes with pub.dev OIDC.
 
-## Publishing
+Choose the bump with a consumer's `^0.1.0` constraint in mind:
 
-Create a tag matching the version in `pubspec.yaml` and push that exact tag:
+| Bump | Effect pre-1.0 | Use for |
+|---|---|---|
+| `patch` | `0.1.0` → `0.1.1` | compatible correction or addition |
+| `minor` | `0.1.0` → `0.2.0` | substantial compatible work |
+| `breaking` | `0.1.0` → `0.2.0` | anything a consumer must react to |
 
-```bash
-git tag "v$(cider version)"
-git push origin "v$(cider version)"
-```
+`breaking` rather than `major` while pre-1.0: it advances the minor position,
+which is exactly what `^0.1.0` protects against. `major` would jump to `1.0.0`
+and claim a stability milestone this package has not made. The dropdown offers
+no `major` for that reason.
 
-`.github/workflows/release.yml` checks out the tag, reruns generation, analysis,
-Dartdoc, tests, and `dart pub publish --dry-run`, verifies the tag/version
-match, and publishes using pub.dev OIDC.
+Contributors maintain the `Unreleased` section with `cider log` as they work,
+so `cider release` only dates and links what is already written. The changelog
+is never generated from commit messages.
 
 Generated source remains committed and ships in the package. Consumers never
 need this repository's builders to use `eigen_flutter`.
+
+### Why a tag, and why the App token
+
+pub.dev's automated publishing trusts a GitHub OIDC token only when its ref is
+a **tag** matching the configured pattern, so publication cannot run on a
+branch push and something must create the tag. `tag.yml` keys on `pubspec.yaml`
+changing on `main` rather than on the release pull request merging — the
+version in the file is the fact, and how it got there does not matter, so a
+hand-edited bump releases identically and there is no second path to maintain.
+
+Both workflows push using the **eigen-release** App token rather than
+`GITHUB_TOKEN`. A tag pushed by `GITHUB_TOKEN` does not trigger further
+workflow runs, so `release.yml` would never fire and the release would stall
+with no error anywhere. The same suppression is why the release pull request
+needs the App to receive its required checks.
+
+`release.yml` skips publication when the version is already on pub.dev, so a
+retried job or a re-pushed tag is harmless rather than a red release.
 
 ## Dart API documentation
 
@@ -140,12 +155,16 @@ After publication:
 
 ## Failure recovery
 
-- **A check fails before publication:** fix the source and create a new tag on
-  the corrected commit. Never move a published tag silently.
-- **The workflow fails before `dart pub publish`:** delete the unpublished bad
-  tag, correct the release commit, and create the same version tag again.
+- **The gate fails on the release pull request:** fix it on the branch like any
+  other pull request. Nothing has been tagged or published yet.
+- **`release.yml` fails after the tag exists, before `dart pub publish`:** fix
+  the cause on `main`, delete the tag, and re-push it at the corrected commit.
+  Re-running the failed run also works once `main` is right, because the tag is
+  what the workflow checks out. Never move a tag whose version reached pub.dev.
 - **The version was published:** never reuse it. Correct the problem, add a
-  changelog entry, and publish a new patch or breaking version as appropriate.
+  changelog entry, and dispatch a new `patch` or `breaking` release.
+  Re-triggering the published version is safe but does nothing — `release.yml`
+  detects it on pub.dev and skips.
 - **A harmful version shipped:** use pub.dev retraction, communicate the
   affected range, and publish the replacement. Published versions cannot be
   overwritten.
