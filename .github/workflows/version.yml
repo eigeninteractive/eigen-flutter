@@ -93,8 +93,19 @@ jobs:
           git commit -am "Release v$V"
           git push --force -u origin "release/v$V"
 
-          gh pr view "release/v$V" >/dev/null 2>&1 && {
-            echo "Refreshed the existing pull request for v$V."; exit 0; }
+          # Only an OPEN pull request is one to refresh. `gh pr view` matches by
+          # branch and answers for closed and merged ones too, so testing mere
+          # existence made a re-dispatch after a CLOSED release pull request
+          # report success and create nothing: the branch updated, and there was
+          # no pull request to merge. That is the exact recovery path taken when
+          # a release pull request came out wrong, so it failed at the one moment
+          # it was needed — and reported "Refreshed" while doing it.
+          state=$(gh pr view "release/v$V" --json state --jq .state 2>/dev/null || echo NONE)
+          if [ "$state" = "OPEN" ]; then
+            echo "Refreshed the existing pull request for v$V."
+            exit 0
+          fi
+          [ "$state" = "NONE" ] || echo "The previous pull request for v$V is $state — opening a new one."
 
           body="Raises \`eigen_flutter\` to **v$V** (\`$BUMP\`) and dates the changelog section.
 
