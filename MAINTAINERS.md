@@ -188,8 +188,14 @@ After publication:
   other pull request. Nothing has been tagged or published yet.
 - **`release.yml` fails after the tag exists, before `dart pub publish`:** fix
   the cause on `main`, delete the tag, and re-push it at the corrected commit.
-  Re-running the failed run also works once `main` is right, because the tag is
-  what the workflow checks out. Never move a tag whose version reached pub.dev.
+
+  Do **not** expect re-running the failed run to pick the fix up. A
+  tag-triggered run uses the workflow definition **at the tag**, not the one on
+  `main`, so re-running replays the same broken file — and if the fault is in
+  `release.yml` itself, it will keep replaying it. Deleting and re-tagging is
+  the only recovery that reloads the workflow. (This is safe here precisely
+  because the version has not been published; never move a tag whose version
+  reached pub.dev.)
 - **The version was published:** never reuse it. Correct the problem, add a
   changelog entry, and dispatch a new `patch` or `breaking` release.
   Re-triggering the published version is safe but does nothing — `release.yml`

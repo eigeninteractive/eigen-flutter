@@ -98,6 +98,40 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # `permissions.id-token: write` above only makes an OIDC token
+      # OBTAINABLE. Something still has to exchange it for a pub credential,
+      # and nothing here did.
+      #
+      # `dart-lang/setup-dart` does this exchange for you, which is why the
+      # pub.dev instructions never mention it — but this job installs the SDK
+      # through `subosito/flutter-action`, because publishing a Flutter package
+      # needs the Flutter SDK, and that action has no equivalent step.
+      #
+      # The failure mode is unusually bad: `dart pub publish` finds no
+      # credential, falls back to INTERACTIVE OAuth, prints an
+      # accounts.google.com URL, and blocks on "Waiting for your
+      # authorization..." until the job times out. It does not fail fast, and
+      # nothing in the output says the word "OIDC".
+      #
+      # This is exactly what setup-dart does internally: mint a token for the
+      # https://pub.dev audience, then point pub's credential store at it.
+      - name: Authenticate to pub.dev with this workflow's OIDC identity
+        if: steps.published.outputs.skip == 'false'
+        run: |
+          PUB_TOKEN=$(curl --retry 5 --retry-connrefused -sLS \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=https://pub.dev" \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" | jq -r '.value')
+
+          [ -n "$PUB_TOKEN" ] && [ "$PUB_TOKEN" != "null" ] || {
+            echo "::error::could not mint an OIDC token for pub.dev — publishing would fall back to an interactive prompt and hang"
+            exit 1
+          }
+
+          echo "::add-mask::$PUB_TOKEN"
+          echo "PUB_TOKEN=$PUB_TOKEN" >> "$GITHUB_ENV"
+          export PUB_TOKEN
+          dart pub token add https://pub.dev --env-var PUB_TOKEN
+
       # Surfaces score-affecting problems (missing docs, unresolved links,
       # platform support) before they are permanent — pub.dev versions cannot be
       # unpublished, only retracted.
