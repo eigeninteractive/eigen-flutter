@@ -14,7 +14,7 @@ Pre-1.0, breaking changes land in a **MINOR** bump: `^0.1.0` resolves to
 [Versions and compatibility](https://eigeninteractive.com/docs/reference/compatibility)
 for how this package, the engine and the generated `eigen_api` client pair up.
 
-## [Unreleased]
+## [0.2.0] - 2026-08-03
 ### Changed
 - `eigen_api` moved to `^0.2.0`, following the engine to its 0.2.x release line.
 No Dart API changed — the 0.2.0 spec is byte-identical to 0.1.0's apart from
@@ -93,5 +93,5 @@ server-side concern now live in the engine.
 - `google_fonts`, which fetched Inter at runtime — replaced by the bundled
 package font above.
 
-[Unreleased]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.1.0...HEAD
+[0.2.0]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.1.0...v0.2.0
 [0.1.0]: https://pub.dev/packages/eigen_flutter/versions/0.1.0
