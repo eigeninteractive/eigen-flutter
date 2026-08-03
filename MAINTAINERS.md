@@ -116,8 +116,20 @@ workflow runs, so `release.yml` would never fire and the release would stall
 with no error anywhere. The same suppression is why the release pull request
 needs the App to receive its required checks.
 
-`release.yml` skips publication when the version is already on pub.dev, so a
-retried job or a re-pushed tag is harmless rather than a red release.
+**Both workflows treat pub.dev as the authority on what has been released**, and
+neither trusts the local tags for it. `release.yml` skips publication when the
+version is already published, so a retried job or a re-pushed tag is harmless
+rather than a red release. `tag.yml` applies the same test before creating a tag
+at all.
+
+That second check exists because the first release predates this automation.
+`eigen_flutter 0.1.0` was published by hand and never tagged, so "no tag" meant
+"unreleased" only by accident — and the first `pubspec.yaml` edit afterwards, an
+`eigen_api` constraint bump that left `version:` alone, duly tagged an unrelated
+commit as `v0.1.0`. Nothing was published, because the skip above held, but the
+tag described a tree that never shipped and had to be deleted. A tag that cannot
+be trusted to mean what it says is worse than no tag: every later `vX...vY` diff
+inherits the error silently.
 
 ## Dart API documentation
 
