@@ -17,8 +17,19 @@ for how this package, the engine and the generated `eigen_api` client pair up.
 
 ## [Unreleased]
 
-Initial release. Nothing has been published to pub.dev yet, so the entries below
-describe the starting state rather than changes from a previous version.
+### Changed
+
+- `eigen_api` moved to `^0.2.0`, following the engine to its 0.2.x release line.
+  No Dart API changed — the 0.2.0 spec is byte-identical to 0.1.0's apart from
+  the version stamp, and 0.2.0 of the engine was a TypeScript-side cleanup — but
+  a consumer cannot depend on this package and `eigen_api 0.2.0` at the same
+  time until this ships, so it is a breaking change to the constraint rather
+  than a patch.
+
+## [0.1.0] - 2026-08-02
+
+Initial release. The entries below describe the starting state rather than
+changes from a previous version.
 
 ### Added
 
