@@ -64,7 +64,7 @@ dependencies:
   # Pre-1.0 that resolves to `>=0.1.0 <0.2.0`: the engine announces breakage in
   # the MINOR position, so 0.2.0 is the release that needs a deliberate bump
   # here. See https://eigeninteractive.com/docs/reference/compatibility.
-  eigen_api: ^0.1.0
+  eigen_api: ^0.2.0
   dio: ^5.10.0
   dio_smart_retry: ^7.0.1
   firebase_auth: ^6.5.6
