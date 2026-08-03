@@ -1,5 +1,4 @@
 # Changelog
-
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
@@ -15,88 +14,84 @@ Pre-1.0, breaking changes land in a **MINOR** bump: `^0.1.0` resolves to
 [Versions and compatibility](https://eigeninteractive.com/docs/reference/compatibility)
 for how this package, the engine and the generated `eigen_api` client pair up.
 
-## [Unreleased]
-
+## \[Unreleased\]
 ### Changed
-
 - `eigen_api` moved to `^0.2.0`, following the engine to its 0.2.x release line.
-  No Dart API changed — the 0.2.0 spec is byte-identical to 0.1.0's apart from
-  the version stamp, and 0.2.0 of the engine was a TypeScript-side cleanup — but
-  a consumer cannot depend on this package and `eigen_api 0.2.0` at the same
-  time until this ships, so it is a breaking change to the constraint rather
-  than a patch.
+No Dart API changed — the 0.2.0 spec is byte-identical to 0.1.0's apart from
+the version stamp, and 0.2.0 of the engine was a TypeScript-side cleanup — but
+a consumer cannot depend on this package and `eigen_api 0.2.0` at the same
+time until this ships, so it is a breaking change to the constraint rather
+than a patch.
 
-## [0.1.0] - 2026-08-02
-
+## \[0.1.0\] - 2026-08-02
 Initial release. The entries below describe the starting state rather than
 changes from a previous version.
 
 ### Added
-
 - `configure_firebase`, which runs FlutterFire and generates the messaging
-  service worker's public Web configuration from the selected Firebase app.
+service worker's public Web configuration from the selected Firebase app.
 - `runEngineApp(...)` entry point, with `AppConfig` / `EngineConfig` / `Branding`
-  as the composition-root config. The framework reads every runtime value from
-  `EngineConfig` and never from the app's `Env`, so this package needs no
-  Firebase project or `.env` of its own.
+as the composition-root config. The framework reads every runtime value from
+`EngineConfig` and never from the app's `Env`, so this package needs no
+Firebase project or `.env` of its own.
 - `Branding.madeByCredit`, so the settings footer credit is configurable.
 - The `GameModule` / `GameRules` contract: a game supplies one rules unit per
-  `schemaVersion`, and the framework dispatches on the version a game was
-  created at.
+`schemaVersion`, and the framework dispatches on the version a game was
+created at.
 - Client-side optimistic preview (`previewAction`) and cue-aware rendering
-  against the engine's append-only observation history.
+against the engine's append-only observation history.
 - Generated wire enums preserve values introduced by a newer server as an
-  `unknownDefaultOpenApi` sentinel instead of failing response decoding. Known
-  values retain their specific UI; unknown values degrade to generic UI when
-  safe, while gameplay-critical values block only the affected surface and
-  offer a native Play update on Android or a browser reload on web.
+`unknownDefaultOpenApi` sentinel instead of failing response decoding. Known
+values retain their specific UI; unknown values degrade to generic UI when
+safe, while gameplay-critical values block only the affected surface and
+offer a native Play update on Android or a browser reload on web.
 - Firebase auth (Google + guest), FCM push, Crashlytics and Analytics wiring.
-  Auth and notification capability share one required Firebase project; the
-  player permission prompt remains an explicit opt-in and delivery remains
-  best-effort.
+Auth and notification capability share one required Firebase project; the
+player permission prompt remains an explicit opt-in and delivery remains
+best-effort.
 - Avatar upload and display against the worker-served avatar URL, via
-  `cached_network_image`.
+`cached_network_image`.
 - Rock–Paper–Scissors under `example/` — a complete game, and the worked answer
-  to "how do I test a game screen". Its `fixtures/v1/rps.json` is the Dart half
-  of a twin-fixture contract the engine repo checks from the other side.
+to "how do I test a game screen". Its `fixtures/v1/rps.json` is the Dart half
+of a twin-fixture contract the engine repo checks from the other side.
 - **Inter** bundled as a package font (all 9 weights under `fonts:`), so
-  consuming apps get it automatically and it renders offline from the first
-  frame. `AppTheme` references `packages/eigen_flutter/Inter`.
+consuming apps get it automatically and it renders offline from the first
+frame. `AppTheme` references `packages/eigen_flutter/Inter`.
 
 ### Changed
-
 - Public app deployment values now use Dart compilation environment
-  declarations and one cross-platform `app-config.json`; startup reports
-  missing or malformed required values before initializing engine services.
+declarations and one cross-platform `app-config.json`; startup reports
+missing or malformed required values before initializing engine services.
 - Persisted Riverpod API snapshots are native-only. Web keeps provider data for
-  the browser session and refetches after reload, while preferences, Firebase
-  Auth, and notification bookkeeping retain their own browser persistence.
+the browser session and refetches after reload, while preferences, Firebase
+Auth, and notification bookkeeping retain their own browser persistence.
 - FCM registration now uses Firebase Installation IDs end-to-end. Web calls
-  Firebase's current `register` API through a narrow compatibility adapter;
-  Android uses native FID auto-registration configured by the package's Android
-  plugin, so consuming apps do not edit their generated manifest or Gradle
-  properties. The app no longer requests, refreshes, or persists deprecated
-  registration tokens.
+Firebase's current `register` API through a narrow compatibility adapter;
+Android uses native FID auto-registration configured by the package's Android
+plugin, so consuming apps do not edit their generated manifest or Gradle
+properties. The app no longer requests, refreshes, or persists deprecated
+registration tokens.
 - Notification opt-in is a contextual non-modal card for seated multiplayer
-  players. The platform permission state drives the UI directly; blocked users
-  get an explicit Settings recovery path.
+players. The platform permission state drives the UI directly; blocked users
+get an explicit Settings recovery path.
 - **The backend is the Eigen engine on Cloudflare Workers, not Supabase.** The
-  data layer talks to the Worker over REST and WebSocket; the transport half is
-  the generated `eigen_api` client, published from the engine repo at the
-  engine's own version and consumed here as an ordinary versioned dependency.
-  There is no vendored OpenAPI spec and no local codegen for it.
+data layer talks to the Worker over REST and WebSocket; the transport half is
+the generated `eigen_api` client, published from the engine repo at the
+engine's own version and consumed here as an ordinary versioned dependency.
+There is no vendored OpenAPI spec and no local codegen for it.
 - Riverpod toolchain moved to the 3.3.2 line (`flutter_riverpod ^3.3.2`,
-  `riverpod_annotation ^4.0.3`, `riverpod_generator ^4.0.4`, `riverpod_lint
-  ^3.1.4`, `riverpod_sqflite ^0.4.3`) so the engine resolves the same riverpod
-  core consuming apps do — generated code must be built against the core the app
-  compiles against, and riverpod 3.3.x changed `Notifier.runBuild`'s signature.
+`riverpod_annotation ^4.0.3`, `riverpod_generator ^4.0.4`, `riverpod_lint ^3.1.4`, `riverpod_sqflite ^0.4.3`) so the engine resolves the same riverpod
+core consuming apps do — generated code must be built against the core the app
+compiles against, and riverpod 3.3.x changed `Notifier.runBuild`'s signature.
 
 ### Removed
-
 - The Supabase stack in full: `supabase_flutter`, the vendored
-  `supabase/{migrations,functions,seed.sql,config.toml}`, the `sync_supabase`
-  CLI that copied it into consuming apps, and the `update-ratings` /
-  `refresh-fcm-token` edge functions. Ratings, notifications and every other
-  server-side concern now live in the engine.
+`supabase/{migrations,functions,seed.sql,config.toml}`, the `sync_supabase`
+CLI that copied it into consuming apps, and the `update-ratings` /
+`refresh-fcm-token` edge functions. Ratings, notifications and every other
+server-side concern now live in the engine.
 - `google_fonts`, which fetched Inter at runtime — replaced by the bundled
-  package font above.
+package font above.
+
+## [0.2.0] - 2026-08-03
+[0.2.0]: https://github.com/eigeninteractive/eigen-flutter/releases/tag/v0.2.0
