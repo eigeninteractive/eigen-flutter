@@ -49,18 +49,44 @@ jobs:
           fetch-depth: 0
 
       # pubspec.yaml also changes for ordinary dependency edits — an `eigen_api`
-      # constraint bump, say. Those leave `version:` alone, the tag already
-      # exists, and this exits cleanly. Being idempotent is what lets the
-      # trigger stay this simple.
-      - name: Tag if this version is new
+      # constraint bump, say. Those leave `version:` alone, so this must decide
+      # "has this version already been released?" and exit cleanly when it has.
+      # Being idempotent is what lets the trigger stay this simple.
+      #
+      # It asks pub.dev, not just the local tags, and that distinction is not
+      # theoretical: 0.1.0 was published by hand before this automation existed,
+      # so it had no tag. "No tag" therefore meant "unreleased" only by
+      # accident, and the first dependency edit afterwards duly tagged an
+      # unrelated commit as v0.1.0 — a tag whose tree was never what shipped.
+      #
+      # release.yml already makes the same argument for its own publish step:
+      # what is on pub.dev is the state that matters, and which refs happen to
+      # exist in this repository is not. This is that rule applied one step
+      # earlier, where it prevents the bad ref instead of tolerating it.
+      - name: Tag if this version is unreleased
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           v=$(grep -m1 '^version:' pubspec.yaml | awk '{print $2}')
           [ -n "$v" ] || { echo "::error file=pubspec.yaml::no version: line"; exit 1; }
 
+          # Cheap and local first. Once a version is tagged, nothing else here
+          # needs to run — including on every unrelated pubspec.yaml edit.
           if git rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
             echo "v$v is already tagged — nothing to release."
+            exit 0
+          fi
+
+          # Refuse to guess. Tagging blind is what created the bad ref, and a
+          # release is re-runnable: a transient pub.dev failure costs one rerun,
+          # whereas a wrong tag has to be noticed before it can be undone.
+          published=$(curl -sf --retry 3 https://pub.dev/api/packages/eigen_flutter) || {
+            echo "::error::could not reach pub.dev to check whether $v is already released — refusing to tag blind"
+            exit 1
+          }
+
+          if jq -e --arg v "$v" '.versions[] | select(.version == $v)' >/dev/null <<<"$published"; then
+            echo "::notice::eigen_flutter $v is already on pub.dev — nothing to release."
             exit 0
           fi
 
