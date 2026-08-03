@@ -98,6 +98,23 @@ Contributors maintain the `Unreleased` section with `cider log` as they work,
 so `cider release` only dates and links what is already written. The changelog
 is never generated from commit messages.
 
+**Read the changelog diff on the release pull request.** It should be two lines:
+`## [Unreleased]` becoming `## [x.y.z] - <date>`, and its link definition
+becoming the version's. Anything larger means cider re-serialised sections it
+could not parse — `checks.yml` fails the pull request in that case, but knowing
+the shape of a healthy diff is what makes an unhealthy one obvious.
+
+**0.1.0 has no git tag**, so its link points at pub.dev
+(`/packages/eigen_flutter/versions/0.1.0`) rather than a release tag. It was
+published by hand before this automation existed, and the tag later created for
+it described a tree that never shipped, so it was deleted rather than corrected
+— no commit provably matches the published tarball.
+
+One consequence, once only: cider will generate `[0.2.0]:
+…/compare/v0.1.0...v0.2.0`, and that comparison cannot resolve. Change that line
+to the tag form (`…/releases/tag/v0.2.0`) while reviewing the release pull
+request. From 0.2.1 on, both endpoints exist and the generated link is correct.
+
 Generated source remains committed and ships in the package. Consumers never
 need this repository's builders to use `eigen_flutter`.
 

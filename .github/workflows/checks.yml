@@ -43,6 +43,40 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # cider recognises a changelog section only when its heading resolves as a
+      # markdown LINK, which requires a matching reference definition at the
+      # bottom of the file. Without one `## [Unreleased]` parses as ordinary
+      # text: `cider release` cannot find it, leaves the entries where they sit,
+      # and appends an EMPTY version section instead — while exiting 0.
+      #
+      # That is exactly how the first release pull request came out, and nothing
+      # anywhere said so. The next reviewer would have shipped an empty section
+      # to pub.dev, where changelogs are rendered and versions cannot be
+      # unpublished.
+      #
+      # `cider log` writes both halves, so this can only break when CHANGELOG.md
+      # is edited by hand — precisely when nobody is thinking about cider's
+      # parser. Runs before the toolchain because it needs nothing but grep.
+      - name: Changelog headings are link references
+        run: |
+          if grep -q '^## \\\[' CHANGELOG.md; then
+            echo "::error file=CHANGELOG.md::A heading has escaped brackets (## \\[…\\]). cider re-serialised a section it could not parse; the link definitions below are missing or misspelled."
+            exit 1
+          fi
+
+          missing=0
+          while read -r label; do
+            grep -q "^\[$label\]:" CHANGELOG.md || {
+              echo "::error file=CHANGELOG.md::## [$label] has no matching [$label]: definition, so cider cannot see this section."
+              missing=1
+            }
+          done < <(grep -o '^## \[[^]]*\]' CHANGELOG.md | sed 's/^## \[//; s/\]$//')
+
+          [ "$missing" -eq 0 ] || {
+            echo "::error::Add entries with 'cider log <category> \"…\"' rather than editing CHANGELOG.md directly — it maintains these definitions for you."
+            exit 1
+          }
+
       - uses: subosito/flutter-action@v2
         with:
           flutter-version-file: .fvmrc
