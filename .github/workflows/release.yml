@@ -142,3 +142,46 @@ jobs:
       - name: Publish
         if: steps.published.outputs.skip == 'false'
         run: dart pub publish --force
+
+      # eigen-web publishes the compatibility table — which engine line each
+      # `eigen_flutter` release speaks — and pub.dev is the authority for it.
+      # Nothing over there can notice a publish on its own, so tell it.
+      #
+      # NOT gated on `skip`: a re-run after a failed dispatch is exactly when
+      # this needs to fire, and the publish having already succeeded is the
+      # reason. Regenerating when nothing changed opens no pull request, so a
+      # redundant dispatch costs a few seconds and nothing else.
+      #
+      # The version travels in the payload because pub.dev serves a publish from
+      # its API a moment after the call returns. The receiving workflow waits for
+      # this exact version rather than reading whatever is there when it happens
+      # to start — otherwise it would regenerate from the state just before this
+      # release and silently produce no change at all.
+      #
+      # Failing here fails the release, matching eigen-server: a published client
+      # with an unnotified docs site is a state worth stopping on. The recovery
+      # is the `Sync compatibility table` workflow's manual trigger.
+      #
+      # GITHUB_TOKEN cannot do this — it is scoped to the repository that minted
+      # it, same organization or not — so this needs the App. Its credentials
+      # must exist HERE (`RELEASE_APP_CLIENT_ID` variable,
+      # `RELEASE_APP_PRIVATE_KEY` secret) and it must be installed on eigen-web.
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: eigen-web
+          permission-contents: write # POST /dispatches counts as a write on the target
+
+      - name: Notify eigen-web
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          v=$(grep -m1 '^version:' pubspec.yaml | awk '{print $2}')
+          gh api "repos/$OWNER/eigen-web/dispatches" \
+            -f event_type=flutter-client-released \
+            -f "client_payload[version]=$v"
+          echo "::notice::Told eigen-web that eigen_flutter $v is published."
