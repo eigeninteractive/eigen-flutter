@@ -1,0 +1,31 @@
+<!-- Default notification icon, referenced by name from this package's Dart
+     (AndroidInitializationSettings and AndroidNotificationDetails.icon) and
+     from its manifest's default_notification_icon meta-data.
+
+     It ships here so those references always resolve. An app that wants its
+     own silhouette declares res/drawable/ic_notification.xml itself — Android
+     resource merging gives the application module precedence over a library,
+     so nothing needs replacing or deleting here.
+
+     API 21+ ignores colour in a notification icon and composites the alpha
+     channel against its own tint, so this is a flat white silhouette; a
+     full-colour icon would render as a solid white box. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="149"
+    android:viewportHeight="149">
+  <!-- The followed continuation. -->
+  <path
+      android:strokeColor="#FFFFFF"
+      android:strokeWidth="26"
+      android:strokeLineCap="butt"
+      android:pathData="M54.7,90L125.411,14.289"/>
+  <!-- The stem and the pruned stub. -->
+  <path
+      android:strokeColor="#FFFFFF"
+      android:strokeWidth="26"
+      android:strokeLineCap="butt"
+      android:strokeLineJoin="miter"
+      android:pathData="M54.7,141L54.7,85L23.587,53.887"/>
+</vector>
