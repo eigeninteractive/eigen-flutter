@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://eigeninteractive.com/brand/eigen-lockup-dark-360.png">
+  <img src="https://eigeninteractive.com/brand/eigen-lockup-360.png" alt="EigenInteractive" width="270">
+</picture>
+
 # Eigen Flutter
 
 The Flutter half of [Eigen](https://eigeninteractive.com): a
