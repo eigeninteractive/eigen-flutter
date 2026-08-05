@@ -16,7 +16,13 @@ for how this package, the engine and the generated `eigen_api` client pair up.
 
 ## [Unreleased]
 ### Fixed
-- Ship the default `ic_notification` drawable and the Firebase default-channel and default-icon meta-data from this package's Android plugin. The Dart already referenced `@drawable/ic_notification` in two places while the plugin shipped no resources at all, so notifications only worked in apps that happened to hand-create it. Apps override by declaring the same drawable name; Android resource merging gives the application module precedence.
+- Notifications no longer need a hand-created icon. This package referenced
+`@drawable/ic_notification` from its Dart while its Android plugin shipped no
+resources at all, so the icon only resolved in apps that happened to create that
+drawable themselves. The plugin now ships it, together with the Firebase
+default-channel and default-notification-icon meta-data. An app overrides the
+silhouette by declaring the same resource name — Android resource merging gives
+the application module precedence over a library.
 
 ## [0.2.0] - 2026-08-03
 ### Changed
