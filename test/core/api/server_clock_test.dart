@@ -40,9 +40,18 @@ void main() {
 
     _deliver(clock.interceptor, _responseDated(_rfc1123(ahead)));
 
-    // Second precision: the header carries no sub-second component.
-    check(clock.offset.inSeconds).isGreaterOrEqual(299);
-    check(clock.offset.inSeconds).isLessOrEqual(300);
+    // The header carries no sub-second component, so the recorded offset falls
+    // short by two things: the device clock's fractional second, which the
+    // format drops, and however long delivery took before `_observe` read its
+    // own `DateTime.now()`. That puts it in (298s, 300s].
+    //
+    // `inSeconds >= 299` accounted for the dropped fraction but not the
+    // elapsed term, so it failed whenever the two summed past a second — rare
+    // enough to survive months, and it duly took out a release run. Asserted
+    // in milliseconds because `inSeconds` truncates, hiding the very
+    // sub-second margin this is about.
+    check(clock.offset.inMilliseconds).isGreaterThan(298000);
+    check(clock.offset.inMilliseconds).isLessOrEqual(300000);
   });
 
   test('a countdown measures against server time, not device time', () {
