@@ -3,5 +3,22 @@
         <meta-data
             android:name="firebase_messaging_installation_id_enabled"
             android:value="true" />
+
+        <!-- Applies to notifications Firebase itself displays, when the app is
+             backgrounded or terminated and the message omits android.channelId.
+             `your_turn` is the default because it is the highest-priority
+             channel this package declares.
+
+             These live here rather than in each app's manifest because the
+             channels are this package's, not the app's: it is what creates
+             `your_turn` and what would have to change for the name to change.
+             The manifest merger folds them into the app, and an app that needs
+             a different default can still override with tools:replace. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="your_turn" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
     </application>
 </manifest>
