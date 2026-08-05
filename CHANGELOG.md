@@ -24,6 +24,18 @@ default-channel and default-notification-icon meta-data. An app overrides the
 silhouette by declaring the same resource name — Android resource merging gives
 the application module precedence over a library.
 
+### Changed
+- **Breaking for apps that customised the Firebase notification meta-data.**
+The manifest merger treats two `<meta-data>` entries with the same
+`android:name` and different `android:value` as a conflict and fails the build.
+An app that declares
+`com.google.firebase.messaging.default_notification_channel_id` or
+`default_notification_icon` with a value other than `your_turn` /
+`@drawable/ic_notification` must now either drop its copy — this package
+supplies both — or keep it and add
+`tools:replace="android:value"` (or `android:resource`) to that element.
+Declaring the same values as this package needs no change.
+
 ## [0.2.0] - 2026-08-03
 ### Changed
 - `eigen_api` moved to `^0.2.0`, following the engine to its 0.2.x release line.
