@@ -14,16 +14,7 @@ Pre-1.0, breaking changes land in a **MINOR** bump: `^0.1.0` resolves to
 [Versions and compatibility](https://eigeninteractive.com/docs/reference/compatibility)
 for how this package, the engine and the generated `eigen_api` client pair up.
 
-## [Unreleased]
-### Fixed
-- Notifications no longer need a hand-created icon. This package referenced
-`@drawable/ic_notification` from its Dart while its Android plugin shipped no
-resources at all, so the icon only resolved in apps that happened to create that
-drawable themselves. The plugin now ships it, together with the Firebase
-default-channel and default-notification-icon meta-data. An app overrides the
-silhouette by declaring the same resource name — Android resource merging gives
-the application module precedence over a library.
-
+## [0.3.0] - 2026-08-05
 ### Changed
 - **Breaking for apps that customised the Firebase notification meta-data.**
 The manifest merger treats two `<meta-data>` entries with the same
@@ -35,6 +26,15 @@ An app that declares
 supplies both — or keep it and add
 `tools:replace="android:value"` (or `android:resource`) to that element.
 Declaring the same values as this package needs no change.
+
+### Fixed
+- Notifications no longer need a hand-created icon. This package referenced
+`@drawable/ic_notification` from its Dart while its Android plugin shipped no
+resources at all, so the icon only resolved in apps that happened to create that
+drawable themselves. The plugin now ships it, together with the Firebase
+default-channel and default-notification-icon meta-data. An app overrides the
+silhouette by declaring the same resource name — Android resource merging gives
+the application module precedence over a library.
 
 ## [0.2.0] - 2026-08-03
 ### Changed
@@ -115,6 +115,6 @@ server-side concern now live in the engine.
 - `google_fonts`, which fetched Inter at runtime — replaced by the bundled
 package font above.
 
-[Unreleased]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.2.0...HEAD
+[0.3.0]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.1.0...v0.2.0
 [0.1.0]: https://pub.dev/packages/eigen_flutter/versions/0.1.0
