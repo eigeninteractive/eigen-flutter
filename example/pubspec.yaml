@@ -1,5 +1,5 @@
 name: rps_example
-description: "Rock-Paper-Scissors — the reference game implementation for the Eigen Flutter client."
+description: "Rock-Paper-Scissors — the reference game implementation for the EigenInteractive Flutter client."
 publish_to: none
 version: 1.0.0
 

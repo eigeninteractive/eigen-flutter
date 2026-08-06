@@ -1,5 +1,5 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND.
-// Generated from the game-owned Eigen contract.
+// Generated from the game-owned EigenInteractive contract.
 
 // ignore_for_file: prefer_adjacent_string_concatenation
 // ignore_for_file: prefer_null_aware_operators, unnecessary_non_null_assertion

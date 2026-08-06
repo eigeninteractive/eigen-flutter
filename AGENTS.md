@@ -1,4 +1,4 @@
-# Eigen documentation
+# EigenInteractive documentation
 
 The reference documentation for the engine lives at **https://eigeninteractive.com**
 and is the source of truth. Retrieve it rather than relying on memory:

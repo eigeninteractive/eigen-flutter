@@ -42,8 +42,8 @@ class EngineConfig {
     this.appHost,
   });
 
-  /// Origin of the Eigen server, with no trailing slash and no path — for
-  /// example `https://api.example.com`.
+  /// Origin of the EigenInteractive server, with no trailing slash and no
+  /// path — for example `https://api.example.com`.
   ///
   /// Only the origin: every generated route already carries the `/api/engine`
   /// prefix, and the game socket is built from this same origin with the scheme
@@ -55,7 +55,7 @@ class EngineConfig {
 
   /// VAPID public key for FCM Web Push.
   ///
-  /// Eigen's standard app targets Android and web, so notification capability
+  /// The standard app targets Android and web, so notification capability
   /// is part of the deployment contract rather than an optional integration.
   /// Android does not consume this value; web startup rejects an empty key.
   /// The key is public and belongs to the same Firebase project as Auth.
@@ -109,7 +109,7 @@ class EngineConfig {
 
     if (errors.isEmpty) return;
     throw StateError(
-      'Invalid Eigen app configuration:\n'
+      'Invalid EigenInteractive app configuration:\n'
       '${errors.map((error) => '- $error').join('\n')}\n'
       'Set these public values in app-config.json and run or build with '
       '--dart-define-from-file=app-config.json.',
@@ -141,7 +141,7 @@ class Branding {
   const Branding({
     required this.appName,
     required this.seedColor,
-    this.madeByCredit = 'Made with ❤️ by Eigen Interactive',
+    this.madeByCredit = 'Made with ❤️ by EigenInteractive',
   });
 
   /// User-facing application name (window title, drawer header, login screen).
@@ -150,8 +150,8 @@ class Branding {
   /// Material 3 seed color; the full light/dark [ColorScheme] derives from it.
   final Color seedColor;
 
-  /// Credit line shown in the settings footer. Defaults to the Eigen
-  /// Interactive umbrella credit; override per app if needed.
+  /// Credit line shown in the settings footer. Defaults to the
+  /// EigenInteractive umbrella credit; override per app if needed.
   final String madeByCredit;
 }
 

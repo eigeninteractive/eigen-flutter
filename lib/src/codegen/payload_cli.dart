@@ -51,7 +51,7 @@ final class PayloadGeneratorCli {
   final ArgParser _parser;
 
   String get usage => '''
-Generate immutable Dart payload types from an Eigen game contract.
+Generate immutable Dart payload types from an EigenInteractive game contract.
 
 Usage:
   dart run eigen_flutter:generate_payloads [options]
