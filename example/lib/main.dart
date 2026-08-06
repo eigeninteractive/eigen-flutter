@@ -6,8 +6,9 @@
 /// what it is called, what colour it is, and where its server lives.
 ///
 /// To run it against a real server you need two things this repository
-/// deliberately does not contain: a Firebase project and a deployed Eigen
-/// worker (see the RPS example Worker in `eigen-server/examples/rps`). Run the
+/// deliberately does not contain: a Firebase project and a deployed
+/// EigenInteractive worker (see the RPS example Worker in
+/// `eigen-server/examples/rps`). Run the
 /// package's Firebase configuration executable and fill `app-config.json`
 /// before running it.
 library;

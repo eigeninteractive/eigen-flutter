@@ -6,8 +6,8 @@ import 'package:dart_style/dart_style.dart';
 
 part 'payload_emitter.dart';
 
-/// Generates standalone immutable Dart payload types from an Eigen game
-/// contract. This is tooling code used by `bin/generate_payloads.dart`; game
+/// Generates standalone immutable Dart payload types from an EigenInteractive
+/// game contract. This is tooling code used by `bin/generate_payloads.dart`; game
 /// applications do not import it at runtime.
 String generatePayloadLibrary(Map<String, dynamic> contract) {
   if (contract['formatVersion'] != 1) {

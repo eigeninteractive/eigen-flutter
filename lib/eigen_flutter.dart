@@ -1,7 +1,7 @@
 // Dartdoc selects the two supported package entry points by library name.
 // ignore_for_file: unnecessary_library_name
 
-/// Eigen Engine — a whitelabel turn-based multiplayer game engine.
+/// EigenInteractive — a whitelabel turn-based multiplayer game engine.
 ///
 /// A game app depends on this package, implements a [GameModule], and boots
 /// with [runEngineApp]:
@@ -22,7 +22,7 @@
 /// game UI without exposing the app shell's repositories or transport.
 ///
 /// Start with the
-/// [Eigen quickstart](https://eigeninteractive.com/docs/getting-started/quickstart)
+/// [EigenInteractive quickstart](https://eigeninteractive.com/docs/getting-started/quickstart)
 /// and use the
 /// [task guides](https://eigeninteractive.com/docs/build-a-game/the-contract)
 /// for end-to-end TypeScript and Dart examples.

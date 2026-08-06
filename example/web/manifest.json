@@ -5,7 +5,7 @@
   "display": "standalone",
   "background_color": "#00695c",
   "theme_color": "#00695c",
-  "description": "The Eigen reference game",
+  "description": "The EigenInteractive reference game",
   "orientation": "any",
   "prefer_related_applications": false,
   "icons": []

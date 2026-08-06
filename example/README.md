@@ -1,6 +1,7 @@
 # Rock–Paper–Scissors
 
-A complete game on the Eigen client, in about 500 lines. It is the client half
+A complete game on the EigenInteractive client, in about 500 lines. It is the
+client half
 of the RPS example in
 [`eigen-server/examples/rps`](https://github.com/eigeninteractive/eigen-server/tree/main/examples/rps),
 and the two halves are checked against each other by the shared fixtures in

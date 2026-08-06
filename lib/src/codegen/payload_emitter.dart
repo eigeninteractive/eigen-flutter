@@ -67,7 +67,7 @@ final class _PayloadEmitter {
       (builder) => builder
         ..comments.addAll([
           'GENERATED CODE - DO NOT MODIFY BY HAND.',
-          'Generated from the game-owned Eigen contract.',
+          'Generated from the game-owned EigenInteractive contract.',
         ])
         ..ignoreForFile.addAll([
           'prefer_adjacent_string_concatenation',

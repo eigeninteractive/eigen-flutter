@@ -3,9 +3,9 @@
   <img src="https://eigeninteractive.com/brand/eigen-lockup-360.png" alt="EigenInteractive" width="270">
 </picture>
 
-# Eigen Flutter
+# EigenInteractive Flutter
 
-The Flutter half of [Eigen](https://eigeninteractive.com): a
+The Flutter half of [EigenInteractive](https://eigeninteractive.com): a
 server-authoritative engine for turn-based multiplayer games.
 
 `eigen_flutter` supplies the complete app shell—authentication, lobbies,
@@ -62,7 +62,7 @@ dependencies {
 ```
 
 Boot the app with your module, branding, Worker origin, and generated Firebase
-configuration. Eigen's standard app targets Android and web, so the public Web
+configuration. The standard app targets Android and web, so the public Web
 Push key is required deployment configuration; it belongs to the same Firebase
 project used for authentication:
 

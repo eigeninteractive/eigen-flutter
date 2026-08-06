@@ -12,7 +12,7 @@
 /// [GameRules.isValidAction], [GameRules.previewAction], and the predicate
 /// twins). A behavioral divergence then fails one side's tests instead of
 /// degrading UX in production. The fixture file format is documented in
-/// the [Eigen testing guide](https://eigeninteractive.com/docs/build-a-game/testing).
+/// the [EigenInteractive testing guide](https://eigeninteractive.com/docs/build-a-game/testing).
 ///
 /// Loading and running are separate steps on purpose. A fixture file is
 /// hand-written JSON, so [loadTwinFixtureSuites] validates it into the typed
@@ -49,7 +49,8 @@
 /// ```
 ///
 /// The `expected.observation` comparison relies on value equality (`==`).
-/// Eigen's generated payload classes provide deep equality for collections.
+/// EigenInteractive's generated payload classes provide deep equality for
+/// collections.
 library eigen_flutter.testing;
 
 import 'dart:convert';
