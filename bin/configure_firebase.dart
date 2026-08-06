@@ -3,9 +3,26 @@ import 'dart:io';
 
 import 'package:path/path.dart' as path;
 
+/// The tools this script drives, and how to install each.
+///
+/// `flutterfire` is the usual casualty, and the one worth spelling out: it is
+/// not installed alongside Flutter, and `dart pub global activate` puts it in a
+/// directory that is not on `PATH` by default.
+const _installation = <String, String>{
+  'flutterfire':
+      'dart pub global activate flutterfire_cli\n'
+      "  …and put Dart's global bin directory on your PATH "
+      '(~/.pub-cache/bin on macOS and Linux)',
+  'firebase': 'npm install -g firebase-tools',
+};
+
 Future<void> main() async {
   try {
     final appRoot = Directory.current;
+    // Both tools up front. `firebase` is not needed until FlutterFire has
+    // already written firebase.json and lib/firebase_options.dart, so finding
+    // out then that it is missing leaves a half-configured app behind.
+    await _requireExecutables(_installation.keys);
     await _run('flutterfire', [
       'configure',
       '--yes',
@@ -87,12 +104,14 @@ Future<void> main() async {
       'Firebase configured for Android, Flutter Web, and the messaging '
       'service worker.',
     );
+  } on _MissingExecutables catch (error) {
+    stderr.writeln(error.message);
+    exitCode = 69;
   } on ProcessException catch (error) {
+    // The preflight above catches this in practice. Kept for a tool that goes
+    // missing between the check and its use.
     if (error.errorCode == 2) {
-      stderr.writeln(
-        'configure_firebase: could not find `${error.executable}`. Install '
-        'the Firebase and FlutterFire CLIs, then run this command again.',
-      );
+      stderr.writeln(_MissingExecutables([error.executable]).message);
     } else {
       stderr.writeln('configure_firebase: $error');
     }
@@ -114,6 +133,21 @@ Map<String, dynamic> _readJson(File file) {
   throw FormatException('${file.path} must contain a JSON object.');
 }
 
+Future<void> _requireExecutables(Iterable<String> executables) async {
+  final missing = <String>[];
+  for (final executable in executables) {
+    try {
+      // The exit status is not interesting. Anything other than "no such
+      // executable" means the tool is installed, and whatever is wrong with it
+      // is better reported by the command that actually needs it.
+      await Process.run(executable, const ['--version']);
+    } on ProcessException {
+      missing.add(executable);
+    }
+  }
+  if (missing.isNotEmpty) throw _MissingExecutables(missing);
+}
+
 Future<void> _run(
   String executable,
   List<String> arguments,
@@ -133,4 +167,33 @@ final class _CommandFailed implements Exception {
   const _CommandFailed(this.exitCode);
 
   final int exitCode;
+}
+
+final class _MissingExecutables implements Exception {
+  const _MissingExecutables(this.executables);
+
+  final List<String> executables;
+
+  /// Names what is missing and how to install exactly that, rather than
+  /// pointing at both CLIs and leaving the reader to work out which of them
+  /// they already have.
+  String get message {
+    final buffer =
+        StringBuffer(
+            'configure_firebase: could not find '
+            '${executables.map((name) => '`$name`').join(' or ')}. Install '
+            '${executables.length == 1 ? 'it' : 'them'} with:',
+          )
+          ..writeln()
+          ..writeln();
+    for (final name in executables) {
+      buffer.writeln(
+        '  ${_installation[name] ?? 'Install $name and put it on your PATH.'}',
+      );
+    }
+    buffer
+      ..writeln()
+      ..write('Then run this command again.');
+    return buffer.toString();
+  }
 }
