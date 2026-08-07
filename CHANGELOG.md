@@ -14,7 +14,7 @@ Pre-1.0, breaking changes land in a **MINOR** bump: `^0.1.0` resolves to
 [Versions and compatibility](https://eigeninteractive.com/docs/reference/compatibility)
 for how this package, the engine and the generated `eigen_api` client pair up.
 
-## [Unreleased]
+## [0.3.5] - 2026-08-07
 ### Changed
 - `configure_firebase` checks that a Google account is signed in to the Firebase CLI before it starts, and names `firebase login` when none is — those are the credentials both CLIs share, and previously the one preflight failure FlutterFire was left to discover for itself. The check fails open: only an answer that positively reports no accounts stops the run.
 - A successful run names the Firebase project and the Android and Web app IDs it configured against. FlutterFire matches an existing Android app on the package name and an existing Web app on its display name, and reuses either without comment — so adopting the apps a project already had looked identical to registering new ones, and now does not.
@@ -140,7 +140,7 @@ server-side concern now live in the engine.
 - `google_fonts`, which fetched Inter at runtime — replaced by the bundled
 package font above.
 
-[Unreleased]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.3.4...HEAD
+[0.3.5]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.3.1...v0.3.2
