@@ -1,3 +1,4 @@
+import 'package:eigen_flutter/core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -140,7 +141,8 @@ bool _isValidHost(String value) {
 class Branding {
   const Branding({
     required this.appName,
-    required this.seedColor,
+    this.seedColor = Colors.teal,
+    this.displayFontFamily = AppTheme.spaceGrotesk,
     this.madeByCredit = 'Made with ❤️ by EigenInteractive',
   });
 
@@ -148,7 +150,21 @@ class Branding {
   final String appName;
 
   /// Material 3 seed color; the full light/dark [ColorScheme] derives from it.
+  ///
+  /// Defaults to the EigenInteractive teal, so a game looks deliberate before
+  /// anyone has thought about colour. Replace it with one line — and note that
+  /// Material 3 treats a seed as a *hue*, not a colour: it pulls whatever you
+  /// give it to tone 40 and rebuilds the ramp, so neighbouring greens all
+  /// arrive at much the same scheme, and a near-black seed comes back
+  /// chromatic rather than neutral.
   final Color seedColor;
+
+  /// Family for the display and headline text roles.
+  ///
+  /// Defaults to the EigenInteractive display face, Space Grotesk, bundled by
+  /// this package. Pass [AppTheme.inter] for a single-face app, or the
+  /// package-qualified family of a font your own app bundles.
+  final String displayFontFamily;
 
   /// Credit line shown in the settings footer. Defaults to the
   /// EigenInteractive umbrella credit; override per app if needed.
