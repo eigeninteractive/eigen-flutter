@@ -143,7 +143,7 @@ class Branding {
     required this.appName,
     this.seedColor = Colors.teal,
     this.displayFontFamily = AppTheme.spaceGrotesk,
-    this.madeByCredit = 'Made with ❤️ by EigenInteractive',
+    this.madeByCredit = 'Built with EigenInteractive',
   });
 
   /// User-facing application name (window title, drawer header, login screen).
@@ -166,8 +166,13 @@ class Branding {
   /// package-qualified family of a font your own app bundles.
   final String displayFontFamily;
 
-  /// Credit line shown in the settings footer. Defaults to the
-  /// EigenInteractive umbrella credit; override per app if needed.
+  /// Credit line shown in the settings and about footers. Defaults to the
+  /// EigenInteractive umbrella credit, the same line the game's own website
+  /// ends on; override per app if needed.
+  ///
+  /// Whichever part of the line reads `EigenInteractive` is rendered as a link
+  /// to it, and nothing else is — so a replacement that never names the engine
+  /// is plain text.
   final String madeByCredit;
 }
 

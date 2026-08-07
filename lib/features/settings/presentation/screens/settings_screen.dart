@@ -10,6 +10,7 @@ import 'package:eigen_flutter/core/notifications/notification_provider.dart';
 import 'package:eigen_flutter/core/theme/theme_provider.dart';
 import 'package:eigen_flutter/core/utils/deep_links.dart';
 import 'package:eigen_flutter/core/utils/package_info_provider.dart';
+import 'package:eigen_flutter/shared/widgets/made_by_credit.dart';
 import 'package:eigen_flutter/features/auth/providers/auth_providers.dart';
 import 'package:eigen_flutter/shared/providers/player_providers.dart';
 import 'package:eigen_flutter/shared/widgets/player_avatar.dart';
@@ -94,7 +95,7 @@ class SettingsScreen extends ConsumerWidget {
 
         const SizedBox(height: 32),
 
-        const _AppInfoFooter(),
+        const MadeByCredit(),
 
         const SizedBox(height: 16),
       ],
@@ -374,25 +375,6 @@ class _AppVersionTile extends ConsumerWidget {
         data: (info) => Text(info.version),
         loading: () => const Text('...'),
         error: (_, _) => const Text('Unknown'),
-      ),
-    );
-  }
-}
-
-class _AppInfoFooter extends ConsumerWidget {
-  const _AppInfoFooter();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final credit = ref.watch(appConfigProvider).branding.madeByCredit;
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Text(
-        credit,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
-        textAlign: TextAlign.center,
       ),
     );
   }
