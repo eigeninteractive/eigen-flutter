@@ -62,6 +62,7 @@ Future<void> main(List<String> rawArguments) async {
     // already written firebase.json and lib/firebase_options.dart, so finding
     // out then that it is missing leaves a half-configured app behind.
     await _requireExecutables(_installation.keys);
+    await _requireLogin();
 
     // A re-run configures whatever the last run did, without asking again:
     // FlutterFire records the project in firebase.json, which is the same file
@@ -113,7 +114,12 @@ Future<void> main(List<String> rawArguments) async {
       final downloadedConfig = File(
         path.join(temporaryDirectory.path, 'firebase-config.json'),
       );
-      await _run('firebase', [
+      // Quiet, unlike the FlutterFire call above, which is quiet only when it
+      // has nothing to ask. This one cannot prompt — the project and app are
+      // already decided — and its own success line names the temporary file it
+      // wrote, which is deleted a few lines below and was never the output
+      // anyone was waiting for. The captured stream is replayed on failure.
+      await _runQuiet('firebase', [
         'apps:sdkconfig',
         'web',
         webAppId,
@@ -166,6 +172,9 @@ Future<void> main(List<String> rawArguments) async {
   } on _MissingExecutables catch (error) {
     stderr.writeln(error.message);
     exitCode = 69;
+  } on _NotLoggedIn catch (error) {
+    stderr.writeln(error.message);
+    exitCode = 77;
   } on ProcessException catch (error) {
     // The preflight above catches this in practice. Kept for a tool that goes
     // missing between the check and its use.
@@ -268,6 +277,33 @@ Future<void> _requireExecutables(Iterable<String> executables) async {
   if (missing.isNotEmpty) throw _MissingExecutables(missing);
 }
 
+/// Stops before FlutterFire does when nobody is signed in.
+///
+/// Both CLIs authenticate through the same stored `firebase` credentials, and
+/// without them FlutterFire fails after its own startup rather than saying
+/// which command fixes it.
+///
+/// Deliberately fails open: only an answer that positively says "no accounts"
+/// stops the run. A `firebase` that errors, prints something unparseable, or
+/// grows a different shape is left to the commands below, which is how this
+/// behaved before the check existed.
+Future<void> _requireLogin() async {
+  final result = await Process.run('firebase', const [
+    'login:list',
+    '--json',
+  ], stdoutEncoding: utf8);
+  if (result.exitCode != 0) return;
+  final Object? accounts;
+  try {
+    accounts = (jsonDecode(result.stdout as String) as Map)['result'];
+  } on FormatException {
+    return;
+  } on TypeError {
+    return;
+  }
+  if (accounts is List && accounts.isEmpty) throw const _NotLoggedIn();
+}
+
 Future<void> _run(
   String executable,
   List<String> arguments,
@@ -281,6 +317,32 @@ Future<void> _run(
   );
   final result = await process.exitCode;
   if (result != 0) throw _CommandFailed(result);
+}
+
+/// Like [_run], but with the child's output captured instead of inherited, and
+/// replayed only when it fails. For a command that cannot prompt.
+Future<void> _runQuiet(
+  String executable,
+  List<String> arguments,
+  Directory workingDirectory,
+) async {
+  final result = await Process.run(
+    executable,
+    arguments,
+    workingDirectory: workingDirectory.path,
+  );
+  if (result.exitCode == 0) return;
+  stdout.write(result.stdout);
+  stderr.write(result.stderr);
+  throw _CommandFailed(result.exitCode);
+}
+
+final class _NotLoggedIn implements Exception {
+  const _NotLoggedIn();
+
+  String get message =>
+      'configure_firebase: no Google account is signed in to the Firebase '
+      'CLI.\n\n  firebase login\n\nThen run this command again.';
 }
 
 final class _UsageError implements Exception {

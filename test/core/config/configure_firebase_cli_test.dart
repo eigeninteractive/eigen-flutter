@@ -4,6 +4,11 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 
+/// What `firebase login:list --json` prints when somebody is signed in, cut
+/// down to the one field the preflight looks at: whether the list is empty.
+const _signedIn =
+    '{"status":"success","result":[{"user":{"email":"tester@example.com"}}]}';
+
 void main() {
   test(
     'generates the service worker config for the Web app selected by FlutterFire',
@@ -48,6 +53,10 @@ void main() {
       await _writeExecutable(
         File(path.join(fakeBin.path, 'firebase')),
         '''#!/bin/sh
+if [ "\$1" = "login:list" ]; then
+  printf '%s\\n' '$_signedIn'
+  exit 0
+fi
 output=""
 previous=""
 for argument in "\$@"; do
@@ -55,6 +64,7 @@ for argument in "\$@"; do
   previous="\$argument"
 done
 cp "\$EIGEN_TEST_FIREBASE_CONFIG" "\$output"
+echo "App configuration is written in \$output"
 ''',
       );
 
@@ -77,9 +87,67 @@ cp "\$EIGEN_TEST_FIREBASE_CONFIG" "\$output"
       expect(generated, contains('"appId": "1:123:web:abc"'));
       expect(generated, contains('"projectId": "example-project"'));
       expect(generated, isNot(contains('REPLACE_ME')));
+      // The download is an intermediate: read, checked, rewritten as the
+      // service worker's config, and deleted. Announcing the temporary file it
+      // landed in points the reader at a path that no longer exists.
+      expect(result.stdout, isNot(contains('App configuration is written in')));
+      expect(
+        result.stdout,
+        contains('Firebase configured for Android, Flutter Web'),
+      );
     },
     skip: Platform.isWindows,
   );
+
+  group('before it starts', () {
+    /// The script's own exit and stderr against a `firebase` that answers
+    /// `login:list` with [accounts] and does nothing else.
+    Future<ProcessResult> run(String accounts) async {
+      final packageRoot = Directory.current;
+      final appRoot = Directory.systemTemp.createTempSync(
+        'eigen-firebase-login-',
+      );
+      addTearDown(() => appRoot.deleteSync(recursive: true));
+      final fakeBin = Directory(path.join(appRoot.path, 'bin'))..createSync();
+      await _writeExecutable(
+        File(path.join(fakeBin.path, 'flutterfire')),
+        '#!/bin/sh\nexit 0\n',
+      );
+      await _writeExecutable(
+        File(path.join(fakeBin.path, 'firebase')),
+        '#!/bin/sh\nprintf \'%s\\n\' \'$accounts\'\nexit 0\n',
+      );
+
+      return Process.run(
+        'dart',
+        [path.join(packageRoot.path, 'bin', 'configure_firebase.dart')],
+        workingDirectory: appRoot.path,
+        environment: {
+          ...Platform.environment,
+          'PATH': '${fakeBin.path}:${Platform.environment['PATH']}',
+        },
+      );
+    }
+
+    test('says which command signs in, rather than letting FlutterFire '
+        'fail on it', () async {
+      final result = await run('{"status":"success","result":[]}');
+
+      expect(result.exitCode, 77, reason: '${result.stdout}${result.stderr}');
+      expect(result.stderr, contains('firebase login'));
+    });
+
+    test('leaves an answer it does not understand to the tools that '
+        'authenticate', () async {
+      // Fails open. A `firebase` whose output grows a different shape must not
+      // block a machine that is perfectly well signed in; the commands below
+      // are the ones that actually need the credentials.
+      final result = await run('not json at all');
+
+      expect(result.exitCode, isNot(77));
+      expect(result.stderr, isNot(contains('firebase login')));
+    });
+  }, skip: Platform.isWindows);
 
   group('the arguments handed to FlutterFire', () {
     /// Runs the script against a `flutterfire` that records its arguments and
@@ -261,6 +329,64 @@ cp "\$EIGEN_TEST_FIREBASE_CONFIG" "\$output"
       expect(result.stdout, contains('--project <id>'));
       expect(result.stdout, contains('--account <email>'));
     });
+  }, skip: Platform.isWindows);
+
+  test('shows what the quiet command said when it fails', () async {
+    // Captured is not swallowed. The download runs with its output held back
+    // because it has nothing to say on success — a failure is the other case.
+    final packageRoot = Directory.current;
+    final appRoot = Directory.systemTemp.createTempSync('eigen-firebase-fail-');
+    addTearDown(() => appRoot.deleteSync(recursive: true));
+
+    Directory(path.join(appRoot.path, 'web')).createSync();
+    File(path.join(appRoot.path, 'firebase.json')).writeAsStringSync(
+      jsonEncode({
+        'flutter': {
+          'platforms': {
+            'dart': {
+              'lib/firebase_options.dart': {
+                'projectId': 'example-project',
+                'configurations': {'web': '1:123:web:abc'},
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    final fakeBin = Directory(path.join(appRoot.path, 'bin'))..createSync();
+    await _writeExecutable(
+      File(path.join(fakeBin.path, 'flutterfire')),
+      '#!/bin/sh\nexit 0\n',
+    );
+    await _writeExecutable(
+      File(path.join(fakeBin.path, 'firebase')),
+      '''#!/bin/sh
+if [ "\$1" = "login:list" ]; then
+  printf '%s\\n' '$_signedIn'
+  exit 0
+fi
+echo "Error: Failed to get Firebase project example-project" >&2
+exit 3
+''',
+    );
+
+    final result = await Process.run(
+      'dart',
+      [path.join(packageRoot.path, 'bin', 'configure_firebase.dart')],
+      workingDirectory: appRoot.path,
+      environment: {
+        ...Platform.environment,
+        'PATH': '${fakeBin.path}:${Platform.environment['PATH']}',
+      },
+    );
+
+    expect(result.exitCode, 3);
+    expect(result.stderr, contains('Failed to get Firebase project'));
+    expect(
+      File(path.join(appRoot.path, 'web', 'firebase-config.js')).existsSync(),
+      isFalse,
+    );
   }, skip: Platform.isWindows);
 
   test('names the missing tool and how to install it', () async {

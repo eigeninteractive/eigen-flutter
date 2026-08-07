@@ -14,6 +14,11 @@ Pre-1.0, breaking changes land in a **MINOR** bump: `^0.1.0` resolves to
 [Versions and compatibility](https://eigeninteractive.com/docs/reference/compatibility)
 for how this package, the engine and the generated `eigen_api` client pair up.
 
+## [Unreleased]
+### Changed
+- `configure_firebase` checks that a Google account is signed in to the Firebase CLI before it starts, and names `firebase login` when none is — those are the credentials both CLIs share, and previously the one preflight failure FlutterFire was left to discover for itself. The check fails open: only an answer that positively reports no accounts stops the run.
+- The Web SDK configuration is downloaded quietly. It is an intermediate — read, checked, rewritten as `web/firebase-config.js`, then deleted — so the Firebase CLI's own success line announced a temporary file that no longer existed by the time anyone read it. A failing download still prints everything it said.
+
 ## [0.3.4] - 2026-08-07
 ### Changed
 - The credit line defaults to `Built with EigenInteractive`, matching the game's own website, and renders as prose with only the brand name linked — accent-coloured, no underline. A `Branding.madeByCredit` that never names the engine stays plain text. The settings and about screens now share one `MadeByCredit` widget instead of the same footer written twice.
@@ -134,6 +139,7 @@ server-side concern now live in the engine.
 - `google_fonts`, which fetched Inter at runtime — replaced by the bundled
 package font above.
 
+[Unreleased]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.3.4...HEAD
 [0.3.4]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.3.1...v0.3.2
