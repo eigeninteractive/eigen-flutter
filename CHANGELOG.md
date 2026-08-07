@@ -14,6 +14,13 @@ Pre-1.0, breaking changes land in a **MINOR** bump: `^0.1.0` resolves to
 [Versions and compatibility](https://eigeninteractive.com/docs/reference/compatibility)
 for how this package, the engine and the generated `eigen_api` client pair up.
 
+## [Unreleased]
+### Changed
+- The credit line defaults to `Built with EigenInteractive`, matching the game's own website, and renders as prose with only the brand name linked — accent-coloured, no underline. A `Branding.madeByCredit` that never names the engine stays plain text. The settings and about screens now share one `MadeByCredit` widget instead of the same footer written twice.
+
+### Fixed
+- `configure_firebase` no longer fails with `FirebaseProjectRequiredException` on a first run: `--yes` is only passed once the Firebase project is settled, so an unconfigured run gets FlutterFire's project picker — where a project can also be created — instead of a hard stop. The project can be named with `--project <id>`, and is otherwise read back from the `firebase.json` a previous run wrote or a `.firebaserc`, so re-runs stay non-interactive. `--account <email>` is accepted for a machine signed in to several Google accounts, `--help` prints the usage, and a bare `--` is ignored so `run firebase:configure -- --project x` works under both npm and pnpm. Every other option is refused with a usage error rather than passed to FlutterFire: platforms in particular are fixed at Android and Web, which are the platforms the app has and where the messaging service worker's configuration comes from.
+
 ## [0.3.3] - 2026-08-07
 ### Changed
 - Bundle Inter and Space Grotesk as single variable files instead of nine static Inter weights, and pair them across the Material 3 text roles: Space Grotesk on display and headline, Inter on everything read at length. `Branding.displayFontFamily` overrides the display face and `Branding.seedColor` now defaults to the EigenInteractive teal, so a game looks deliberate before anyone has configured it and is one line to rebrand. Font payload drops from 2.7 MB to under 1 MB while gaining a family, because `FontWeight` has driven the `wght` axis since Flutter 3.41 and this package requires 3.44 — `tool/download_fonts.sh`, which fetched static weights from gstatic by content hash, is gone.
@@ -127,6 +134,7 @@ server-side concern now live in the engine.
 - `google_fonts`, which fetched Inter at runtime — replaced by the bundled
 package font above.
 
+[Unreleased]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.3.3...HEAD
 [0.3.3]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.3.0...v0.3.1

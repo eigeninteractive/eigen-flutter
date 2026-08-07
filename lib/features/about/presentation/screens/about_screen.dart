@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:eigen_flutter/core/config/app_config.dart';
 import 'package:eigen_flutter/core/utils/package_info_provider.dart';
+import 'package:eigen_flutter/shared/widgets/made_by_credit.dart';
 import 'package:eigen_flutter/features/game/providers/game_providers.dart';
 
 /// About page: app identity, the active game's rules, and version/credit.
@@ -35,7 +36,7 @@ class AboutScreen extends ConsumerWidget {
           child: _AppVersionTile(),
         ),
         const SizedBox(height: 32),
-        const _AppInfoFooter(),
+        const MadeByCredit(),
         const SizedBox(height: 16),
       ],
     );
@@ -77,26 +78,6 @@ class _AppVersionTile extends ConsumerWidget {
         data: (info) => Text(info.version),
         loading: () => const Text('...'),
         error: (_, _) => const Text('Unknown'),
-      ),
-    );
-  }
-}
-
-/// Centered credit line shown at the bottom of the page.
-class _AppInfoFooter extends ConsumerWidget {
-  const _AppInfoFooter();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final credit = ref.watch(appConfigProvider).branding.madeByCredit;
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Text(
-        credit,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
-        textAlign: TextAlign.center,
       ),
     );
   }
