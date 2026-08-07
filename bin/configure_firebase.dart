@@ -162,10 +162,20 @@ Future<void> main(List<String> rawArguments) async {
       temporaryDirectory.deleteSync(recursive: true);
     }
 
-    stdout.writeln(
-      'Firebase configured for Android, Flutter Web, and the messaging '
-      'service worker.',
-    );
+    // Named, not just announced. FlutterFire matches an existing Android app
+    // on the package name and an existing Web app on its display name, and
+    // reuses either silently — so a run against a project that already had
+    // them looks exactly like a run that registered them. These three lines
+    // are what distinguishes the two, and what a second run can be compared
+    // against.
+    stdout
+      ..writeln(
+        'Firebase configured for Android, Flutter Web, and the messaging '
+        'service worker.',
+      )
+      ..writeln('  project  $projectId')
+      ..writeln('  android  ${configurations?['android'] ?? '—'}')
+      ..writeln('  web      $webAppId');
   } on _UsageError catch (error) {
     stderr.writeln('configure_firebase: ${error.reason}\n\n$_usage');
     exitCode = 64;

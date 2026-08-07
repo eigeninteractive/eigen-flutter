@@ -95,6 +95,11 @@ echo "App configuration is written in \$output"
         result.stdout,
         contains('Firebase configured for Android, Flutter Web'),
       );
+      // Which project and which apps, because FlutterFire reuses an app the
+      // project already had without saying so — the two runs are otherwise
+      // indistinguishable.
+      expect(result.stdout, contains('project  example-project'));
+      expect(result.stdout, contains('web      1:123:web:abc'));
     },
     skip: Platform.isWindows,
   );
