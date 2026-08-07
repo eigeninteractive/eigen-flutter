@@ -80,6 +80,48 @@ cp "\$EIGEN_TEST_FIREBASE_CONFIG" "\$output"
     },
     skip: Platform.isWindows,
   );
+
+  test('names the missing tool and how to install it', () async {
+    final packageRoot = Directory.current;
+    final appRoot = Directory.systemTemp.createTempSync(
+      'eigen-firebase-missing-',
+    );
+    addTearDown(() => appRoot.deleteSync(recursive: true));
+
+    // `firebase` present, `flutterfire` absent — the common case, because
+    // FlutterFire is not installed alongside Flutter and lands somewhere that
+    // is not on PATH. `dart` itself has to stay findable to run the script.
+    final fakeBin = Directory(path.join(appRoot.path, 'bin'))..createSync();
+    await _writeExecutable(
+      File(path.join(fakeBin.path, 'firebase')),
+      '#!/bin/sh\nexit 0\n',
+    );
+
+    // Located rather than assumed: under `flutter test` the running executable
+    // is flutter_tester, so its directory is not where `dart` lives.
+    final dart = ((await Process.run('which', ['dart'])).stdout as String)
+        .trim();
+    expect(dart, isNotEmpty, reason: 'dart must be on PATH to run this test');
+
+    final result = await Process.run(
+      'dart',
+      [path.join(packageRoot.path, 'bin', 'configure_firebase.dart')],
+      workingDirectory: appRoot.path,
+      environment: {
+        ...Platform.environment,
+        // Trimmed to hide whatever is installed on this machine, but not so
+        // far that `dart` breaks: it is a shell wrapper that resolves `bash`
+        // through PATH.
+        'PATH': '${fakeBin.path}:${path.dirname(dart)}:/usr/bin:/bin',
+      },
+    );
+
+    expect(result.exitCode, 69, reason: '${result.stdout}\n${result.stderr}');
+    expect(result.stderr, contains('could not find `flutterfire`'));
+    expect(result.stderr, contains('dart pub global activate flutterfire_cli'));
+    // The tool it did find has no business in the message.
+    expect(result.stderr, isNot(contains('firebase-tools')));
+  }, skip: Platform.isWindows);
 }
 
 Future<void> _writeExecutable(File file, String contents) async {

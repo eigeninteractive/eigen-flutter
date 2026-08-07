@@ -14,6 +14,10 @@ Pre-1.0, breaking changes land in a **MINOR** bump: `^0.1.0` resolves to
 [Versions and compatibility](https://eigeninteractive.com/docs/reference/compatibility)
 for how this package, the engine and the generated `eigen_api` client pair up.
 
+## [Unreleased]
+### Changed
+- `configure_firebase` checks for `flutterfire` and `firebase` before it starts, and names the one that is missing with the command that installs it. It previously pointed at both CLIs without saying how to get either, and only after FlutterFire had already written its files.
+
 ## [0.3.1] - 2026-08-06
 ### Changed
 - Use **EigenInteractive** as the product name in the package description, README, dartdoc and the default `madeByCredit` credit line. No API changes; the generated payload header comment now reads `Generated from the game-owned EigenInteractive contract.`, so a game running `generate_payloads --check` needs one regeneration.
@@ -119,6 +123,7 @@ server-side concern now live in the engine.
 - `google_fonts`, which fetched Inter at runtime — replaced by the bundled
 package font above.
 
+[Unreleased]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.3.1...HEAD
 [0.3.1]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.1.0...v0.2.0
