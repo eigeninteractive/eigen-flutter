@@ -101,28 +101,24 @@ flutter:
   assets:
     - assets/vendor/cropperjs/
 
-  # Inter is bundled as a package font so consuming apps get it automatically
-  # and it renders offline from the first frame (no runtime fetch). All weights
-  # are declared so Flutter's weight matching is exact (no faux-bold). Regenerate
-  # the files with tool/download_fonts.sh.
+  # Both faces are bundled as package fonts, so a consuming app gets them
+  # automatically and they render offline from the first frame with no runtime
+  # fetch. Space Grotesk carries the display and headline roles; Inter carries
+  # everything a player reads at length. See lib/core/theme/app_theme.dart.
+  #
+  # One variable file each, with no per-weight entries. Flutter's FontWeight now
+  # drives the `wght` axis directly (landed in 3.41; this package requires
+  # 3.44), so a single file covers every weight and intermediate weights become
+  # available for free. Declaring `weight:` here would put Flutter back into
+  # file-matching and defeat that. Inter also has an `opsz` axis, which nothing
+  # sets: it rests at its default of 14, the text optical size, which is the
+  # right one for the roles Inter has.
+  #
+  # Licences ship beside the files, as OFL-1.1 requires.
   fonts:
     - family: Inter
       fonts:
-        - asset: fonts/Inter-Thin.ttf
-          weight: 100
-        - asset: fonts/Inter-ExtraLight.ttf
-          weight: 200
-        - asset: fonts/Inter-Light.ttf
-          weight: 300
-        - asset: fonts/Inter-Regular.ttf
-          weight: 400
-        - asset: fonts/Inter-Medium.ttf
-          weight: 500
-        - asset: fonts/Inter-SemiBold.ttf
-          weight: 600
-        - asset: fonts/Inter-Bold.ttf
-          weight: 700
-        - asset: fonts/Inter-ExtraBold.ttf
-          weight: 800
-        - asset: fonts/Inter-Black.ttf
-          weight: 900
+        - asset: fonts/Inter-Variable.ttf
+    - family: Space Grotesk
+      fonts:
+        - asset: fonts/SpaceGrotesk-Variable.ttf

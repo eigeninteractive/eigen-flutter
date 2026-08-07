@@ -98,8 +98,14 @@ class MyApp extends ConsumerWidget {
 
     return MaterialApp.router(
       title: branding.appName,
-      theme: AppTheme.light(branding.seedColor),
-      darkTheme: AppTheme.dark(branding.seedColor),
+      theme: AppTheme.light(
+        branding.seedColor,
+        display: branding.displayFontFamily,
+      ),
+      darkTheme: AppTheme.dark(
+        branding.seedColor,
+        display: branding.displayFontFamily,
+      ),
       themeMode: themeMode,
       routerConfig: router,
     );
