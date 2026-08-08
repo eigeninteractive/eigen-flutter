@@ -39,7 +39,7 @@ directly for anything this does not cover.''';
 ///
 /// A deliberately narrow interface rather than a passthrough. This command
 /// exists to configure a generated app the one way it is supported, and the
-/// options that would change that — `--platforms` above all — leave the rest of
+/// options that would change that, `--platforms` above all, leave the rest of
 /// the script unable to finish: it needs the Web app FlutterFire records, and
 /// fails several steps later if it is not there.
 const _options = {'project', 'account'};
@@ -75,7 +75,7 @@ Future<void> main(List<String> rawArguments) async {
         File(path.join(appRoot.path, '.firebaserc')).existsSync();
     if (!settled) {
       stdout.writeln(
-        'No Firebase project chosen yet — FlutterFire will ask which to use, '
+        'No Firebase project chosen yet. FlutterFire will ask which to use, '
         'and can create one.\nPass --project <id> to skip that.\n',
       );
     }
@@ -115,8 +115,8 @@ Future<void> main(List<String> rawArguments) async {
         path.join(temporaryDirectory.path, 'firebase-config.json'),
       );
       // Quiet, unlike the FlutterFire call above, which is quiet only when it
-      // has nothing to ask. This one cannot prompt — the project and app are
-      // already decided — and its own success line names the temporary file it
+      // has nothing to ask. This one cannot prompt (the project and app are
+      // already decided) and its own success line names the temporary file it
       // wrote, which is deleted a few lines below and was never the output
       // anyone was waiting for. The captured stream is replayed on failure.
       await _runQuiet('firebase', [
@@ -164,7 +164,7 @@ Future<void> main(List<String> rawArguments) async {
 
     // Named, not just announced. FlutterFire matches an existing Android app
     // on the package name and an existing Web app on its display name, and
-    // reuses either silently — so a run against a project that already had
+    // reuses either silently, so a run against a project that already had
     // them looks exactly like a run that registered them. These three lines
     // are what distinguishes the two, and what a second run can be compared
     // against.
@@ -174,7 +174,7 @@ Future<void> main(List<String> rawArguments) async {
         'service worker.',
       )
       ..writeln('  project  $projectId')
-      ..writeln('  android  ${configurations?['android'] ?? '—'}')
+      ..writeln('  android  ${configurations?['android'] ?? 'none'}')
       ..writeln('  web      $webAppId');
   } on _UsageError catch (error) {
     stderr.writeln('configure_firebase: ${error.reason}\n\n$_usage');
@@ -261,7 +261,7 @@ Map<String, dynamic>? _selectedOutput(Directory appRoot) {
   return dartOutputs?['lib/firebase_options.dart'] as Map<String, dynamic>?;
 }
 
-/// The project a previous run configured. Absent, the run asks — which is what
+/// The project a previous run configured. Absent, the run asks, which is what
 /// it would have done anyway.
 String? _configuredProject(Directory appRoot) =>
     _selectedOutput(appRoot)?['projectId'] as String?;

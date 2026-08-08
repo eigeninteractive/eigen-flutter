@@ -1,7 +1,7 @@
 // Dartdoc selects the two supported package entry points by library name.
 // ignore_for_file: unnecessary_library_name
 
-/// EigenInteractive — a whitelabel turn-based multiplayer game engine.
+/// EigenInteractive: a whitelabel turn-based multiplayer game engine.
 ///
 /// A game app depends on this package, implements a [GameModule], and boots
 /// with [runEngineApp]:
@@ -31,7 +31,7 @@ library eigen_flutter;
 /// The wire types a game renders from.
 ///
 /// Re-exported deliberately: they are generated, but they *are* this engine's
-/// domain vocabulary — there are no hand-written mirrors to hide them behind,
+/// domain vocabulary; there are no hand-written mirrors to hide them behind,
 /// and inventing some would be pure transcription. A game app must be able to
 /// name a [GameStatus] or an [OutcomeResultEnum] without depending on
 /// `eigen_api` itself, which is a build artifact that `tool/generate_api.sh`
@@ -64,7 +64,7 @@ export 'package:eigen_api/eigen_api.dart'
 export 'app_runner.dart' show runEngineApp, MyApp;
 
 /// Server time. Exported because [TimingContext.clock] is typed as it, so
-/// without this a game could read the field but never name it — which is what
+/// without this a game could read the field but never name it, which is what
 /// building a [GameContentContext] in a widget test requires.
 export 'core/api/server_clock.dart' show ServerClock;
 export 'core/config/app_config.dart'

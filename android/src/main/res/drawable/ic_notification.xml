@@ -3,7 +3,7 @@
      from its manifest's default_notification_icon meta-data.
 
      It ships here so those references always resolve. An app that wants its
-     own silhouette declares res/drawable/ic_notification.xml itself — Android
+     own silhouette declares res/drawable/ic_notification.xml itself; Android
      resource merging gives the application module precedence over a library,
      so nothing needs replacing or deleting here.
 

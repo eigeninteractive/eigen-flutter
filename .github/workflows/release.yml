@@ -7,18 +7,18 @@ name: Release
 #
 # Tag-triggered rather than push-triggered because that is what pub.dev's
 # automated publishing requires: it trusts a GitHub OIDC token only when the
-# token's ref is a TAG matching the pattern configured on the package — set at
+# token's ref is a TAG matching the pattern configured on the package, set at
 # Admin → Automated publishing to repository `eigeninteractive/eigen-flutter`,
 # tag pattern `v{{version}}`. No pub credential is stored in GitHub secrets at
-# all — the OIDC identity IS the authentication.
+# all: the OIDC identity IS the authentication.
 #
-# One package. `eigen_api` — the generated REST client — is published by the
+# One package. `eigen_api`, the generated REST client, is published by the
 # ENGINE repo (eigen-server/clients/dart), because that is where the wire
 # contract lives. This package consumes it as an ordinary versioned dependency,
 # so the two release independently.
 #
 # Generated code (`*.g.dart`, `*.freezed.dart`) is committed, so the tarball
-# compiles for consumers and publishing needs no `.pubignore` — `dart pub
+# compiles for consumers and publishing needs no `.pubignore`; `dart pub
 # publish` falls back to `.gitignore`, which excludes build output and
 # credentials while keeping the generated sources. `checks.yml` proves that
 # committed output is current, so nothing is regenerated below.
@@ -38,8 +38,8 @@ permissions:
 jobs:
   # The same gate every pull request clears, re-run against the tagged commit.
   # A tag can point at any commit, so this is a fresh execution rather than a
-  # lookup of whatever the branch run concluded. Sharing the definition — not
-  # re-typing format/analyze/test here — is the point: a check added to
+  # lookup of whatever the branch run concluded. Sharing the definition, not
+  # re-typing format/analyze/test here, is the point: a check added to
   # checks.yml automatically guards releases too.
   gate:
     name: Checks
@@ -79,9 +79,9 @@ jobs:
           exit 0
 
       # Makes the pipeline idempotent. `dart pub publish` fails on a version
-      # that already exists, which turns every harmless re-run — a retried job,
+      # that already exists, which turns every harmless re-run (a retried job,
       # a re-pushed tag, a version published by hand before this automation
-      # existed — into a red release someone has to explain.
+      # existed) into a red release someone has to explain.
       #
       # Checking first turns those into a clean skip, and keeps the state that
       # matters (what is on pub.dev) authoritative over the state that does not
@@ -92,7 +92,7 @@ jobs:
           v=$(grep -m1 '^version:' pubspec.yaml | awk '{print $2}')
           if curl -sf https://pub.dev/api/packages/eigen_flutter \
                | jq -e --arg v "$v" '.versions[] | select(.version == $v)' >/dev/null; then
-            echo "::notice::eigen_flutter $v is already on pub.dev — skipping publish."
+            echo "::notice::eigen_flutter $v is already on pub.dev. Skipping publish."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -103,7 +103,7 @@ jobs:
       # and nothing here did.
       #
       # `dart-lang/setup-dart` does this exchange for you, which is why the
-      # pub.dev instructions never mention it — but this job installs the SDK
+      # pub.dev instructions never mention it, but this job installs the SDK
       # through `subosito/flutter-action`, because publishing a Flutter package
       # needs the Flutter SDK, and that action has no equivalent step.
       #
@@ -123,7 +123,7 @@ jobs:
             -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" | jq -r '.value')
 
           [ -n "$PUB_TOKEN" ] && [ "$PUB_TOKEN" != "null" ] || {
-            echo "::error::could not mint an OIDC token for pub.dev — publishing would fall back to an interactive prompt and hang"
+            echo "::error::could not mint an OIDC token for pub.dev; publishing would fall back to an interactive prompt and hang"
             exit 1
           }
 
@@ -133,7 +133,7 @@ jobs:
           dart pub token add https://pub.dev --env-var PUB_TOKEN
 
       # Surfaces score-affecting problems (missing docs, unresolved links,
-      # platform support) before they are permanent — pub.dev versions cannot be
+      # platform support) before they are permanent; pub.dev versions cannot be
       # unpublished, only retracted.
       - name: Dry run
         if: steps.published.outputs.skip == 'false'
@@ -143,8 +143,8 @@ jobs:
         if: steps.published.outputs.skip == 'false'
         run: dart pub publish --force
 
-      # eigen-web publishes the compatibility table — which engine line each
-      # `eigen_flutter` release speaks — and pub.dev is the authority for it.
+      # eigen-web publishes the compatibility table, which engine line each
+      # `eigen_flutter` release speaks, and pub.dev is the authority for it.
       # Nothing over there can notice a publish on its own, so tell it.
       #
       # NOT gated on `skip`: a re-run after a failed dispatch is exactly when
@@ -155,15 +155,15 @@ jobs:
       # The version travels in the payload because pub.dev serves a publish from
       # its API a moment after the call returns. The receiving workflow waits for
       # this exact version rather than reading whatever is there when it happens
-      # to start — otherwise it would regenerate from the state just before this
+      # to start, or else it would regenerate from the state just before this
       # release and silently produce no change at all.
       #
       # Failing here fails the release, matching eigen-server: a published client
       # with an unnotified docs site is a state worth stopping on. The recovery
       # is the `Sync compatibility table` workflow's manual trigger.
       #
-      # GITHUB_TOKEN cannot do this — it is scoped to the repository that minted
-      # it, same organization or not — so this needs the App. Its credentials
+      # GITHUB_TOKEN cannot do this; it is scoped to the repository that minted
+      # it, same organization or not, so this needs the App. Its credentials
       # must exist HERE (`RELEASE_APP_CLIENT_ID` variable,
       # `RELEASE_APP_PRIVATE_KEY` secret) and it must be installed on eigen-web.
       - uses: actions/create-github-app-token@v3

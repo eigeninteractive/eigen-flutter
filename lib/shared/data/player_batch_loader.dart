@@ -7,7 +7,7 @@ import 'package:eigen_flutter/shared/data/player_repository.dart';
 ///
 /// The batch endpoint `players?ids=` is the decided alternative to
 /// denormalising identity onto game rows, but the app reads identity one id at
-/// a time through a per-id cache ([PlayerInfoCache]) — a lobby of N games, a
+/// a time through a per-id cache ([PlayerInfoCache]): a lobby of N games, a
 /// roster of N seats. Left alone that turns one screen into N requests to a
 /// *batch* endpoint, the exact N+1 the endpoint exists to avoid.
 ///
@@ -18,7 +18,7 @@ import 'package:eigen_flutter/shared/data/player_repository.dart';
 ///
 /// The window is a few milliseconds rather than zero on purpose. A zero-delay
 /// timer would coalesce a build only because [PlayerInfoCache.build] happens
-/// to call [load] synchronously, before its first `await` — an invisible
+/// to call [load] synchronously, before its first `await`, is an invisible
 /// coupling that a later refactor (an `await` slipped in ahead of the load)
 /// would break silently, degrading back to one request per id with no error.
 /// A small real window makes coalescing robust regardless of how the callers
@@ -37,7 +37,7 @@ class PlayerBatchLoader {
 
   /// Fetches the given ids in one request. Ids that match nothing are simply
   /// absent from the result (a purged account is a normal outcome, not an
-  /// error) — the loader maps that absence to [PlayerNotFoundException] for
+  /// error); the loader maps that absence to [PlayerNotFoundException] for
   /// the specific waiter, exactly as a single lookup would.
   final Future<List<Player>> Function(List<String> ids) _fetch;
 
@@ -53,7 +53,7 @@ class PlayerBatchLoader {
   /// Resolves one player, batched with every other [load] in the same window.
   ///
   /// Throws [PlayerNotFoundException] if the id matches no player, or the
-  /// underlying transport error if the batch request fails — the same
+  /// underlying transport error if the batch request fails: the same
   /// outcomes a direct single lookup produces, so the cache above is unaware
   /// it was batched.
   Future<Player> load(String id) {

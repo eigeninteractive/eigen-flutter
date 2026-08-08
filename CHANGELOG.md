@@ -5,7 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Entries are maintained with [`cider`](https://pub.dev/packages/cider) — add them
+Entries are maintained with [`cider`](https://pub.dev/packages/cider); add them
 as you work (`cider log added "…"`), and `cider release` moves everything under
 `## [Unreleased]` into a dated section at release time.
 
@@ -14,22 +14,26 @@ Pre-1.0, breaking changes land in a **MINOR** bump: `^0.1.0` resolves to
 [Versions and compatibility](https://eigeninteractive.com/docs/reference/compatibility)
 for how this package, the engine and the generated `eigen_api` client pair up.
 
+## [Unreleased]
+### Changed
+- Em dashes are gone from every line this package writes, including the strings a player reads: 'The game updated. Try again.', the notification-permission rows in settings, and the in-progress replay notice. Comments, docs, the example game, the workflows and the changelog itself went with them.
+
 ## [0.3.5] - 2026-08-07
 ### Changed
-- `configure_firebase` checks that a Google account is signed in to the Firebase CLI before it starts, and names `firebase login` when none is — those are the credentials both CLIs share, and previously the one preflight failure FlutterFire was left to discover for itself. The check fails open: only an answer that positively reports no accounts stops the run.
-- A successful run names the Firebase project and the Android and Web app IDs it configured against. FlutterFire matches an existing Android app on the package name and an existing Web app on its display name, and reuses either without comment — so adopting the apps a project already had looked identical to registering new ones, and now does not.
-- The Web SDK configuration is downloaded quietly. It is an intermediate — read, checked, rewritten as `web/firebase-config.js`, then deleted — so the Firebase CLI's own success line announced a temporary file that no longer existed by the time anyone read it. A failing download still prints everything it said.
+- `configure_firebase` checks that a Google account is signed in to the Firebase CLI before it starts, and names `firebase login` when none is. Those are the credentials both CLIs share, and previously the one preflight failure FlutterFire was left to discover for itself. The check fails open: only an answer that positively reports no accounts stops the run.
+- A successful run names the Firebase project and the Android and Web app IDs it configured against. FlutterFire matches an existing Android app on the package name and an existing Web app on its display name, and reuses either without comment, so adopting the apps a project already had looked identical to registering new ones, and now does not.
+- The Web SDK configuration is downloaded quietly. It is an intermediate (read, checked, rewritten as `web/firebase-config.js`, then deleted) so the Firebase CLI's own success line announced a temporary file that no longer existed by the time anyone read it. A failing download still prints everything it said.
 
 ## [0.3.4] - 2026-08-07
 ### Changed
-- The credit line defaults to `Built with EigenInteractive`, matching the game's own website, and renders as prose with only the brand name linked — accent-coloured, no underline. A `Branding.madeByCredit` that never names the engine stays plain text. The settings and about screens now share one `MadeByCredit` widget instead of the same footer written twice.
+- The credit line defaults to `Built with EigenInteractive`, matching the game's own website, and renders as prose with only the brand name linked, accent-coloured and without an underline. A `Branding.madeByCredit` that never names the engine stays plain text. The settings and about screens now share one `MadeByCredit` widget instead of the same footer written twice.
 
 ### Fixed
-- `configure_firebase` no longer fails with `FirebaseProjectRequiredException` on a first run: `--yes` is only passed once the Firebase project is settled, so an unconfigured run gets FlutterFire's project picker — where a project can also be created — instead of a hard stop. The project can be named with `--project <id>`, and is otherwise read back from the `firebase.json` a previous run wrote or a `.firebaserc`, so re-runs stay non-interactive. `--account <email>` is accepted for a machine signed in to several Google accounts, `--help` prints the usage, and a bare `--` is ignored so `run firebase:configure -- --project x` works under both npm and pnpm. Every other option is refused with a usage error rather than passed to FlutterFire: platforms in particular are fixed at Android and Web, which are the platforms the app has and where the messaging service worker's configuration comes from.
+- `configure_firebase` no longer fails with `FirebaseProjectRequiredException` on a first run: `--yes` is only passed once the Firebase project is settled, so an unconfigured run gets FlutterFire's project picker, where a project can also be created, instead of a hard stop. The project can be named with `--project <id>`, and is otherwise read back from the `firebase.json` a previous run wrote or a `.firebaserc`, so re-runs stay non-interactive. `--account <email>` is accepted for a machine signed in to several Google accounts, `--help` prints the usage, and a bare `--` is ignored so `run firebase:configure -- --project x` works under both npm and pnpm. Every other option is refused with a usage error rather than passed to FlutterFire: platforms in particular are fixed at Android and Web, which are the platforms the app has and where the messaging service worker's configuration comes from.
 
 ## [0.3.3] - 2026-08-07
 ### Changed
-- Bundle Inter and Space Grotesk as single variable files instead of nine static Inter weights, and pair them across the Material 3 text roles: Space Grotesk on display and headline, Inter on everything read at length. `Branding.displayFontFamily` overrides the display face and `Branding.seedColor` now defaults to the EigenInteractive teal, so a game looks deliberate before anyone has configured it and is one line to rebrand. Font payload drops from 2.7 MB to under 1 MB while gaining a family, because `FontWeight` has driven the `wght` axis since Flutter 3.41 and this package requires 3.44 — `tool/download_fonts.sh`, which fetched static weights from gstatic by content hash, is gone.
+- Bundle Inter and Space Grotesk as single variable files instead of nine static Inter weights, and pair them across the Material 3 text roles: Space Grotesk on display and headline, Inter on everything read at length. `Branding.displayFontFamily` overrides the display face and `Branding.seedColor` now defaults to the EigenInteractive teal, so a game looks deliberate before anyone has configured it and is one line to rebrand. Font payload drops from 2.7 MB to under 1 MB while gaining a family, because `FontWeight` has driven the `wght` axis since Flutter 3.41 and this package requires 3.44. `tool/download_fonts.sh`, which fetched static weights from gstatic by content hash, is gone.
 
 ## [0.3.2] - 2026-08-07
 ### Changed
@@ -47,8 +51,8 @@ The manifest merger treats two `<meta-data>` entries with the same
 An app that declares
 `com.google.firebase.messaging.default_notification_channel_id` or
 `default_notification_icon` with a value other than `your_turn` /
-`@drawable/ic_notification` must now either drop its copy — this package
-supplies both — or keep it and add
+`@drawable/ic_notification` must now either drop its copy, since this package
+supplies both, or keep it and add
 `tools:replace="android:value"` (or `android:resource`) to that element.
 Declaring the same values as this package needs no change.
 
@@ -58,14 +62,14 @@ Declaring the same values as this package needs no change.
 resources at all, so the icon only resolved in apps that happened to create that
 drawable themselves. The plugin now ships it, together with the Firebase
 default-channel and default-notification-icon meta-data. An app overrides the
-silhouette by declaring the same resource name — Android resource merging gives
+silhouette by declaring the same resource name; Android resource merging gives
 the application module precedence over a library.
 
 ## [0.2.0] - 2026-08-03
 ### Changed
 - `eigen_api` moved to `^0.2.0`, following the engine to its 0.2.x release line.
-No Dart API changed — the 0.2.0 spec is byte-identical to 0.1.0's apart from
-the version stamp, and 0.2.0 of the engine was a TypeScript-side cleanup — but
+No Dart API changed. The 0.2.0 spec is byte-identical to 0.1.0's apart from
+the version stamp, and 0.2.0 of the engine was a TypeScript-side cleanup, but
 a consumer cannot depend on this package and `eigen_api 0.2.0` at the same
 time until this ships, so it is a breaking change to the constraint rather
 than a patch.
@@ -98,7 +102,7 @@ player permission prompt remains an explicit opt-in and delivery remains
 best-effort.
 - Avatar upload and display against the worker-served avatar URL, via
 `cached_network_image`.
-- Rock–Paper–Scissors under `example/` — a complete game, and the worked answer
+- Rock–Paper–Scissors under `example/`: a complete game, and the worked answer
 to "how do I test a game screen". Its `fixtures/v1/rps.json` is the Dart half
 of a twin-fixture contract the engine repo checks from the other side.
 - **Inter** bundled as a package font (all 9 weights under `fonts:`), so
@@ -128,7 +132,7 @@ engine's own version and consumed here as an ordinary versioned dependency.
 There is no vendored OpenAPI spec and no local codegen for it.
 - Riverpod toolchain moved to the 3.3.2 line (`flutter_riverpod ^3.3.2`,
 `riverpod_annotation ^4.0.3`, `riverpod_generator ^4.0.4`, `riverpod_lint ^3.1.4`, `riverpod_sqflite ^0.4.3`) so the engine resolves the same riverpod
-core consuming apps do — generated code must be built against the core the app
+core consuming apps do; generated code must be built against the core the app
 compiles against, and riverpod 3.3.x changed `Notifier.runBuild`'s signature.
 
 ### Removed
@@ -137,9 +141,10 @@ compiles against, and riverpod 3.3.x changed `Notifier.runBuild`'s signature.
 CLI that copied it into consuming apps, and the `update-ratings` /
 `refresh-fcm-token` edge functions. Ratings, notifications and every other
 server-side concern now live in the engine.
-- `google_fonts`, which fetched Inter at runtime — replaced by the bundled
+- `google_fonts`, which fetched Inter at runtime, replaced by the bundled
 package font above.
 
+[Unreleased]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.3.5...HEAD
 [0.3.5]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/eigeninteractive/eigen-flutter/compare/v0.3.2...v0.3.3

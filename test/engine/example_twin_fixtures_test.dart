@@ -9,7 +9,7 @@ import '../helpers/example_rules.dart';
 /// `test/fixtures/game/` run here against the Dart [ExampleRules] twin. A real
 /// game runs the same files against its authoritative TS unit via
 /// `@eigen/testkit`; this package has no Worker, so only the Dart half runs
-/// here — enough to keep [loadTwinFixtureSuites] and [runTwinFixtureCase]
+/// here, enough to keep [loadTwinFixtureSuites] and [runTwinFixtureCase]
 /// honest. Downstream apps copy this wiring for their own game.
 void main() {
   const versions = <int, GameRules<dynamic, dynamic, dynamic>>{

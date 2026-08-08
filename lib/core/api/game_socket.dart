@@ -35,8 +35,8 @@ Uri buildGameSocketUri({
 
 /// One message from a game's socket, or the signal that the socket (re)opened.
 ///
-/// The server never reads from this socket — every client-to-server command
-/// rides HTTP — so this is a one-way feed of the message kinds the protocol
+/// The server never reads from this socket, since every client-to-server
+/// command rides HTTP, so this is a one-way feed of the message kinds the protocol
 /// defines, plus the connection signal the ordering pipeline needs.
 sealed class GameSocketEvent {
   const GameSocketEvent();
@@ -54,7 +54,7 @@ final class GameSocketConnected extends GameSocketEvent {
 
 /// A pre-game roster snapshot: who is seated and what the game's status is.
 ///
-/// Unversioned and idempotent — the server pushes one on every roster change
+/// Unversioned and idempotent: the server pushes one on every roster change
 /// and one on socket open while the game is still in the waiting room, so a
 /// reconnect simply gets the current one.
 final class GameSocketRoster extends GameSocketEvent {
@@ -77,7 +77,7 @@ final class GameSocketSync extends GameSocketEvent {
 
 /// One versioned frame for the receiving seat.
 ///
-/// Only ever this socket's own seat's view — the server resolves each frame's
+/// Only ever this socket's own seat's view; the server resolves each frame's
 /// owner against the roster before sending, so another player's hidden
 /// information never crosses the wire.
 final class GameSocketFrame extends GameSocketEvent {
@@ -116,7 +116,7 @@ class GameSocket {
   /// The stream never completes on its own and never surfaces a connection
   /// failure as an error: a dropped socket is an expected condition on mobile,
   /// and the recovery for it is the reconnect this already performs. Errors
-  /// that are *not* recoverable that way — a malformed message — are logged and
+  /// that are *not* recoverable that way, such as a malformed message, are logged and
   /// skipped rather than tearing down a working connection.
   Stream<GameSocketEvent> connect(String gameId) async* {
     var backoff = _initialBackoff;

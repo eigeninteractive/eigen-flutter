@@ -1,7 +1,7 @@
 /// The entire app.
 ///
-/// Every screen a player sees — sign-in, home, the lobby, friends, profile,
-/// settings, history, replay, push permission prompts — comes from
+/// Every screen a player sees (sign-in, home, the lobby, friends, profile,
+/// settings, history, replay, push permission prompts) comes from
 /// `eigen_flutter`. What an app supplies is this file: which game to play,
 /// what it is called, what colour it is, and where its server lives.
 ///
@@ -28,7 +28,7 @@ const _appHost = String.fromEnvironment('APP_HOST');
 
 Future<void> main() async {
   await runEngineApp(
-    // The game. One value, one line — this is the seam the whole framework is
+    // The game. One value, one line: the seam the whole framework is
     // built around.
     module: const RpsModule(),
     config: AppConfig(
@@ -54,7 +54,7 @@ Future<void> main() async {
 
 /// FCM delivers background messages on a separate isolate, so this must be a
 /// top-level function marked as an entry point and must re-initialise Firebase
-/// itself — it cannot close over anything from [main].
+/// itself; it cannot close over anything from [main].
 ///
 /// The engine's notifications carry their own display payload, so there is
 /// nothing to do here beyond making the isolate valid.

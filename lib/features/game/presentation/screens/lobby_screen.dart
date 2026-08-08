@@ -29,7 +29,7 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
     with SingleTickerProviderStateMixin {
   // Guests cannot have friends. The Friends tab stays visible but disabled
   // (greyed, with a locked sign-in panel as its content) so guests still see
-  // the feature exists — and app_friends_games is never called for them.
+  // the feature exists, and app_friends_games is never called for them.
   // Decided once at init: a guest→permanent conversion is a full auth-state
   // change that re-navigates into a fresh lobby.
   late final bool _isAnonymous;
@@ -89,7 +89,7 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
 }
 
 /// Locked content shown to guests in place of the friends lobby. The Friends
-/// tab is visible but non-functional until they create an account — mirroring
+/// tab is visible but non-functional until they create an account, mirroring
 /// the disabled "Sign up to play rated" treatment on rated game cards.
 class _FriendsLockedView extends StatelessWidget {
   const _FriendsLockedView();

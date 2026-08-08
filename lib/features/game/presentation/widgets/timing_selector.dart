@@ -30,11 +30,11 @@ class TimingSelector extends StatefulWidget {
 
   /// The mode to select initially (a key of [configs]). `null` or an unknown key
   /// falls back to the first declared mode. Lets a caller that knows more than
-  /// this widget — e.g. the solo picker, which inspects the bot catalog — open it
+  /// this widget (e.g. the solo picker, which inspects the bot catalog) open it
   /// in a mode that actually has opponents, without coupling this widget to bots.
   final String? initialKey;
 
-  /// The resolved timing for the initial selection — matching what the widget
+  /// The resolved timing for the initial selection, matching what the widget
   /// would emit before any interaction, so a parent can seed its state without a
   /// null window. Pass the same [initialKey] used on the widget.
   static ResolvedTiming initial(
@@ -86,7 +86,7 @@ class _TimingSelectorState extends State<TimingSelector> {
     final selected = configs[_key]!;
 
     // Nothing to choose when the game offers only untimed play (the default
-    // spec) — don't render a lone "Timing" header with no control under it.
+    // spec); don't render a lone "Timing" header with no control under it.
     if (configs.length == 1 && selected is UntimedConfig) {
       return const SizedBox.shrink();
     }
@@ -290,7 +290,7 @@ class _BudgetPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Preset pairs — each chip sets both sliders.
+        // Preset pairs: each chip sets both sliders.
         if (config.presets.isNotEmpty) ...[
           Wrap(
             spacing: 8,
@@ -338,7 +338,7 @@ class _BudgetPanel extends StatelessWidget {
           ),
         ),
 
-        // Increment slider — only when the range is non-trivial.
+        // Increment slider, only when the range is non-trivial.
         if (hasIncrementRange) ...[
           const SizedBox(height: 8),
           Text('Increment', style: textTheme.labelMedium),
@@ -359,7 +359,7 @@ class _BudgetPanel extends StatelessWidget {
             ),
           ),
         ] else if (config.minIncrementSeconds > 0) ...[
-          // Fixed increment — show as a label, no slider needed.
+          // Fixed increment: show as a label, no slider needed.
           const SizedBox(height: 4),
           Center(
             child: Text(

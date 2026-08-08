@@ -216,7 +216,7 @@ class RemoveFriendButton extends ConsumerStatefulWidget {
 
 class _RemoveFriendButtonState extends ConsumerState<RemoveFriendButton> {
   // Guards against the dialog opening twice on rapid double-tap.
-  // Not UI state — no setState needed.
+  // Not UI state, so no setState needed.
   bool _confirming = false;
 
   Future<void> _remove() async {

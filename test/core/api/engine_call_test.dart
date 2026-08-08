@@ -19,7 +19,7 @@ DioException _serverSaidNo(int status, Object? body) {
   );
 }
 
-/// A [DioException] with no response — the wire never answered.
+/// A [DioException] with no response: the wire never answered.
 DioException _noAnswer(DioExceptionType type) => DioException(
   requestOptions: RequestOptions(path: '/api/engine/games'),
   type: type,

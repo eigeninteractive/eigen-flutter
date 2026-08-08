@@ -8,7 +8,7 @@
 The Flutter half of [EigenInteractive](https://eigeninteractive.com): a
 server-authoritative engine for turn-based multiplayer games.
 
-`eigen_flutter` supplies the complete app shell—authentication, lobbies,
+`eigen_flutter` supplies the complete app shell: authentication, lobbies,
 reconnection, timing, ratings, history, replay, social features, notifications,
 deep links, and update UX. A game supplies a small `GameModule` containing its
 client-side rules and presentation.

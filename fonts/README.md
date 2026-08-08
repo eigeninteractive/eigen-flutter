@@ -14,7 +14,7 @@ font, including inside an application binary.
 
 ## Updating
 
-Download the family from Google Fonts — [Inter], [Space Grotesk] — take the
+Download the family from Google Fonts ([Inter], [Space Grotesk]) and take the
 `*-VariableFont_*.ttf` from the top level of the archive rather than anything
 under `static/`, rename it as above, and copy `OFL.txt` alongside.
 
@@ -27,7 +27,7 @@ The italic file is deliberately not bundled: nothing in the shell sets
 
 ## Why variable, and why no `weight:` entries
 
-`FontWeight` drives the `wght` axis directly — that landed in Flutter 3.41, and
+`FontWeight` drives the `wght` axis directly; that landed in Flutter 3.41, and
 this package requires 3.44, so the workaround it replaced is behind us. One
 file per family covers every weight, and intermediate weights become available
 for free.
@@ -40,7 +40,7 @@ content hash. That approach pinned an Inter with no `opsz` axis, could not be
 verified against anything, and cost 2.7 MB; both variable faces together are
 under 1 MB.
 
-Nothing sets `opsz`. It rests at its default of 14 — Inter's text optical size,
+Nothing sets `opsz`. It rests at its default of 14, Inter's text optical size,
 which is the correct one for the roles Inter has here.
 
 [Inter]: https://fonts.google.com/specimen/Inter

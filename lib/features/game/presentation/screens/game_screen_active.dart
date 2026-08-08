@@ -49,7 +49,7 @@ class _ActiveGameContent extends ConsumerWidget {
     final gamePlayers = gamePlayersAsync.value!;
 
     // A non-participant has no observation rows and no per-seat frame stream,
-    // so the live board can never render for them — it would spin forever.
+    // so the live board can never render for them; it would spin forever.
     // Offer the replay (finished) or a wait message (active) instead.
     final mySeat = gamePlayers.mySeat;
     if (mySeat is! Seated) {
@@ -64,7 +64,7 @@ class _ActiveGameContent extends ConsumerWidget {
 
     // Outcomes are fetched once when the game finishes (invalidated by the
     // gameRosterProvider listener in _GameScreenState). Empty list for active
-    // games — no outcome rows exist yet.
+    // games, where no outcome rows exist yet.
     final outcomes =
         ref
             .watch(gameOutcomesProvider(gameId: game.id))
@@ -193,7 +193,7 @@ class _NonParticipantContent extends StatelessWidget {
           Text(
             isFinished
                 ? 'This game has finished.'
-                : 'Game in progress — the replay will be available when it '
+                : 'Game in progress. The replay will be available when it '
                       'finishes.',
             style: textTheme.titleMedium,
             textAlign: TextAlign.center,

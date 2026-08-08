@@ -13,8 +13,8 @@ import '../helpers/fakes.dart';
 ///
 /// Two halves, matching the two stages the library separates: parsing (a
 /// malformed fixture must fail at load, naming the offending field) and
-/// evaluation (every checked surface — codec round-trip, legality, preview,
-/// predicates — must both pass on agreement and produce a failure message on
+/// evaluation (every checked surface, codec round-trip, legality, preview and
+/// predicates, must both pass on agreement and produce a failure message on
 /// divergence). The evaluation tests build typed cases directly, so they
 /// exercise the runner without going through the parser.
 void main() {

@@ -38,7 +38,7 @@ final _serverAccess = <RegExp>[
 /// notices breaking.
 void main() {
   test('the public barrel exports types, never the API classes', () {
-    // A game app depends on `eigen_flutter`, not on `eigen_api` — so the barrel
+    // A game app depends on `eigen_flutter`, not on `eigen_api`, so the barrel
     // must re-export the wire *vocabulary* a game renders from, without handing
     // apps the ability to call the server directly. A wholesale
     // `export 'package:eigen_api/eigen_api.dart';` would do exactly that, which

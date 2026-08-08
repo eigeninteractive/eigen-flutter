@@ -9,7 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// The bundled faces are single variable files with no per-weight entries, so
 /// every weight is the `wght` axis moving rather than a different file being
 /// chosen. That only works because `FontWeight` drives the axis, which landed
-/// in Flutter 3.41 — before it, one file meant one weight and every
+/// in Flutter 3.41. Before it, one file meant one weight and every
 /// `FontWeight` rendered identically.
 ///
 /// Measuring is the only way to tell the two apart from a test: a variable font

@@ -8,7 +8,7 @@ part of 'engine_api_providers.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// The app-wide HTTP client for the engine — the data layer's single backend
+/// The app-wide HTTP client for the engine: the data layer's single backend
 /// handle.
 ///
 /// Only repositories and data services may watch this or the API providers
@@ -19,7 +19,7 @@ part of 'engine_api_providers.dart';
 /// `/api/engine` prefix.
 ///
 /// The generated `EigenApi` facade is deliberately not used, but not because it
-/// can't take this Dio — it can (`EigenApi(dio: ..., interceptors: const [])`
+/// can't take this Dio. It can (`EigenApi(dio: ..., interceptors: const [])`
 /// installs none of its own). The reason is the split below: each repository
 /// depends on the one narrow `*Api` it needs, so a fake in a test is that one
 /// resource, not the whole surface. The facade would hand every repository all
@@ -28,7 +28,7 @@ part of 'engine_api_providers.dart';
 @ProviderFor(engineDio)
 final engineDioProvider = EngineDioProvider._();
 
-/// The app-wide HTTP client for the engine — the data layer's single backend
+/// The app-wide HTTP client for the engine: the data layer's single backend
 /// handle.
 ///
 /// Only repositories and data services may watch this or the API providers
@@ -39,7 +39,7 @@ final engineDioProvider = EngineDioProvider._();
 /// `/api/engine` prefix.
 ///
 /// The generated `EigenApi` facade is deliberately not used, but not because it
-/// can't take this Dio — it can (`EigenApi(dio: ..., interceptors: const [])`
+/// can't take this Dio. It can (`EigenApi(dio: ..., interceptors: const [])`
 /// installs none of its own). The reason is the split below: each repository
 /// depends on the one narrow `*Api` it needs, so a fake in a test is that one
 /// resource, not the whole surface. The facade would hand every repository all
@@ -47,7 +47,7 @@ final engineDioProvider = EngineDioProvider._();
 
 final class EngineDioProvider extends $FunctionalProvider<Dio, Dio, Dio>
     with $Provider<Dio> {
-  /// The app-wide HTTP client for the engine — the data layer's single backend
+  /// The app-wide HTTP client for the engine: the data layer's single backend
   /// handle.
   ///
   /// Only repositories and data services may watch this or the API providers
@@ -58,7 +58,7 @@ final class EngineDioProvider extends $FunctionalProvider<Dio, Dio, Dio>
   /// `/api/engine` prefix.
   ///
   /// The generated `EigenApi` facade is deliberately not used, but not because it
-  /// can't take this Dio — it can (`EigenApi(dio: ..., interceptors: const [])`
+  /// can't take this Dio. It can (`EigenApi(dio: ..., interceptors: const [])`
   /// installs none of its own). The reason is the split below: each repository
   /// depends on the one narrow `*Api` it needs, so a fake in a test is that one
   /// resource, not the whole surface. The facade would hand every repository all
@@ -153,17 +153,17 @@ final class ServerClockProvider
 
 String _$serverClockHash() => r'3305c9476050c05d8e503d96005e86648cb7520f';
 
-/// Games, the lobby, and the frame history — the whole play surface.
+/// Games, the lobby, and the frame history: the whole play surface.
 
 @ProviderFor(gamesApi)
 final gamesApiProvider = GamesApiProvider._();
 
-/// Games, the lobby, and the frame history — the whole play surface.
+/// Games, the lobby, and the frame history: the whole play surface.
 
 final class GamesApiProvider
     extends $FunctionalProvider<GamesApi, GamesApi, GamesApi>
     with $Provider<GamesApi> {
-  /// Games, the lobby, and the frame history — the whole play surface.
+  /// Games, the lobby, and the frame history: the whole play surface.
   GamesApiProvider._()
     : super(
         from: null,

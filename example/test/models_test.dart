@@ -1,4 +1,4 @@
-/// Codec tests — the part of a game the shared fixtures cannot fully cover.
+/// Codec tests: the part of a game the shared fixtures cannot fully cover.
 ///
 /// The fixtures exercise live play, because that is what the server's
 /// `applyAction` produces. The *replay* observation shape has no fixture: it

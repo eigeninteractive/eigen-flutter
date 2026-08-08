@@ -123,7 +123,7 @@ class _JoinCodeDialogState extends State<_JoinCodeDialog> {
   void _join() {
     final code = _controller.text.trim().toUpperCase();
     if (code.length != 6) return;
-    // Capture the router before popping — this State's context is being
+    // Capture the router before popping; this State's context is being
     // removed from the tree once the dialog closes.
     final router = GoRouter.of(context);
     Navigator.pop(context);
@@ -236,7 +236,7 @@ class _UsernameShimmer extends StatelessWidget {
 ///
 /// Uses [CustomScrollView] + [SliverFillRemaining] so the parent
 /// [RefreshIndicator] can detect a pull gesture even when content is
-/// shorter than the viewport — without hardcoding any heights.
+/// shorter than the viewport, without hardcoding any heights.
 class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.onBrowseLobby, required this.onJoinViaCode});
 

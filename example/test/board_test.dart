@@ -1,6 +1,6 @@
 /// Widget tests for the board.
 ///
-/// Testing a game screen means building a [GameContentContext] by hand — there
+/// Testing a game screen means building a [GameContentContext] by hand; there
 /// is no server, no socket and no auth involved, because `buildContent`
 /// receives a plain value object. [_context] below is the whole harness, and
 /// it is the piece worth copying into your own game.
@@ -52,7 +52,7 @@ void main() {
     await tester.tap(find.bySemanticsLabel('paper'));
     await tester.pump();
 
-    // The tap is reflected before any frame comes back — the optimism this
+    // The tap is reflected before any frame comes back: the optimism this
     // game has, standing in for a `previewAction` it cannot implement.
     expect(submitted, {'move': 'paper'});
     expect(find.text('Waiting for your opponent…'), findsOneWidget);

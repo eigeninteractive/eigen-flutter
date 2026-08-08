@@ -3,7 +3,7 @@ import 'package:dio/dio.dart';
 /// Server time, as best the client can tell.
 ///
 /// Every deadline on the wire is an absolute server timestamp, so rendering a
-/// countdown means subtracting *server* now — not device now. A device whose
+/// countdown means subtracting *server* now, not device now. A device whose
 /// clock is minutes off would otherwise show a turn timer that disagrees with
 /// when the turn actually expires, and the server is the authority: its alarm
 /// fires on exactly the deadline it sent.
@@ -29,7 +29,7 @@ class ServerClock {
   ///
   /// Clamped at zero: an expired deadline reads as "no time left" rather than
   /// as a negative duration a countdown would have to special-case. The server
-  /// grants a grace period beyond this, which is deliberately invisible here —
+  /// grants a grace period beyond this, which is deliberately invisible here:
   /// the client shows the true deadline and lets the server be lenient.
   Duration remainingUntil(int deadline) {
     final left = DateTime.fromMillisecondsSinceEpoch(
@@ -42,7 +42,7 @@ class ServerClock {
   /// A server timestamp expressed on the *device* clock.
   ///
   /// Countdown widgets tick by repeatedly subtracting `DateTime.now()`, which
-  /// is device time — so converting once here keeps that arithmetic correct on
+  /// is device time, so converting once here keeps that arithmetic correct on
   /// every tick, where handing them a raw server timestamp would bake the skew
   /// into every frame.
   DateTime deviceTimeFor(int serverEpochMs) =>
@@ -93,7 +93,7 @@ class _ServerClockInterceptor extends Interceptor {
 /// `dart:io`'s `HttpDate` is not available on web, and this runs on both.
 abstract final class HttpDate {
   static DateTime? tryParse(String value) {
-    // `Sun, 06 Nov 1994 08:49:37 GMT` — the only format CF emits, and the only
+    // `Sun, 06 Nov 1994 08:49:37 GMT`: the only format CF emits, and the only
     // one HTTP/1.1 requires a client to generate.
     final match = RegExp(
       r'^\w{3}, (\d{2}) (\w{3}) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT$',

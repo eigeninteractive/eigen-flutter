@@ -31,7 +31,7 @@ void main() {
     });
 
     test('never retries a write, even on a transport failure', () {
-      // A timed-out POST may have landed — the outcome is unknown, so it must
+      // A timed-out POST may have landed and the outcome is unknown, so it must
       // not be replayed.
       for (final method in ['POST', 'PUT', 'DELETE', 'PATCH']) {
         check(
@@ -44,7 +44,7 @@ void main() {
     });
 
     test('never retries a failure that carried a response', () {
-      // The server answered — a decision, not a blip — even for a 5xx or a 429.
+      // The server answered: a decision, not a blip, even for a 5xx or a 429.
       check(retryTransientGet(_withResponse('GET', 500), 1)).equals(false);
       check(retryTransientGet(_withResponse('GET', 429), 1)).equals(false);
       check(retryTransientGet(_withResponse('GET', 404), 1)).equals(false);

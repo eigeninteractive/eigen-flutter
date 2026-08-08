@@ -41,7 +41,7 @@ const _socialChannel = AndroidNotificationChannel(
   importance: Importance.low,
 );
 
-/// Catch-all for a category this build does not recognise — a newer server
+/// Catch-all for a category this build does not recognise, e.g. a newer server
 /// than the installed app. Nothing is dropped; it surfaces here instead.
 const _generalChannel = AndroidNotificationChannel(
   'general',
@@ -60,7 +60,7 @@ enum _NotificationCategory {
   friendRequest,
   friendAccepted;
 
-  /// Parses the `category` field from the FCM data payload — the exact set the
+  /// Parses the `category` field from the FCM data payload: the exact set the
   /// engine sends (see the server's `push.ts`). Returns null for an unknown or
   /// missing value (a newer server than this build); the caller falls back to a
   /// generic notification rather than dropping it.
@@ -297,7 +297,7 @@ class FirebaseNotificationService {
   }
 
   /// Removes this install's notification registration on sign-out so the server
-  /// stops targeting it immediately. Errors are logged but never thrown —
+  /// stops targeting it immediately. Errors are logged but never thrown,
   /// sign-out must succeed regardless of cleanup status.
   ///
   /// Deletes only the DB row; it deliberately leaves the FCM registration and
@@ -480,14 +480,14 @@ class FirebaseNotificationService {
     final notification = message.notification;
     if (notification == null) return;
     // An unrecognised or missing category (a newer server than this build)
-    // resolves to null and still shows — on the general channel — rather than
+    // resolves to null and still shows, on the general channel, rather than
     // being dropped.
     final category = _NotificationCategory.fromString(
       message.data['category'] as String?,
     );
     if (category == null) {
       developer.log(
-        'Unknown notification category: ${message.data['category']} — '
+        'Unknown notification category: ${message.data['category']}: '
         'showing on the general channel',
         name: 'notifications',
       );
@@ -542,7 +542,7 @@ class FirebaseNotificationService {
       };
 
   /// Game-scoped notifications (a turn, a ready, a finish) key off the deepLink
-  /// — which carries the gameId — so a later update for the same game replaces
+  /// which carries the gameId, so a later update for the same game replaces
   /// the earlier one. Everything else (invites, social, unknown) keys off
   /// messageId so events from different people/games stack independently.
   int _notificationId(RemoteMessage message, _NotificationCategory? category) {

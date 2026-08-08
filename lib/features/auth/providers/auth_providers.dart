@@ -43,7 +43,7 @@ AuthGateway authService(Ref ref) {
 ///
 /// Derived from the auth state stream. Because the value is a [String],
 /// Riverpod's `==` check means dependents only rebuild when the id actually
-/// changes — token refreshes re-emit the same id and propagate no further.
+/// changes; token refreshes re-emit the same id and propagate no further.
 @riverpod
 String? currentUserId(Ref ref) =>
     ref.watch(authStateChangesProvider).value?.user?.id;
@@ -68,7 +68,7 @@ Stream<AuthStateChange> authStateChanges(Ref ref) {
 /// Whether the current session is an anonymous (guest) session.
 ///
 /// Watches the auth state stream (not [currentUserId]) so it re-evaluates on
-/// `userUpdated` events — the id is unchanged when a guest upgrades, but the
+/// `userUpdated` events: the id is unchanged when a guest upgrades, but the
 /// `isAnonymous` claim flips to false. UI gates (social, rated games, upgrade
 /// nudge) watch this; `==` on the bool keeps unrelated token refreshes inert.
 @riverpod

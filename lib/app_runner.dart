@@ -27,7 +27,7 @@ import 'package:eigen_flutter/features/game/providers/game_providers.dart';
 /// [firebaseOptions] are the app's generated `DefaultFirebaseOptions`; they
 /// live in the app package because `firebase_options.dart` is app-specific.
 /// [onBackgroundMessage] must be a top-level (or static) function annotated
-/// `@pragma('vm:entry-point')` — FCM runs it in a separate isolate, so it
+/// `@pragma('vm:entry-point')`, since FCM runs it in a separate isolate, so it
 /// cannot close over [firebaseOptions] and must re-init Firebase itself.
 Future<void> runEngineApp({
   required GameModule module,
@@ -71,7 +71,7 @@ Future<void> runEngineApp({
   runApp(
     ProviderScope(
       // Narrows Riverpod's over-eager default retry to transport failures only
-      // — a server-reported error is never re-run. See [engineProviderRetry].
+      // A server-reported error is never re-run. See [engineProviderRetry].
       retry: engineProviderRetry,
       overrides: [
         currentGameModuleProvider.overrideWithValue(module),

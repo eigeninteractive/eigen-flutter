@@ -21,7 +21,7 @@ class PlayersContext {
 
   /// Returns the [GamePlayer] for [playerIndex].
   ///
-  /// Always returns data — the provider guarantees completeness.
+  /// Always returns data; the provider guarantees completeness.
   GamePlayer operator [](int playerIndex) => players[playerIndex]!;
 
   /// The current user's [GamePlayer], or null when a [Viewer] (no seat).

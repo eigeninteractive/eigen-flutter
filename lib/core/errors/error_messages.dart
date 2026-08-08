@@ -7,7 +7,7 @@ import 'package:eigen_flutter/core/errors/engine_exception.dart';
 ///
 /// Copy is chosen by the server's stable [ErrorCode], never by matching message
 /// text, so rewording a server message can never change what the user sees.
-/// Uncoded failures get the generic message rather than the server's own text —
+/// Uncoded failures get the generic message rather than the server's own text,
 /// those are validation details and unexpected 500s, whose wording is
 /// diagnostic and sometimes internal.
 String humanize(Object e) => switch (e) {
@@ -26,12 +26,12 @@ String humanize(Object e) => switch (e) {
 /// decodes to [ErrorCode.unknownDefaultOpenApi] and uses generic copy until the
 /// app updates.
 String messageForCode(ErrorCode code) => switch (code) {
-  // Kernel rejections — the move reached the game and it refused.
+  // Kernel rejections: the move reached the game and it refused.
   ErrorCode.notActive => 'This game has already ended.',
   ErrorCode.notReady => 'This game needs more players before it can start.',
   ErrorCode.expired => 'Time ran out for this turn.',
   ErrorCode.notPending => "It's not your turn.",
-  ErrorCode.stateUpdated => 'The game updated — try again.',
+  ErrorCode.stateUpdated => 'The game updated. Try again.',
   ErrorCode.invalidPayload => "That move isn't valid.",
   ErrorCode.illegalMove => "That move isn't allowed.",
   // Lobby rejections.
@@ -42,7 +42,7 @@ String messageForCode(ErrorCode code) => switch (code) {
   ErrorCode.notParticipant => "You're not in this game.",
   ErrorCode.notCreator => 'Only the host can do that.',
   ErrorCode.creatorCannotLeave =>
-    'You created this game — cancel it instead of leaving.',
+    'You created this game; cancel it instead of leaving.',
   // Raised before the command reached the game.
   ErrorCode.schemaUnsupported => 'Update your app to play this game.',
   ErrorCode.usernameInvalid =>

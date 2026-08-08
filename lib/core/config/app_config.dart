@@ -10,8 +10,8 @@ part 'app_config.g.dart';
 /// by [runEngineApp]. It groups the app's configurable concerns by
 /// responsibility:
 ///
-/// - [branding] — user-facing identity (name, theme seed).
-/// - [engine] — runtime backend/integration values the framework needs.
+/// - [branding]: user-facing identity (name, theme seed).
+/// - [engine]: runtime backend/integration values the framework needs.
 ///
 /// Keeping each concern as its own value object is what stops this from
 /// decaying into a junk drawer of unrelated flags. A consuming app reads its
@@ -44,7 +44,7 @@ class EngineConfig {
   });
 
   /// Origin of the EigenInteractive server, with no trailing slash and no
-  /// path — for example `https://api.example.com`.
+  /// path, for example `https://api.example.com`.
   ///
   /// Only the origin: every generated route already carries the `/api/engine`
   /// prefix, and the game socket is built from this same origin with the scheme
@@ -66,7 +66,7 @@ class EngineConfig {
   /// customer's own domain; null disables the features built on it.
   ///
   /// One host serves everything: the app's deep links (`/join/:code`,
-  /// `/game/:id`), and — when the worker has `site` configured — the legal
+  /// `/game/:id`), and, when the worker has `site` configured, the legal
   /// pages and landing page. The App Links intent-filter is scoped to the
   /// deep-link prefixes, so legal URLs on this same host open in the browser
   /// rather than being intercepted.
@@ -152,7 +152,7 @@ class Branding {
   /// Material 3 seed color; the full light/dark [ColorScheme] derives from it.
   ///
   /// Defaults to the EigenInteractive teal, so a game looks deliberate before
-  /// anyone has thought about colour. Replace it with one line — and note that
+  /// anyone has thought about colour. Replace it with one line, and note that
   /// Material 3 treats a seed as a *hue*, not a colour: it pulls whatever you
   /// give it to tone 40 and rebuilds the ramp, so neighbouring greens all
   /// arrive at much the same scheme, and a near-black seed comes back
@@ -171,7 +171,7 @@ class Branding {
   /// ends on; override per app if needed.
   ///
   /// Whichever part of the line reads `EigenInteractive` is rendered as a link
-  /// to it, and nothing else is — so a replacement that never names the engine
+  /// to it, and nothing else is, so a replacement that never names the engine
   /// is plain text.
   final String madeByCredit;
 }

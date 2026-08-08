@@ -27,7 +27,7 @@ RatingDelta? _myRatingChange(GameSummary game, String? myUserId) {
   return game.ratings?.where((r) => r.identity.userId == myUserId).firstOrNull;
 }
 
-/// The caller's own result in a finished game, or null when there is none —
+/// The caller's own result in a finished game, or null when there is none:
 /// an aborted game writes no outcomes.
 OutcomeResultEnum? _myResult(GameSummary game, String? myUserId) {
   final seat = game.participants

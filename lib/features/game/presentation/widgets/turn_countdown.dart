@@ -16,17 +16,17 @@ import 'package:eigen_flutter/features/game/presentation/widgets/timer_builders.
 /// player knows the timer is not draining locally (though the server clock
 /// continues).
 ///
-/// Provide [style] to override the default [TextTheme.bodySmall] — useful
+/// Provide [style] to override the default [TextTheme.bodySmall], useful
 /// when the countdown should be larger (e.g. inside the game screen).
 ///
 /// [deadline] is an absolute server timestamp in epoch milliseconds, converted
-/// here against [ServerClock] — a device with a skewed clock would otherwise
+/// here against [ServerClock]; a device with a skewed clock would otherwise
 /// show a countdown that disagrees with when the turn actually expires.
 ///
 /// Provide [windowMillis] (how long the turn was when it began) to enable the
 /// soft-deadline margin: the countdown reaches zero slightly before the true
 /// deadline so an on-time submit survives network latency. The margin is capped
-/// to a fraction of the window so a short one — a three-second reaction window —
+/// to a fraction of the window so a short one, a three-second reaction window,
 /// is not swallowed whole. Omit it (e.g. on at-a-glance home cards) for a
 /// truthful, unmargined countdown.
 ///

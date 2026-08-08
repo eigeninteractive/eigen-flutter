@@ -15,7 +15,7 @@ class ProfileRepository {
   /// public [Player] projection omits.
   Future<Profile> getProfile() => engineData(() => _api.getProfile());
 
-  /// Changes the caller's username — the unique, charset-constrained handle.
+  /// Changes the caller's username: the unique, charset-constrained handle.
   ///
   /// Throws an [EngineException] with [ErrorCode.usernameTaken] or
   /// [ErrorCode.usernameInvalid]; both are field-level form errors rather than
@@ -29,7 +29,7 @@ class ProfileRepository {
     return body.username;
   }
 
-  /// Changes the caller's display name — the free-form label shown beside their
+  /// Changes the caller's display name: the free-form label shown beside their
   /// moves. Not unique: two players may share one, which is what the username
   /// disambiguates.
   Future<String> updateDisplayName(String displayName) async {
@@ -44,7 +44,7 @@ class ProfileRepository {
   /// Deletes the caller's account and all of its data.
   ///
   /// Irreversible. The server forfeits or cancels their live games, deletes the
-  /// identity provider account, then purges the database — in that order, so a
+  /// identity provider account, then purges the database, in that order, so a
   /// failure leaves the account intact and the call retriable.
   Future<void> deleteAccount() => engineCall(() => _api.deleteAccount());
 }

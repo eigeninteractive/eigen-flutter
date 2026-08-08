@@ -16,7 +16,7 @@ class PlayerNotFoundException implements Exception {
   String toString() => 'No player found for id: $playerId';
 }
 
-/// Fetches public player identities — humans and bots alike.
+/// Fetches public player identities, humans and bots alike.
 ///
 /// The batch endpoint is the decided alternative to denormalising identity onto
 /// game rows: a caller collects the ids it needs and resolves them in one
@@ -24,10 +24,10 @@ class PlayerNotFoundException implements Exception {
 ///
 /// This is the batch itself; single-id resolution is [PlayerBatchLoader]'s job,
 /// which coalesces per-id cache misses back into one call here. Nothing calls a
-/// per-id method on this repository — that would be the N+1 the endpoint exists
+/// per-id method on this repository; that would be the N+1 the endpoint exists
 /// to avoid.
 ///
-/// Everything returned is public-safe — no email, no account state.
+/// Everything returned is public-safe: no email, no account state.
 class PlayerRepository {
   PlayerRepository(this._api);
 
@@ -36,7 +36,7 @@ class PlayerRepository {
   /// Public identities for a batch of ids.
   ///
   /// Ids that match nothing are simply absent, so the result may be shorter
-  /// than [ids] — a purged account is a normal outcome here, not an error. An
+  /// than [ids]; a purged account is a normal outcome here, not an error. An
   /// empty [ids] resolves without a request.
   Future<List<Player>> getPlayers(List<String> ids) async {
     if (ids.isEmpty) return const [];

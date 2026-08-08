@@ -20,7 +20,7 @@ void main() {
             code: ErrorCode.stateUpdated,
           ),
         ),
-      ).equals('The game updated — try again.');
+      ).equals('The game updated. Try again.');
       check(
         humanize(
           const EngineException('slow down', code: ErrorCode.rateLimited),
@@ -29,7 +29,7 @@ void main() {
     });
 
     test('dispatches on code, not message text', () {
-      // The server copy can change freely — only the code decides.
+      // The server copy can change freely; only the code decides.
       check(
         humanize(
           const EngineException(

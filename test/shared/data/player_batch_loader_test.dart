@@ -112,7 +112,7 @@ void main() {
         window: const Duration(milliseconds: 20),
       );
 
-      // ignore: unawaited_futures — the waiter intentionally never resolves
+      // ignore: unawaited_futures, since the waiter intentionally never resolves
       // once the flush is cancelled; we only assert the request never fires.
       loader.load('a');
       loader.dispose();

@@ -2,7 +2,7 @@ import 'package:eigen_api/eigen_api.dart';
 import 'package:eigen_flutter/core/api/engine_call.dart';
 import 'package:flutter/foundation.dart';
 
-/// The current user's push registrations — one per Firebase installation id.
+/// The current user's push registrations: one per Firebase installation id.
 ///
 /// Pushes are targeted at the FID, so the server needs the FID for every
 /// install the user is signed in on. The notification service owns *when* to
@@ -14,7 +14,7 @@ class DeviceInstallationRepository {
 
   /// Registers (or refreshes) this install for the signed-in user.
   ///
-  /// Idempotent — re-registering the same FID is the normal case on every
+  /// Idempotent: re-registering the same FID is the normal case on every
   /// launch. The platform is a property of the running build rather than of the
   /// call, so it is resolved here and callers never name it.
   Future<void> upsert({required String fid}) => engineCall(
@@ -41,7 +41,7 @@ class DeviceInstallationRepository {
 
   /// Drops this install's registration so the server stops targeting it.
   ///
-  /// Idempotent — unregistering an FID the server never knew about succeeds.
+  /// Idempotent: unregistering an FID the server never knew about succeeds.
   Future<void> delete({required String fid}) =>
       engineCall(() => _api.unregisterDevice(fid: fid));
 }

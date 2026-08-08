@@ -25,7 +25,7 @@ class RatingRepository {
 
   /// The caller's own ratings.
   ///
-  /// Distinct from [getPlayerRatings] only in that it needs no id — the token
+  /// Distinct from [getPlayerRatings] only in that it needs no id; the token
   /// identifies the caller.
   Future<List<Rating>> getMyRatings() async {
     final body = await engineData(() => _me.getMyRatings());

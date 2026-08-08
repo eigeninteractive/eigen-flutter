@@ -226,8 +226,8 @@ class _DeniedTile extends StatelessWidget {
       title: const Text('Notifications'),
       subtitle: Text(
         kIsWeb
-            ? 'Blocked — enable notifications in this site’s browser settings'
-            : 'Disabled — tap to open Settings',
+            ? 'Blocked: enable notifications in this site’s browser settings'
+            : 'Disabled: tap to open Settings',
       ),
       trailing: kIsWeb ? null : const Icon(Icons.open_in_new, size: 18),
       onTap: kIsWeb
@@ -524,7 +524,7 @@ class _UpgradeAccountCard extends ConsumerWidget {
   }
 
   Future<void> _upgrade(BuildContext context, WidgetRef ref) async {
-    // Capture before the await — on success this card is removed from the tree
+    // Capture before the await, since on success this card is removed from the tree
     // (isAnonymous flips false), but the messenger ancestor survives.
     final messenger = ScaffoldMessenger.of(context);
     final colorScheme = Theme.of(context).colorScheme;
@@ -537,7 +537,7 @@ class _UpgradeAccountCard extends ConsumerWidget {
           messenger.showSnackBar(
             const SnackBar(
               content: Text(
-                'Account created — your games, ratings, and friends are saved.',
+                'Account created. Your games, ratings, and friends are saved.',
               ),
             ),
           );

@@ -14,7 +14,7 @@ final _creditUrl = Uri.parse('https://eigeninteractive.com');
 /// The credit line at the foot of the settings and about screens.
 ///
 /// Only the brand name inside the line is tappable, marked by colour rather
-/// than an underline — the sentence around it is prose and does not point
+/// than an underline, because the sentence around it is prose and does not point
 /// anywhere. A custom [Branding.madeByCredit] that never mentions the engine
 /// renders as plain text, so an app that replaced the line does not silently
 /// link its own words to us.

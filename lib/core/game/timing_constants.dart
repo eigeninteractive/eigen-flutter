@@ -5,7 +5,7 @@ import 'dart:math' as math;
 /// The server is the sole authority on deadlines: a game's Durable Object holds
 /// an alarm at the current turn's deadline and expires the turn itself, so the
 /// client never nudges it and never needs to model the server's grace window.
-/// These constants only shape what the client *displays* — they can never cause
+/// These constants only shape what the client *displays*; they can never cause
 /// a wrong rejection or a wrong timeout.
 
 /// Target headroom subtracted from a player's *displayed* countdown so an

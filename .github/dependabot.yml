@@ -2,7 +2,7 @@ version: 2
 
 # Keeps the pinned GitHub Actions current. Without this they silently drift:
 # major tags like `actions/checkout@v7` float across patches but never across
-# majors, so a workflow keeps working while falling years behind — which is
+# majors, so a workflow keeps working while falling years behind, which is
 # exactly how this repo ended up on `pnpm/action-setup@v4` after the workspace
 # moved to pnpm 11 (v6 is where pnpm 11 support landed).
 #

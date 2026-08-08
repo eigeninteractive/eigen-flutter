@@ -304,7 +304,7 @@ abstract class _$ReplayCursor extends $Notifier<int> {
 ///
 /// Memoized per `(gameId, index)`: [GameRules.parseObservation] runs once per
 /// frame no matter how often the user steps back and forth across it. Timing is
-/// always empty — a replay has no live clocks. Returns null until the frames
+/// always empty, since a replay has no live clocks. Returns null until the frames
 /// and the version unit have both loaded, or for an out-of-range index.
 
 @ProviderFor(replayFrameAt)
@@ -314,7 +314,7 @@ final replayFrameAtProvider = ReplayFrameAtFamily._();
 ///
 /// Memoized per `(gameId, index)`: [GameRules.parseObservation] runs once per
 /// frame no matter how often the user steps back and forth across it. Timing is
-/// always empty — a replay has no live clocks. Returns null until the frames
+/// always empty, since a replay has no live clocks. Returns null until the frames
 /// and the version unit have both loaded, or for an out-of-range index.
 
 final class ReplayFrameAtProvider
@@ -324,7 +324,7 @@ final class ReplayFrameAtProvider
   ///
   /// Memoized per `(gameId, index)`: [GameRules.parseObservation] runs once per
   /// frame no matter how often the user steps back and forth across it. Timing is
-  /// always empty — a replay has no live clocks. Returns null until the frames
+  /// always empty, since a replay has no live clocks. Returns null until the frames
   /// and the version unit have both loaded, or for an out-of-range index.
   ReplayFrameAtProvider._({
     required ReplayFrameAtFamily super.from,
@@ -383,7 +383,7 @@ String _$replayFrameAtHash() => r'2db71a9d8886942ff93570311cd6c915991702d0';
 ///
 /// Memoized per `(gameId, index)`: [GameRules.parseObservation] runs once per
 /// frame no matter how often the user steps back and forth across it. Timing is
-/// always empty — a replay has no live clocks. Returns null until the frames
+/// always empty, since a replay has no live clocks. Returns null until the frames
 /// and the version unit have both loaded, or for an out-of-range index.
 
 final class ReplayFrameAtFamily extends $Family
@@ -401,7 +401,7 @@ final class ReplayFrameAtFamily extends $Family
   ///
   /// Memoized per `(gameId, index)`: [GameRules.parseObservation] runs once per
   /// frame no matter how often the user steps back and forth across it. Timing is
-  /// always empty — a replay has no live clocks. Returns null until the frames
+  /// always empty, since a replay has no live clocks. Returns null until the frames
   /// and the version unit have both loaded, or for an out-of-range index.
 
   ReplayFrameAtProvider call({required String gameId, required int index}) =>

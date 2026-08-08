@@ -15,7 +15,7 @@ import 'package:eigen_flutter/core/game/timing_context.dart';
 /// Frames arrive as an ordered, gap-recovered stream (observations are
 /// append-only server-side, and a reconnect replays whatever versions the
 /// socket missed), so a game may animate the transition between consecutive frames
-/// and trust that it sees every one — falling back to a snap only after a
+/// and trust that it sees every one, falling back to a snap only after a
 /// cold (re)load, where no predecessor was rendered.
 class GameFrame {
   const GameFrame({

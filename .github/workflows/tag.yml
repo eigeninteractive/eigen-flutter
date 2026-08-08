@@ -6,7 +6,7 @@ name: Tag
 # publishing trusts a GitHub OIDC token only when the token's ref is a TAG
 # matching the pattern configured on the package. `release.yml` therefore
 # cannot run on a branch push, and something has to create the tag. Doing it
-# here rather than by hand removes the one release step with no safety net —
+# here rather than by hand removes the one release step with no safety net:
 # a mistyped or forgotten tag.
 #
 # Deliberately keyed on the FILE rather than on the pull request that changed
@@ -48,7 +48,7 @@ jobs:
           # think nothing had ever been released.
           fetch-depth: 0
 
-      # pubspec.yaml also changes for ordinary dependency edits — an `eigen_api`
+      # pubspec.yaml also changes for ordinary dependency edits, e.g. an `eigen_api`
       # constraint bump, say. Those leave `version:` alone, so this must decide
       # "has this version already been released?" and exit cleanly when it has.
       # Being idempotent is what lets the trigger stay this simple.
@@ -57,7 +57,7 @@ jobs:
       # theoretical: 0.1.0 was published by hand before this automation existed,
       # so it had no tag. "No tag" therefore meant "unreleased" only by
       # accident, and the first dependency edit afterwards duly tagged an
-      # unrelated commit as v0.1.0 — a tag whose tree was never what shipped.
+      # unrelated commit as v0.1.0: a tag whose tree was never what shipped.
       #
       # release.yml already makes the same argument for its own publish step:
       # what is on pub.dev is the state that matters, and which refs happen to
@@ -71,9 +71,9 @@ jobs:
           [ -n "$v" ] || { echo "::error file=pubspec.yaml::no version: line"; exit 1; }
 
           # Cheap and local first. Once a version is tagged, nothing else here
-          # needs to run — including on every unrelated pubspec.yaml edit.
+          # needs to run, including on every unrelated pubspec.yaml edit.
           if git rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
-            echo "v$v is already tagged — nothing to release."
+            echo "v$v is already tagged. Nothing to release."
             exit 0
           fi
 
@@ -81,12 +81,12 @@ jobs:
           # release is re-runnable: a transient pub.dev failure costs one rerun,
           # whereas a wrong tag has to be noticed before it can be undone.
           published=$(curl -sf --retry 3 https://pub.dev/api/packages/eigen_flutter) || {
-            echo "::error::could not reach pub.dev to check whether $v is already released — refusing to tag blind"
+            echo "::error::could not reach pub.dev to check whether $v is already released; refusing to tag blind"
             exit 1
           }
 
           if jq -e --arg v "$v" '.versions[] | select(.version == $v)' >/dev/null <<<"$published"; then
-            echo "::notice::eigen_flutter $v is already on pub.dev — nothing to release."
+            echo "::notice::eigen_flutter $v is already on pub.dev. Nothing to release."
             exit 0
           fi
 
