@@ -18,7 +18,7 @@ import 'package:eigen_api/eigen_api.dart';
 /// scrubbing or stepping back snaps.
 ///
 /// Serves both a participant reviewing their own game and a non-participant
-/// replaying a public one — the difference is only which projection the
+/// replaying a public one; the difference is only which projection the
 /// `game/replay` route returned, which this screen does not need to know.
 class ReplayScreen extends ConsumerWidget {
   const ReplayScreen({super.key, required this.gameId});

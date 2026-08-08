@@ -15,7 +15,7 @@ import 'package:eigen_api/eigen_api.dart';
 ///
 /// Reads [GameModule.creationSpec] to render only the controls valid for the
 /// current game type. Timing options come from [GameCreationSpec.timingConfigs]
-/// — each map key is a [SegmentedButton] label; each value declares the
+/// Each map key is a [SegmentedButton] label; each value declares the
 /// valid range and optional quick-pick presets.
 class NewGameDialog extends ConsumerStatefulWidget {
   const NewGameDialog({super.key});
@@ -32,7 +32,7 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
   // there is no null window before the first interaction.
   late ResolvedTiming _timing;
 
-  // Plain fields — never displayed, only consumed at submit.
+  // Plain fields: never displayed, only consumed at submit.
   Map<String, dynamic> _gameConfig = {};
   late int _minPlayers;
   late int _maxPlayers;
@@ -218,7 +218,7 @@ class _NewGameDialogState extends ConsumerState<NewGameDialog> {
     setState(() => _isLoading = true);
     try {
       // `rated` is a concrete assertion validated by the server (rejected on
-      // mismatch, not coerced), so compute the eligibility-gated value here —
+      // mismatch, not coerced), so compute the eligibility-gated value here,
       // the same Dart twin of GameRules.ratingPool used to show the toggle in
       // build.
       final pool = _module.latestRules.ratingPool(

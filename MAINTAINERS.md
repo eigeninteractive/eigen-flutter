@@ -7,7 +7,7 @@ For local setup, code generation, testing, changelog entries, and pull-request
 expectations, start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Temporary compatibility code that cannot yet be removed because of upstream
-packages is tracked in [`eigen-server/docs/blockers.md`][blockers] — one
+packages is tracked in [`eigen-server/docs/blockers.md`][blockers]: one
 cross-repository list, because the Flutter and engine workarounds get reviewed
 at the same moments and two lists meant neither was re-checked.
 
@@ -40,7 +40,7 @@ fails only at publish time. It is the pub.dev side of the contract
 `.github/workflows/release.yml` relies on: pub.dev trusts a GitHub OIDC token
 only when the token's ref is a tag matching that pattern, which is why the
 workflow is tag-triggered rather than push-triggered. No long-lived pub.dev
-credential exists in repository secrets — the OIDC identity is the
+credential exists in repository secrets; the OIDC identity is the
 authentication, and the workflow needs `permissions.id-token: write` to obtain
 it.
 
@@ -58,7 +58,7 @@ copy means one place to rotate the key.
 
 ## Releasing
 
-Releasing is one decision — which bump — and one review. There are no local
+Releasing is one decision, which bump, and one review. There are no local
 commands, and nothing to remember to run afterwards.
 
 1. **Dispatch the bump.** Actions → **Version** → Run workflow, or:
@@ -101,14 +101,14 @@ is never generated from commit messages.
 **Read the changelog diff on the release pull request.** It should be two lines:
 `## [Unreleased]` becoming `## [x.y.z] - <date>`, and its link definition
 becoming the version's. Anything larger means cider re-serialised sections it
-could not parse — `checks.yml` fails the pull request in that case, but knowing
+could not parse. `checks.yml` fails the pull request in that case, but knowing
 the shape of a healthy diff is what makes an unhealthy one obvious.
 
 **0.1.0 has no git tag**, so its link points at pub.dev
 (`/packages/eigen_flutter/versions/0.1.0`) rather than a release tag. It was
 published by hand before this automation existed, and the tag later created for
 it described a tree that never shipped, so it was deleted rather than corrected
-— no commit provably matches the published tarball.
+and no commit provably matches the published tarball.
 
 One consequence, once only: cider will generate `[0.2.0]:
 …/compare/v0.1.0...v0.2.0`, and that comparison cannot resolve. Change that line
@@ -123,7 +123,7 @@ need this repository's builders to use `eigen_flutter`.
 pub.dev's automated publishing trusts a GitHub OIDC token only when its ref is
 a **tag** matching the configured pattern, so publication cannot run on a
 branch push and something must create the tag. `tag.yml` keys on `pubspec.yaml`
-changing on `main` rather than on the release pull request merging — the
+changing on `main` rather than on the release pull request merging: the
 version in the file is the fact, and how it got there does not matter, so a
 hand-edited bump releases identically and there is no second path to maintain.
 
@@ -141,7 +141,7 @@ at all.
 
 That second check exists because the first release predates this automation.
 `eigen_flutter 0.1.0` was published by hand and never tagged, so "no tag" meant
-"unreleased" only by accident — and the first `pubspec.yaml` edit afterwards, an
+"unreleased" only by accident, and the first `pubspec.yaml` edit afterwards, an
 `eigen_api` constraint bump that left `version:` alone, duly tagged an unrelated
 commit as `v0.1.0`. Nothing was published, because the skip above held, but the
 tag described a tree that never shipped and had to be deleted. A tag that cannot
@@ -153,7 +153,7 @@ inherits the error silently.
 **pub.dev builds and hosts Dartdoc for every published version.** Nothing here
 runs `dart doc` for publication, and no generated HTML is committed or copied
 into `eigen-web`. This is deliberate, and the opposite of how the TypeScript
-side works — eigen-web vendors generated references from `eigen-server` because
+side works: eigen-web vendors generated references from `eigen-server` because
 npm hosts nothing comparable. Dart needs no such machinery:
 
 - pub.dev's build is **versioned**. `/documentation/eigen_flutter/0.1.0/` stays
@@ -191,14 +191,14 @@ After publication:
 
   Do **not** expect re-running the failed run to pick the fix up. A
   tag-triggered run uses the workflow definition **at the tag**, not the one on
-  `main`, so re-running replays the same broken file — and if the fault is in
+  `main`, so re-running replays the same broken file, and if the fault is in
   `release.yml` itself, it will keep replaying it. Deleting and re-tagging is
   the only recovery that reloads the workflow. (This is safe here precisely
   because the version has not been published; never move a tag whose version
   reached pub.dev.)
 - **The version was published:** never reuse it. Correct the problem, add a
   changelog entry, and dispatch a new `patch` or `breaking` release.
-  Re-triggering the published version is safe but does nothing — `release.yml`
+  Re-triggering the published version is safe but does nothing; `release.yml`
   detects it on pub.dev and skips.
 - **A harmful version shipped:** use pub.dev retraction, communicate the
   affected range, and publish the replacement. Published versions cannot be

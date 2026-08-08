@@ -96,7 +96,7 @@ echo "App configuration is written in \$output"
         contains('Firebase configured for Android, Flutter Web'),
       );
       // Which project and which apps, because FlutterFire reuses an app the
-      // project already had without saying so — the two runs are otherwise
+      // project already had without saying so; the two runs are otherwise
       // indistinguishable.
       expect(result.stdout, contains('project  example-project'));
       expect(result.stdout, contains('web      1:123:web:abc'));
@@ -157,7 +157,7 @@ echo "App configuration is written in \$output"
   group('the arguments handed to FlutterFire', () {
     /// Runs the script against a `flutterfire` that records its arguments and
     /// stops there, and returns what it was called with. `firebase.json` is
-    /// never written, so the script fails straight after — which is not what is
+    /// never written, so the script fails straight after, which is not what is
     /// under test here.
     Future<List<String>> flutterFireArguments(
       List<String> arguments, {
@@ -245,7 +245,7 @@ echo "App configuration is written in \$output"
     });
 
     test('ignores the separator pnpm forwards but npm swallows', () async {
-      // So one documented form — `run firebase:configure -- --project x` —
+      // So one documented form, `run firebase:configure -- --project x`,
       // works under either, rather than FlutterFire being handed a bare `--`
       // that means nothing to it.
       final argv = await flutterFireArguments(const [
@@ -260,7 +260,7 @@ echo "App configuration is written in \$output"
 
     test('reuses the project a previous run recorded', () async {
       // FlutterFire writes the project into firebase.json, which this script
-      // already reads its Web app ID out of — so re-running to pick up a new
+      // already reads its Web app ID out of, so re-running to pick up a new
       // configuration does not ask the same question again.
       final argv = await flutterFireArguments(const [], configured: true);
 
@@ -338,7 +338,7 @@ echo "App configuration is written in \$output"
 
   test('shows what the quiet command said when it fails', () async {
     // Captured is not swallowed. The download runs with its output held back
-    // because it has nothing to say on success — a failure is the other case.
+    // because it has nothing to say on success; a failure is the other case.
     final packageRoot = Directory.current;
     final appRoot = Directory.systemTemp.createTempSync('eigen-firebase-fail-');
     addTearDown(() => appRoot.deleteSync(recursive: true));
@@ -401,7 +401,7 @@ exit 3
     );
     addTearDown(() => appRoot.deleteSync(recursive: true));
 
-    // `firebase` present, `flutterfire` absent — the common case, because
+    // `firebase` present, `flutterfire` absent: the common case, because
     // FlutterFire is not installed alongside Flutter and lands somewhere that
     // is not on PATH. `dart` itself has to stay findable to run the script.
     final fakeBin = Directory(path.join(appRoot.path, 'bin'))..createSync();

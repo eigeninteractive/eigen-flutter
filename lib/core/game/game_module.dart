@@ -15,17 +15,17 @@ import 'package:eigen_api/eigen_api.dart' show GameAccess, GameStatus, Outcome;
 /// rendering can ignore the result entirely.
 enum ActionSubmitResult {
   /// The server committed the action. Its confirming frame is the *next*
-  /// frame this seat receives — the optimistic lock guarantees no other
+  /// frame this seat receives; the optimistic lock guarantees no other
   /// frame can land in between.
   committed,
 
   /// The action definitively did not commit: the server rejected it, or it
   /// was never sent (another submit was already in flight). Infra has
-  /// already surfaced any error to the player; revert optimistic rendering —
+  /// already surfaced any error to the player; revert optimistic rendering,
   /// no frame will arrive for this action.
   rejected,
 
-  /// The submission failed in transit and the outcome is unknown — the
+  /// The submission failed in transit and the outcome is unknown: the
   /// server may still have committed it. Revert optimistic rendering; if the
   /// action did commit, its frame arrives over the game socket and re-applies
   /// the move.
@@ -36,7 +36,7 @@ enum ActionSubmitResult {
 ///
 /// Passing a single context (instead of a long parameter list) means adding a
 /// new piece of infra data later does not change the [GameRules.buildContent]
-/// signature — and therefore does not force every game to update. Redundant
+/// signature, and therefore does not force every game to update. Redundant
 /// values ([mySeat], [timing]) are exposed as getters that delegate to
 /// the authoritative source so there is only ever one of each.
 ///
@@ -82,7 +82,7 @@ class GameContentContext {
   /// [ActionSubmitResult] for what each value guarantees about the frame
   /// stream); it never throws, and infra has already surfaced any error to
   /// the player before it resolves. Games that render purely from server
-  /// frames may ignore the result — fire-and-forget remains the simplest
+  /// frames may ignore the result; fire-and-forget remains the simplest
   /// correct usage.
   final Future<ActionSubmitResult> Function(Map<String, dynamic> actionJson)
   onAction;
@@ -97,7 +97,7 @@ class GameContentContext {
   /// through frame by frame), false during live play.
   ///
   /// [frame] is a historical snapshot and [onAction] is inert, so a game
-  /// never needs this to stay correct — it disables input off the pending set
+  /// never needs this to stay correct; it disables input off the pending set
   /// as usual. Use it only for replay-specific presentation, e.g. surfacing
   /// move-by-move narration or suppressing "your turn" prompts. When [mySeat]
   /// is a [Viewer] the current user did not play in the game (a public replay
@@ -105,7 +105,7 @@ class GameContentContext {
   final bool isReplay;
 
   /// The current user's place in the game: [Seated] at an index, or a [Viewer]
-  /// (no seat — only when replaying a public game they did not play in).
+  /// (no seat, only when replaying a public game they did not play in).
   MySeat get mySeat => playersContext.mySeat;
 
   /// Timing metadata for the current turn (mirrors [GameFrame.timing]).
@@ -114,8 +114,8 @@ class GameContentContext {
 
 /// The chosen game settings, passed to [GameRules.ratingPool].
 ///
-/// Field-for-field twin of the TS `RatingPoolArgs` interface — same names,
-/// same types — so the Dart and TS `ratingPool` implementations read
+/// Field-for-field twin of the TS `RatingPoolArgs` interface, with the same
+/// names and types, so the Dart and TS `ratingPool` implementations read
 /// identically and stay trivially diffable.
 class RatingPoolArgs {
   const RatingPoolArgs({
@@ -141,7 +141,7 @@ class RatingPoolArgs {
 ///
 /// Field-for-field twin of the TS `BotSeatableArgs` interface. [gameConfig]
 /// is the game's creation config; [botConfig] is the bot's declared
-/// capabilities (`bots.config`) — game-owned but unversioned, so it stays an
+/// capabilities (`bots.config`): game-owned but unversioned, so it stays an
 /// opaque map.
 class BotSeatableArgs {
   const BotSeatableArgs({required this.gameConfig, required this.botConfig});
@@ -150,7 +150,7 @@ class BotSeatableArgs {
   final Map<String, dynamic> botConfig;
 }
 
-/// The client-side surface of one `schemaVersion` of the game — the Dart
+/// The client-side surface of one `schemaVersion` of the game: the Dart
 /// twin of the same-named TS `GameRules` unit.
 ///
 /// A version unit is self-contained: it parses and renders exactly one
@@ -165,15 +165,15 @@ class BotSeatableArgs {
 /// owns the client half, member for member:
 ///
 /// - the generated payload parsing and serialization ([parseConfig] /
-///   [parseObservation] / [parseAction] / [serializeAction]) — emitted from
+///   [parseObservation] / [parseAction] / [serializeAction]), emitted from
 ///   the TS schemas;
-/// - [isValidAction] — the legality half of the TS `applyAction`, transcribed;
-/// - [previewAction] — the game's own optimistic projection of `applyAction`
+/// - [isValidAction]: the legality half of the TS `applyAction`, transcribed;
+/// - [previewAction]: the game's own optimistic projection of `applyAction`
 ///   (a standardized contract; infra never calls it);
 /// - rendering ([buildContent]);
 /// - display-only twins of the two predicates ([ratingPool] / [botSeatable]).
 ///
-/// Keep the twins in sync with the TS unit for the same version — the server
+/// Keep the twins in sync with the TS unit for the same version; the server
 /// recomputes everything authoritative, so drift only degrades UX, never
 /// stored data.
 ///
@@ -195,10 +195,10 @@ abstract class GameRules<TObs, TAction, TConfig> {
 
   /// Parses a raw observation JSON map into this version's observation type.
   ///
-  /// Called once per network event — never on frame rebuild.
+  /// Called once per network event, never on frame rebuild.
   TObs parseObservation(Map<String, dynamic> json);
 
-  /// Parses a raw action JSON map into this version's action type — the input
+  /// Parses a raw action JSON map into this version's action type: the input
   /// mirror of [serializeAction] (the TS twin's `schemas.action` covers both
   /// directions). Infra uses it to re-type a logged action (e.g. for replay
   /// cues).
@@ -208,7 +208,7 @@ abstract class GameRules<TObs, TAction, TConfig> {
   ///
   /// Infra holds rules units erased and cannot call a concrete `toJson`, so
   /// the unit owns this serialization step. The returned map is the action
-  /// `data` the TS `applyAction` hook consumes — identical whether the move
+  /// `data` the TS `applyAction` hook consumes, identical whether the move
   /// came from a human tap, a local bot, or a server bot, because every
   /// producer routes through this one seam.
   Map<String, dynamic> serializeAction(TAction action);
@@ -216,7 +216,7 @@ abstract class GameRules<TObs, TAction, TConfig> {
   /// Validates local legality of an action for client-side UX feedback.
   ///
   /// The authoritative check runs server-side in the TS `applyAction` hook;
-  /// this is for disabling illegal taps and similar — essentially the
+  /// this is for disabling illegal taps and similar: essentially the
   /// legality half of that hook, transcribed. The parameter names
   /// deliberately match the TS `ApplyActionArgs` fields (`pending`, `data`,
   /// `playerIndex`, `config`) so the two read side by side. All parameters
@@ -224,14 +224,14 @@ abstract class GameRules<TObs, TAction, TConfig> {
   /// styles; simple games can ignore whatever they don't need.
   ///
   /// - [obs]: the current typed game payload (board, hand, fog, ...).
-  /// - [pending]: 0-based indices whose "main turn" is active right now —
+  /// - [pending]: 0-based indices whose "main turn" is active right now,
   ///   this seat's projection of `game_states.pending_players`, from its
   ///   observation row. Games with interrupt actions (e.g. Exploding
   ///   Kittens's Nope) use this to distinguish a main-turn action from an
   ///   interrupt (anyone holding the card may play).
   /// - [data]: the candidate action payload.
   /// - [playerIndex]: the 0-based index of the player attempting [data].
-  ///   For games where piece ownership matters (Chess — only your color),
+  ///   For games where piece ownership matters (Chess, only your color),
   ///   this identifies the actor; sequential games that don't care can
   ///   ignore it.
   /// - [config]: this game's parsed config.
@@ -245,7 +245,7 @@ abstract class GameRules<TObs, TAction, TConfig> {
 
   /// Predicts this seat's next observation for [data], or returns null when
   /// the outcome depends on hidden information (a combat resolution, a
-  /// reveal, a draw from a deck) — that move is then simply server-driven.
+  /// reveal, a draw from a deck); that move is then simply server-driven.
   ///
   /// **Infra never calls this.** It is required anyway so every game states
   /// its optimism contract explicitly in one standard place, instead of each
@@ -253,7 +253,7 @@ abstract class GameRules<TObs, TAction, TConfig> {
   /// wants optimistic rendering calls it from its own widgets, pairing the
   /// predicted observation with the [GameContentContext.onAction] result
   /// (`false` → revert; `true` → the next frame is the confirming one). A
-  /// game that wants every move server-driven returns null unconditionally —
+  /// game that wants every move server-driven returns null unconditionally,
   /// always correct.
   ///
   /// Keeping the signature standardized (parameters mirror [isValidAction])
@@ -284,7 +284,7 @@ abstract class GameRules<TObs, TAction, TConfig> {
 
   /// The rating pool a game with these settings would fall into, or `null` if
   /// it is unrated (casual). Drives the create dialog: the Rated toggle is
-  /// shown only when this returns non-null. **Display only** — the server
+  /// shown only when this returns non-null. **Display only**; the server
   /// recomputes the authoritative pool (the TS `GameRules.ratingPool` twin) at
   /// creation and a guest is always forced unrated, so a wrong value here only
   /// affects the UI, never the stored rating.
@@ -292,7 +292,7 @@ abstract class GameRules<TObs, TAction, TConfig> {
 
   /// Whether a bot whose declared capabilities are [BotSeatableArgs.botConfig]
   /// can play a game with [BotSeatableArgs.gameConfig]. Used to filter the bot
-  /// pickers locally (no network call). **UX only** — the server enforces the
+  /// pickers locally (no network call). **UX only**; the server enforces the
   /// same rule (the TS `GameRules.botSeatable` twin) before seating.
   bool botSeatable(BotSeatableArgs args);
 }
@@ -300,20 +300,20 @@ abstract class GameRules<TObs, TAction, TConfig> {
 /// Contract every game implementor provides.
 ///
 /// **Extend** (don't implement) this in the game package's `game_module.dart`
-/// (e.g. `games/tic_tac_toe/lib/game_module.dart`) — that is the single file to
+/// (e.g. `games/tic_tac_toe/lib/game_module.dart`), the single file to
 /// edit when swapping games, and extending inherits the default
 /// [playersForConfig]. Register the implementation via
 /// `currentGameModuleProvider.overrideWithValue(...)` in the app's `main.dart`.
 ///
-/// The module is a thin container — the same-named twin of the TS
+/// The module is a thin container: the same-named twin of the TS
 /// `GameModule`: the version registry ([versions], one [GameRules] unit per
 /// `schemaVersion`) plus the creation/about UI, which is version-independent
 /// because creation always targets [latestSchemaVersion]. All version
-/// dispatch is owned by infra — game code never branches on version.
+/// dispatch is owned by infra, and game code never branches on version.
 abstract class GameModule {
   const GameModule();
 
-  /// The [GameRules] units keyed by `schemaVersion` — exactly the versions
+  /// The [GameRules] units keyed by `schemaVersion`: exactly the versions
   /// this build ships, mirroring the keys of the TS `GameModule.versions`.
   ///
   /// Sparse on purpose: loading a game requires its version's entry
@@ -325,14 +325,14 @@ abstract class GameModule {
   /// entry until those games drain (write) / stop being replayable (read).
   Map<int, GameRules> get versions;
 
-  /// The version new games are created at — the highest key of [versions] —
+  /// The version new games are created at, the highest key of [versions],
   /// and the value sent as `p_client_schema_version` on join/create.
   int get latestSchemaVersion => versions.keys.reduce((a, b) => a > b ? a : b);
 
   /// The rules unit new games use ([versions] at [latestSchemaVersion]).
   GameRules get latestRules => versions[latestSchemaVersion]!;
 
-  /// Whether this build can load a game created at [version] — i.e. [versions]
+  /// Whether this build can load a game created at [version], i.e. [versions]
   /// ships an entry for it. Sparse like the TS side: an old version dropped
   /// after draining is unsupported even if lower than [latestSchemaVersion].
   bool supportsSchema(int version) => versions.containsKey(version);
@@ -363,7 +363,7 @@ abstract class GameModule {
   /// Return null if the game has no config beyond timing and player count.
   ///
   /// [onChanged] is called whenever the player adjusts a setting. The dialog
-  /// stores the latest value in a plain field (not state — it is never
+  /// stores the latest value in a plain field (not state, since it is never
   /// displayed in the UI) and sends it with the create-game request at submit
   /// time.
   Widget? buildCreationConfig({
@@ -379,7 +379,7 @@ abstract class GameModule {
 }
 
 /// Thrown when a game's `games.schema_version` has no entry in
-/// [GameModule.versions] — it was created by a newer app version (or one this
+/// [GameModule.versions]. It was created by a newer app version (or one this
 /// build has retired) and can't be loaded until the user updates.
 class UnsupportedGameSchemaException implements Exception {
   const UnsupportedGameSchemaException({
@@ -396,5 +396,5 @@ class UnsupportedGameSchemaException implements Exception {
   @override
   String toString() =>
       'UnsupportedGameSchemaException: no rules for game schema $gameSchema '
-      '(latest supported: $supportedSchema) — the app must be updated.';
+      '(latest supported: $supportedSchema). The app must be updated.';
 }

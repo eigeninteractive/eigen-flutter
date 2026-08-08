@@ -50,7 +50,7 @@ class ShellScaffold extends ConsumerWidget {
     });
     final isOffline = ref.watch(isOfflineProvider);
     final isGuest = ref.watch(isAnonymousProvider);
-    // Offer solo play only when a playable combination exists — an untimed mode
+    // Offer solo play only when a playable combination exists; an untimed mode
     // with a usable local bot, or a timed mode with a usable server bot (so the
     // name is "solo", not "local bots": both classes can fill the seats). See
     // [soloPlayAvailableProvider]. Most deployments with no bots get an empty
@@ -93,7 +93,7 @@ class ShellScaffold extends ConsumerWidget {
             label: Text('History'),
           ),
           // Social is registered-only. For guests the destination stays visible
-          // but disabled (greyed, non-tappable) — the same visible-but-disabled
+          // but disabled (greyed, non-tappable): the same visible-but-disabled
           // treatment rated games get in the lobby. enabled:false also keeps the
           // tap from firing onDestinationSelected, so branch indices stay 1:1.
           NavigationDrawerDestination(

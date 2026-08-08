@@ -32,12 +32,12 @@ PlayerBatchLoader playerBatchLoader(Ref ref) {
 
 /// Globally cached public player identity by ID.
 ///
-/// Works for both human users and bots — the batch endpoint covers both.
+/// Works for both human users and bots; the batch endpoint covers both.
 /// `keepAlive: true` keeps the result in memory for the session lifetime.
 /// Native apps also restore it from the local API cache before the network
 /// response arrives. Web fetches fresh data after a browser reload.
 ///
-/// Player identity is public data — the cache is never cleared on sign-out.
+/// Player identity is public data, so the cache is never cleared on sign-out.
 /// Bump [StorageOptions.destroyKey] if [Player]'s JSON schema changes.
 @Riverpod(keepAlive: true)
 @JsonPersist()

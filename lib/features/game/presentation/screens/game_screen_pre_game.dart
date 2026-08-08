@@ -2,7 +2,7 @@ part of 'game_screen.dart';
 
 /// Waiting room shown for [GameStatus.waiting] and [GameStatus.ready].
 ///
-/// Does not require an observation — game_states and observations are only
+/// Does not require an observation; game_states and observations are only
 /// created at [GameStatus.active] transition.
 class _PreGameContent extends ConsumerWidget {
   const _PreGameContent({
@@ -235,7 +235,7 @@ class _AddBotDialog extends ConsumerStatefulWidget {
   /// The game's raw config payload, as it comes off the wire.
   final Object config;
 
-  /// The game's `schemaVersion` — seating gates run against *this* game's
+  /// The game's `schemaVersion`; seating gates run against *this* game's
   /// rules unit, not the latest.
   final int schemaVersion;
 
@@ -376,7 +376,7 @@ class _ParticipantList extends StatelessWidget {
                 radius: 20,
                 isBot: isBot,
                 // A deleted seat's info is a synthetic placeholder whose id
-                // resolves to no player — never open the profile sheet on it.
+                // resolves to no player; never open the profile sheet on it.
                 onTap: gp.isDeleted
                     ? null
                     : () => PlayerProfileSheet.show(

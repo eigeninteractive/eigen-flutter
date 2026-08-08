@@ -14,7 +14,7 @@ import 'package:eigen_flutter/core/api/engine_api_providers.dart';
 /// Any bank below 60 seconds turns [ColorScheme.error].
 ///
 /// The clock stays truthful (unlike the per-action countdown, it is not pulled
-/// earlier by a soft margin — that would make a chess-style clock snap back up
+/// earlier by a soft margin; that would make a chess-style clock snap back up
 /// on submit). Instead, the local player's own cell shows a "Submit!" cue once
 /// their remaining bank drops into the final-headroom zone
 /// ([softDeadlineMarginFor]), nudging them to commit before latency carries the
@@ -41,7 +41,7 @@ class BudgetClock extends ConsumerWidget {
   /// Indices of currently active (draining) players.
   final List<int> pendingPlayers;
 
-  /// This client's player index — their cell is labelled "You".
+  /// This client's player index; their cell is labelled "You".
   final int myPlayerIndex;
 
   @override
@@ -106,7 +106,7 @@ class _ClockCell extends StatelessWidget {
   final bool isActive;
 
   /// True for the local player's active cell once it drops into the final
-  /// headroom before the deadline — shows a "Submit!" nudge.
+  /// headroom before the deadline, shows a "Submit!" nudge.
   final bool isSubmitZone;
   final ColorScheme colorScheme;
 

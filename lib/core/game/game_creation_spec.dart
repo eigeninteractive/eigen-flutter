@@ -26,7 +26,7 @@ class UntimedConfig extends TimingModeConfig {
 
 /// Each turn gets a fresh fixed window of [minSeconds]–[maxSeconds].
 ///
-/// [minSeconds] is clamped to [kMinTurnSeconds] (30 s) — the infra hard
+/// [minSeconds] is clamped to [kMinTurnSeconds] (30 s), the infra hard
 /// limit. The dialog renders a slider between [minSeconds] and [maxSeconds],
 /// with optional [presets] shown as quick-pick chips.
 class PerActionConfig extends TimingModeConfig {
@@ -104,7 +104,7 @@ class GameCreationSpec {
   /// optional presets for each mode. Insertion order is preserved (Dart
   /// [LinkedHashMap] guarantee), so the first entry is selected by default.
   ///
-  /// Multiple entries of the same subtype are allowed — for example, a game
+  /// Multiple entries of the same subtype are allowed: for example, a game
   /// could offer both "Blitz" ([PerActionConfig] 30–300 s) and "Daily"
   /// ([PerActionConfig] 3600–86400 s) as distinct named options.
   final Map<String, TimingModeConfig> timingConfigs;

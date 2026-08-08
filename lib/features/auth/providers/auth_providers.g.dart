@@ -58,7 +58,7 @@ String _$authServiceHash() => r'15d3682203a7cc48a19f41b4fcf3edc5740b4943';
 ///
 /// Derived from the auth state stream. Because the value is a [String],
 /// Riverpod's `==` check means dependents only rebuild when the id actually
-/// changes — token refreshes re-emit the same id and propagate no further.
+/// changes; token refreshes re-emit the same id and propagate no further.
 
 @ProviderFor(currentUserId)
 final currentUserIdProvider = CurrentUserIdProvider._();
@@ -67,7 +67,7 @@ final currentUserIdProvider = CurrentUserIdProvider._();
 ///
 /// Derived from the auth state stream. Because the value is a [String],
 /// Riverpod's `==` check means dependents only rebuild when the id actually
-/// changes — token refreshes re-emit the same id and propagate no further.
+/// changes; token refreshes re-emit the same id and propagate no further.
 
 final class CurrentUserIdProvider
     extends $FunctionalProvider<String?, String?, String?>
@@ -76,7 +76,7 @@ final class CurrentUserIdProvider
   ///
   /// Derived from the auth state stream. Because the value is a [String],
   /// Riverpod's `==` check means dependents only rebuild when the id actually
-  /// changes — token refreshes re-emit the same id and propagate no further.
+  /// changes; token refreshes re-emit the same id and propagate no further.
   CurrentUserIdProvider._()
     : super(
         from: null,
@@ -214,7 +214,7 @@ String _$authStateChangesHash() => r'ee83d39078d728a4e5a0431d43cb29b07bb412f4';
 /// Whether the current session is an anonymous (guest) session.
 ///
 /// Watches the auth state stream (not [currentUserId]) so it re-evaluates on
-/// `userUpdated` events — the id is unchanged when a guest upgrades, but the
+/// `userUpdated` events: the id is unchanged when a guest upgrades, but the
 /// `isAnonymous` claim flips to false. UI gates (social, rated games, upgrade
 /// nudge) watch this; `==` on the bool keeps unrelated token refreshes inert.
 
@@ -224,7 +224,7 @@ final isAnonymousProvider = IsAnonymousProvider._();
 /// Whether the current session is an anonymous (guest) session.
 ///
 /// Watches the auth state stream (not [currentUserId]) so it re-evaluates on
-/// `userUpdated` events — the id is unchanged when a guest upgrades, but the
+/// `userUpdated` events: the id is unchanged when a guest upgrades, but the
 /// `isAnonymous` claim flips to false. UI gates (social, rated games, upgrade
 /// nudge) watch this; `==` on the bool keeps unrelated token refreshes inert.
 
@@ -233,7 +233,7 @@ final class IsAnonymousProvider extends $FunctionalProvider<bool, bool, bool>
   /// Whether the current session is an anonymous (guest) session.
   ///
   /// Watches the auth state stream (not [currentUserId]) so it re-evaluates on
-  /// `userUpdated` events — the id is unchanged when a guest upgrades, but the
+  /// `userUpdated` events: the id is unchanged when a guest upgrades, but the
   /// `isAnonymous` claim flips to false. UI gates (social, rated games, upgrade
   /// nudge) watch this; `==` on the bool keeps unrelated token refreshes inert.
   IsAnonymousProvider._()

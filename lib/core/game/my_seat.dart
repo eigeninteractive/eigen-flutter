@@ -17,7 +17,7 @@ sealed class MySeat {
 
   /// The seat index when [Seated], or null for a [Viewer].
   ///
-  /// A convenience for reads that treat "no seat" as "never me" — e.g.
+  /// A convenience for reads that treat "no seat" as "never me", e.g.
   /// `pendingPlayers.contains(mySeat.indexOrNull)` is `false` for a viewer.
   /// Prefer an exhaustive `switch` when the viewer case needs distinct
   /// handling.
@@ -35,7 +35,7 @@ final class Seated extends MySeat {
   final int index;
 }
 
-/// The current user has no seat — a non-participant viewing a replay.
+/// The current user has no seat: a non-participant viewing a replay.
 final class Viewer extends MySeat {
   const Viewer();
 }

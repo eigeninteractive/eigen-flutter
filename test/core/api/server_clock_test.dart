@@ -46,7 +46,7 @@ void main() {
     // own `DateTime.now()`. That puts it in (298s, 300s].
     //
     // `inSeconds >= 299` accounted for the dropped fraction but not the
-    // elapsed term, so it failed whenever the two summed past a second — rare
+    // elapsed term, so it failed whenever the two summed past a second: rare
     // enough to survive months, and it duly took out a release run. Asserted
     // in milliseconds because `inSeconds` truncates, hiding the very
     // sub-second margin this is about.

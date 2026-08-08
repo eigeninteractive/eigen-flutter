@@ -11,7 +11,7 @@ import 'package:json_annotation/json_annotation.dart';
 /// Only failures that carried a response are converted: those are the server
 /// answering `{ error, code? }`, and the stable `code` survives onto
 /// [EngineException.code] for callers and `humanize` to dispatch on. A failure
-/// with no response — connection refused, DNS, timeout, a cancelled request —
+/// with no response (connection refused, DNS, timeout, a cancelled request)
 /// propagates untouched, preserving the distinction between "the server said
 /// no" and "the outcome is unknown". That difference matters for a
 /// state-changing command: a rejected move did not happen, whereas a timed-out
@@ -37,8 +37,8 @@ Future<T> engineCall<T>(Future<T> Function() run) async {
 ///
 /// The successor to the `final response = await engineCall(...); return
 /// response.data?.x ?? ...` shape that recurred at every read site: it runs
-/// through [engineCall] — so a server-reported failure still surfaces as an
-/// [EngineException] and a transport failure still propagates untouched — then
+/// through [engineCall], so a server-reported failure still surfaces as an
+/// [EngineException] and a transport failure still propagates untouched, then
 /// returns the non-null payload.
 ///
 /// ```dart
@@ -48,7 +48,7 @@ Future<T> engineCall<T>(Future<T> Function() run) async {
 /// Throws [EngineException] if a success response carries no body, which is a
 /// contract violation for an endpoint declared to return one (never the normal
 /// path: the generated models make list fields non-null, so a present body
-/// needs no `?? const []`). A call that expects no body — a 204 write — uses
+/// needs no `?? const []`). A call that expects no body, such as a 204 write, uses
 /// [engineCall] directly instead.
 Future<T> engineData<T>(Future<Response<T>> Function() run) async {
   final response = await engineCall(run);

@@ -58,7 +58,7 @@ class ReplayCursor extends _$ReplayCursor {
 ///
 /// Memoized per `(gameId, index)`: [GameRules.parseObservation] runs once per
 /// frame no matter how often the user steps back and forth across it. Timing is
-/// always empty — a replay has no live clocks. Returns null until the frames
+/// always empty, since a replay has no live clocks. Returns null until the frames
 /// and the version unit have both loaded, or for an out-of-range index.
 @riverpod
 GameFrame? replayFrameAt(

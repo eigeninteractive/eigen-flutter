@@ -11,7 +11,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'engine_api_providers.g.dart';
 
-/// The app-wide HTTP client for the engine — the data layer's single backend
+/// The app-wide HTTP client for the engine: the data layer's single backend
 /// handle.
 ///
 /// Only repositories and data services may watch this or the API providers
@@ -22,7 +22,7 @@ part 'engine_api_providers.g.dart';
 /// `/api/engine` prefix.
 ///
 /// The generated `EigenApi` facade is deliberately not used, but not because it
-/// can't take this Dio — it can (`EigenApi(dio: ..., interceptors: const [])`
+/// can't take this Dio. It can (`EigenApi(dio: ..., interceptors: const [])`
 /// installs none of its own). The reason is the split below: each repository
 /// depends on the one narrow `*Api` it needs, so a fake in a test is that one
 /// resource, not the whole surface. The facade would hand every repository all
@@ -40,11 +40,11 @@ Dio engineDio(Ref ref) {
   dio.interceptors.add(AuthInterceptor(FirebaseAuth.instance));
   dio.interceptors.add(ref.watch(serverClockProvider).interceptor);
   // Transport-level retry, idempotent reads only. Retries a GET whose failure
-  // carried no response — a dropped connection or a timeout, where the outcome
-  // is unknown — twice with short backoff. A write is never retried (a
+  // carried no response (a dropped connection or a timeout, where the outcome
+  // is unknown) twice with short backoff. A write is never retried (a
   // timed-out POST may have landed on the server), and any failure that carried
   // a response is the server's decision, left untouched for `engineCall` to map
-  // (a 429 included — its Retry-After is respected, not auto-retried). The
+  // (a 429 included; its Retry-After is respected, not auto-retried). The
   // retry replays the whole interceptor chain, so `AuthInterceptor` re-attaches
   // a fresh token each attempt; added last so it is the outermost handler.
   dio.interceptors.add(
@@ -69,7 +69,7 @@ Dio engineDio(Ref ref) {
 @Riverpod(keepAlive: true)
 ServerClock serverClock(Ref ref) => ServerClock();
 
-/// Games, the lobby, and the frame history — the whole play surface.
+/// Games, the lobby, and the frame history: the whole play surface.
 @Riverpod(keepAlive: true)
 GamesApi gamesApi(Ref ref) => GamesApi(ref.watch(engineDioProvider));
 

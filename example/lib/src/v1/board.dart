@@ -1,10 +1,10 @@
-/// The in-game screen for RPS v1 — everything [RpsRulesV1.buildContent]
+/// The in-game screen for RPS v1: everything [RpsRulesV1.buildContent]
 /// renders.
 ///
 /// The framework has already done the work that is not game-specific by the
 /// time this builds: auth, the socket, gap recovery, the countdown, the
 /// pending/finished chrome, and the JSON parsing. What is left is this file,
-/// and it is the shape most games end up with — read the observation, draw it,
+/// and it is the shape most games end up with: read the observation, draw it,
 /// submit an action, reconcile.
 library;
 
@@ -81,7 +81,7 @@ class _RpsBoardState extends State<RpsBoard> {
     // `committed` needs no handling: the confirming frame is guaranteed to be
     // the next one this seat receives, and `didUpdateWidget` clears the guess
     // when it lands. The other two mean no frame is coming for this tap, so
-    // the buttons have to come back — infra has already shown the player why.
+    // the buttons have to come back; infra has already shown the player why.
     if (result != ActionSubmitResult.committed) {
       setState(() => _submitting = null);
     }

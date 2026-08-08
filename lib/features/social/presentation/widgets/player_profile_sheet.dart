@@ -14,8 +14,8 @@ import 'package:eigen_flutter/shared/widgets/player_tags.dart';
 
 /// Modal bottom sheet showing a player's public profile.
 ///
-/// Displays identity, ratings across all pools, and — for registered human
-/// players — friendship status with actions to add, accept, decline, or
+/// Displays identity, ratings across all pools, and, for registered human
+/// players, friendship status with actions to add, accept, decline, or
 /// remove. Bots and anonymous guests show identity and ratings only: bots
 /// have no social features, and guests cannot be friended (server-enforced),
 /// so the sheet tags them and omits the section.
@@ -333,7 +333,7 @@ class _RecentGameRow extends StatelessWidget {
       ),
       trailing: Icon(Icons.chevron_right, color: colorScheme.onSurfaceVariant),
       onTap: () {
-        // Capture the router before closing the sheet — the row's context is
+        // Capture the router before closing the sheet; the row's context is
         // torn down by the pop.
         final router = GoRouter.of(context);
         Navigator.of(context).pop();

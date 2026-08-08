@@ -7,10 +7,10 @@ import 'package:eigen_flutter/features/rating/providers/rating_providers.dart';
 
 /// How [Ratings] renders each pool.
 enum RatingsLayout {
-  /// Elevated cards, two to a row — for the roomy profile screen.
+  /// Elevated cards, two to a row, for the roomy profile screen.
   cards,
 
-  /// Dense `pool … rating` rows — for the compact profile sheet.
+  /// Dense `pool … rating` rows, for the compact profile sheet.
   rows,
 }
 

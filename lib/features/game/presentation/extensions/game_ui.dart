@@ -1,7 +1,7 @@
 import 'package:eigen_api/eigen_api.dart';
 import 'package:flutter/material.dart';
 
-/// UI helpers for [GameStatus] — color and icon mappings.
+/// UI helpers for [GameStatus]: color and icon mappings.
 extension GameStatusUI on GameStatus {
   /// Returns the color associated with this status from [colorScheme].
   Color color(ColorScheme colorScheme) => switch (this) {
@@ -24,7 +24,7 @@ extension GameStatusUI on GameStatus {
   };
 }
 
-/// UI helpers for [OutcomeResultEnum] — icon, color, and label mappings.
+/// UI helpers for [OutcomeResultEnum]: icon, color, and label mappings.
 ///
 /// Defined on the nullable type so the null case (aborted game, no outcome
 /// row written) can be handled uniformly alongside real results.

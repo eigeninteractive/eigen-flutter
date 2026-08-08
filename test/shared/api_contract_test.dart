@@ -130,7 +130,7 @@ void main() {
 
   group('RatingDelta.identity', () {
     // Flattened to a nullable pair matching `Seat`, so there is no union type
-    // to destructure — exactly one of the two ids is set.
+    // to destructure: exactly one of the two ids is set.
     test('carries a user identity', () {
       final identity = RatingIdentity.fromJson({
         'userId': 'user-1',

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 /// Minimal app theme configuration using Material 3.
 ///
 /// Colour is derived from a seed supplied by `Branding` (see
-/// `core/config/app_config.dart`) — call [light]/[dark] with that seed.
+/// `core/config/app_config.dart`); call [light]/[dark] with that seed.
 /// Typography pairs two faces bundled by this package (see `fonts:` in the
 /// engine `pubspec.yaml`), so both render offline from the first frame and
 /// consuming apps need no font wiring. Built themes are cached per seed and
@@ -33,12 +33,12 @@ abstract final class AppTheme {
   /// Grotesk is drawn for size: tight sidebearings and a single-storey `g` read
   /// as character in a headline and as noise in a paragraph. Inter is drawn for
   /// UI at small sizes and has the taller x-height to prove it. So the roles a
-  /// player *reads* — body, label, and the title role that labels list rows —
+  /// player *reads* (body, label, and the title role that labels list rows)
   /// stay on Inter, and only the roles they glance at take the display face.
   ///
   /// Applying the families here rather than through [ThemeData.fontFamily]
-  /// keeps every other property of the Material 3 type scale — sizes, weights,
-  /// tracking, line heights — exactly as the framework defines it, which is
+  /// keeps every other property of the Material 3 type scale (sizes, weights,
+  /// tracking, line heights) exactly as the framework defines it, which is
   /// what makes this survive the move to Material Expressive.
   static TextTheme textTheme(TextTheme base, String display) => base.copyWith(
     displayLarge: base.displayLarge?.copyWith(fontFamily: display),

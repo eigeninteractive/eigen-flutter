@@ -2,7 +2,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 
 part 'auth_user.freezed.dart';
 
-/// The signed-in user as the app sees it — the backend-agnostic twin of the
+/// The signed-in user as the app sees it: the backend-agnostic twin of the
 /// auth provider's session user.
 ///
 /// Carries only the fields the app actually consumes. Identity details
@@ -16,7 +16,7 @@ abstract class AuthUser with _$AuthUser {
 /// Auth lifecycle events surfaced by [AuthService.authStateChanges].
 ///
 /// Derived by diffing consecutive sessions rather than reported by the provider,
-/// so these are exactly the transitions the app acts on — no provider-specific
+/// so these are exactly the transitions the app acts on, with no provider-specific
 /// events it has no behaviour for.
 enum AuthEvent {
   /// A session began, was restored on launch, or switched to another account.
@@ -27,7 +27,7 @@ enum AuthEvent {
   /// The session ended.
   signedOut,
 
-  /// Same user, changed session — a token refresh, or the guest upgrade that
+  /// Same user, changed session: a token refresh, or the guest upgrade that
   /// keeps the uid and flips [AuthUser.isAnonymous]. State that depends on
   /// guest-ness must re-read on this.
   userUpdated,

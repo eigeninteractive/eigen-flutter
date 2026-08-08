@@ -24,7 +24,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// overlaid in the bottom-right corner, and the no-photo fallback uses a robot
 /// glyph instead of the person glyph. This is the single place bots are made
 /// visually distinct from humans, so every surface that renders a [PlayerAvatar]
-/// gets the marker for free — pass [isBot] wherever the participant type is known.
+/// gets the marker for free; pass [isBot] wherever the participant type is known.
 class PlayerAvatar extends ConsumerWidget {
   const PlayerAvatar({
     super.key,

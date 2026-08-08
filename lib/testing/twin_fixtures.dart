@@ -1,7 +1,7 @@
 // Dartdoc selects the two supported package entry points by library name.
 // ignore_for_file: unnecessary_library_name
 
-/// Twin-drift fixture runner — the Dart half of the shared JSON fixtures
+/// Twin-drift fixture runner: the Dart half of the shared JSON fixtures
 /// that keep a version unit's TS and Dart [GameRules] twins in sync.
 ///
 /// One fixture file per concern lives under `fixtures/v<N>/*.json` and is
@@ -24,7 +24,7 @@
 ///
 /// This side validates fields it never itself reads (`expected.state`,
 /// `participantCount`, ...) as well. Those belong to the TS runner, but a game
-/// package may ship only a Dart twin — and then this is the only thing
+/// package may ship only a Dart twin, and then this is the only thing
 /// standing between a typo and a silently skipped assertion.
 ///
 /// Framework-free on purpose (no `flutter_test` import), so it can live in
@@ -86,8 +86,8 @@ sealed class TwinFixtureCase {
   final String name;
 }
 
-/// Exercises the action codec, [GameRules.isValidAction] and — when the game
-/// implements optimism — [GameRules.previewAction].
+/// Exercises the action codec, [GameRules.isValidAction] and, when the game
+/// implements optimism, [GameRules.previewAction].
 final class ActionCase extends TwinFixtureCase {
   const ActionCase({
     required super.name,
@@ -104,7 +104,7 @@ final class ActionCase extends TwinFixtureCase {
   final Map<String, dynamic> config;
 
   /// The TS runner's `applyAction` input. Read here only as the fallback for
-  /// [obs] — a perfect-information game omits `obs` because the two coincide.
+  /// [obs]; a perfect-information game omits `obs` because the two coincide.
   final Map<String, dynamic> state;
 
   /// The acting seat's observation payload: the fixture's `obs`, or `state`
@@ -162,7 +162,7 @@ final class BotSeatableCase extends TwinFixtureCase {
 /// sorted by path for stable test ordering.
 ///
 /// Throws [FormatException] on malformed JSON, and on any fixture that does
-/// not match the documented format — a broken fixture should fail loudly and
+/// not match the documented format; a broken fixture should fail loudly and
 /// immediately, not silently shrink the suite or fail later as a phantom
 /// rules divergence.
 List<TwinFixtureSuite> loadTwinFixtureSuites(String rootPath) {
@@ -199,7 +199,7 @@ TwinFixtureSuite parseTwinFixtureSuite(String path, dynamic json) {
 
 TwinFixtureCase _parseCase(String indexed, dynamic raw) {
   final map = _object(indexed, raw);
-  // Prefer the case's own name in the location once it is readable — a
+  // Prefer the case's own name in the location once it is readable: a
   // fixture author finds `cases[3] (seat 0 wins)` faster than an index.
   final name = map['name'];
   final where = name is String ? '$indexed ($name)' : indexed;
@@ -327,7 +327,7 @@ T? _optional<T>(String where, dynamic v, T Function(String, dynamic) read) =>
 /// failure descriptions (empty ⇒ the case passes).
 ///
 /// A parse throw (config/observation/action `fromJson`) is reported as a
-/// failure, not rethrown — a codec that cannot read the recorded payload is
+/// failure, not rethrown: a codec that cannot read the recorded payload is
 /// itself twin drift.
 List<String> runTwinFixtureCase(
   GameRules<dynamic, dynamic, dynamic> rules,
@@ -353,12 +353,12 @@ List<String> _runActionCase(
   if (failures.isNotEmpty) return failures;
 
   // The codec must round-trip the fixture action: what parseAction reads,
-  // serializeAction must write back — otherwise a submitted move would not
+  // serializeAction must write back, or else a submitted move would not
   // match what the TS side validated this fixture against.
   final roundTrip = rules.serializeAction(action);
   if (!_deepEquals(roundTrip, c.action)) {
     failures.add(
-      'action codec does not round-trip the fixture action — '
+      'action codec does not round-trip the fixture action: '
       'serializeAction produced ${jsonEncode(roundTrip)}',
     );
   }
@@ -382,7 +382,7 @@ List<String> _runActionCase(
   return failures;
 }
 
-/// Compares [GameRules.previewAction] against `expected.observation` — but
+/// Compares [GameRules.previewAction] against `expected.observation`, but
 /// only when the game implements optimism (a null preview means "this move is
 /// server-driven", which is always a correct answer, never drift).
 void _checkPreview(

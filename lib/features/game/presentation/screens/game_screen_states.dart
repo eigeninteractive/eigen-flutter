@@ -1,6 +1,6 @@
 part of 'game_screen.dart';
 
-/// Shown for aborted games — cancelled by the host before starting, or
+/// Shown for aborted games: cancelled by the host before starting, or
 /// closed by the idle-cleanup job (which also aborts long-abandoned
 /// untimed active games), so the copy stays neutral about timing.
 class _AbortedContent extends StatelessWidget {
@@ -120,7 +120,7 @@ class _UpdateRequiredContent extends StatelessWidget {
 /// state (waiting, ready, or active).
 ///
 /// Disconnected means device-level offline, the observation stream is in
-/// [AsyncError], or the game stream itself is in [AsyncError] — covering
+/// [AsyncError], or the game stream itself is in [AsyncError], covering
 /// transient socket blips where [isOfflineProvider] stays false. Uses
 /// [AsyncValue.value] to read stale status during error states. Isolated as a
 /// [ConsumerWidget] leaf so changes don't rebuild the entire game tree.

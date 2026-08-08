@@ -4,7 +4,7 @@ name: Version
 # or `gh workflow run version.yml -f bump=minor`.
 #
 # This is the only manual decision in a release: which bump. Everything after it
-# is automatic — merging the pull request this opens tags the commit
+# is automatic: merging the pull request this opens tags the commit
 # (`tag.yml`), and the tag publishes to pub.dev (`release.yml`).
 #
 # `cider` owns the arithmetic and the changelog. Contributors have already
@@ -99,18 +99,18 @@ jobs:
           # report success and create nothing: the branch updated, and there was
           # no pull request to merge. That is the exact recovery path taken when
           # a release pull request came out wrong, so it failed at the one moment
-          # it was needed — and reported "Refreshed" while doing it.
+          # it was needed, and reported "Refreshed" while doing it.
           state=$(gh pr view "release/v$V" --json state --jq .state 2>/dev/null || echo NONE)
           if [ "$state" = "OPEN" ]; then
             echo "Refreshed the existing pull request for v$V."
             exit 0
           fi
-          [ "$state" = "NONE" ] || echo "The previous pull request for v$V is $state — opening a new one."
+          [ "$state" = "NONE" ] || echo "The previous pull request for v$V is $state. Opening a new one."
 
           body="Raises \`eigen_flutter\` to **v$V** (\`$BUMP\`) and dates the changelog section.
 
           Merging this tags \`v$V\`, which publishes to pub.dev. Published versions
-          cannot be unpublished — only retracted — so read the changelog diff before
+          cannot be unpublished, only retracted, so read the changelog diff before
           merging."
 
           gh pr create --base main --title "Release v$V" --body "$body"

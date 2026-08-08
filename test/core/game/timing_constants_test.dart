@@ -12,7 +12,7 @@ void main() {
     });
 
     test('caps the margin to a fraction of a short window', () {
-      // 2s window: 25% cap (0.5s) is below the 1s target, so the cap wins —
+      // 2s window: 25% cap (0.5s) is below the 1s target, so the cap wins,
       // a short Nope/hook-override window is not swallowed.
       check(
         softDeadlineMarginFor(const Duration(seconds: 2)),

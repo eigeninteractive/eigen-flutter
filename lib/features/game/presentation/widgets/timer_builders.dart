@@ -10,12 +10,12 @@ import 'package:flutter/material.dart';
 /// computation layer beneath any styled countdown widget.
 ///
 /// Set [isPaused] to freeze the displayed value without cancelling the
-/// underlying timer — the frozen duration resumes from the correct wall-clock
+/// underlying timer; the frozen duration resumes from the correct wall-clock
 /// value as soon as [isPaused] becomes false again.
 ///
 /// [softMargin] shifts the *displayed* zero point earlier than [deadline] so
 /// the player is nudged to submit before the true server deadline (absorbing
-/// network latency). It is display-only — the server stays authoritative and
+/// network latency). It is display-only; the server stays authoritative and
 /// the expiry trigger uses the true deadline. Defaults to no margin.
 class TurnTimerBuilder extends StatefulWidget {
   const TurnTimerBuilder({
@@ -111,7 +111,7 @@ class _TurnTimerBuilderState extends State<TurnTimerBuilder> {
 /// receive their static [playerTimes] value. Use this as the computation layer
 /// beneath any styled clock cell.
 ///
-/// Only one bank drains at a time — budget mode permits a single pending seat,
+/// Only one bank drains at a time: budget mode permits a single pending seat,
 /// so the turn deadline and the acting seat's remaining bank are the same
 /// quantity. That is why the deadline alone is enough here, with no separate
 /// turn-start to track and drift against.
@@ -159,7 +159,7 @@ class _PlayerTimerBuilderState extends State<PlayerTimerBuilder> {
   void initState() {
     super.initState();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      // Only rebuild when active and not paused — inactive players return a
+      // Only rebuild when active and not paused; inactive players return a
       // static value so rebuilding every second is wasteful. Parent rebuilds
       // (new observation) still update inactive cells immediately via the
       // widget getters.

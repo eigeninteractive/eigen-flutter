@@ -11,14 +11,14 @@ import 'package:eigen_flutter/features/social/providers/social_providers.dart';
 ///
 /// Returns [SizedBox.shrink] when [playerId] is the current user.
 ///
-/// Self-gates when the viewer is an anonymous guest — the server rejects all
+/// Self-gates when the viewer is an anonymous guest, since the server rejects all
 /// friend writes from guests, so instead of action buttons a guest sees a
 /// sign-in hint that routes to the account-upgrade flow in settings (or
 /// nothing, when [compact]). Gating here rather than in each parent keeps
 /// every embedding correct by construction.
 ///
 /// Each button owns its mutation state machine, so this widget only needs
-/// to route on [FriendStatus] — no mutation watching or coordination needed.
+/// to route on [FriendStatus], with no mutation watching or coordination needed.
 ///
 /// [compact] true is suited for search-result list tile trailing (single small
 /// button). [compact] false (default) is suited for a profile sheet

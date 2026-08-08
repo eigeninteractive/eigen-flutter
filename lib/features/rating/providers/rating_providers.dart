@@ -23,7 +23,7 @@ Future<List<Rating>> playerRatings(Ref ref, String id) =>
 /// to the profile page always fetches fresh data.
 @riverpod
 Future<List<Rating>> myRatings(Ref ref) {
-  // Null during the brief sign-out window before navigation completes —
+  // Null during the brief sign-out window before navigation completes,
   // return empty rather than crashing the disposing profile screen.
   final userId = ref.watch(currentUserIdProvider);
   if (userId == null) return Future.value(const []);

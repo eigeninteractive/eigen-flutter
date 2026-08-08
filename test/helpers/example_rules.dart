@@ -1,7 +1,7 @@
 /// A minimal Dart [GameRules] unit: the trivial one-move game where player 0
 /// acts once and wins.
 ///
-/// Exists so the engine can dogfood its own twin-fixture pipeline end to end —
+/// Exists so the engine can dogfood its own twin-fixture pipeline end to end,
 /// this unit runs `test/fixtures/game/v1/` through
 /// `lib/testing/twin_fixtures.dart`, exercising the same path a real game's
 /// Dart twin takes.

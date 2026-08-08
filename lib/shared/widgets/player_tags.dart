@@ -1,8 +1,8 @@
 /// Inline pills labelling a player's kind (bot, guest).
 ///
 /// The single inline label for each kind, used wherever there's room for
-/// text (player lists, profile header). For label-less contexts — e.g. small
-/// overlapping avatar stacks — use the corner badge on [PlayerAvatar] instead.
+/// text (player lists, profile header). For label-less contexts, e.g. small
+/// overlapping avatar stacks, use the corner badge on [PlayerAvatar] instead.
 library;
 
 import 'package:flutter/material.dart';
@@ -68,7 +68,7 @@ class BotTag extends StatelessWidget {
 
 /// Compact pill that labels a player as an anonymous guest.
 ///
-/// Guests are throwaway accounts — they cannot be friended, so UI showing
+/// Guests are throwaway accounts; they cannot be friended, so UI showing
 /// this tag typically also hides social affordances.
 class GuestTag extends StatelessWidget {
   const GuestTag({super.key});

@@ -174,7 +174,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     AsyncValue<GameSocketEvent> next,
   ) {
     if (!mounted) return;
-    // Use AsyncData pattern — next.value returns previous data even during
+    // Use AsyncData pattern: next.value returns previous data even during
     // AsyncLoading/AsyncError in Riverpod 3.x, which would cause premature
     // action-pending reset during pull-to-refresh or app resume.
     switch (next) {
@@ -191,7 +191,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         if (_pendingAction == _PendingAction.submittingAction) {
           setState(() => _pendingAction = null);
         }
-        // One snackbar per error episode, terminal or not — Riverpod's retry
+        // One snackbar per error episode, terminal or not, since Riverpod's retry
         // cycle would otherwise re-show it on every failed attempt. The flag
         // resets on the next successful observation.
         if (_errorSnackBarShown) return;
@@ -230,7 +230,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
   void _onConnectivityChange(bool? wasOffline, bool isOffline) {
     if (wasOffline != true || isOffline) return;
-    // Network restored — re-subscribe immediately for the fast
+    // Network restored, so re-subscribe immediately for the fast
     // offline→online transition.
     _invalidateStreams();
   }
@@ -289,7 +289,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             child: SafeArea(
               child: switch (gameAsync) {
                 // value is non-null for AsyncData and for AsyncError with
-                // stale data — keep showing the game while the banner
+                // stale data: keep showing the game while the banner
                 // communicates the reconnecting state.
                 _ when gameAsync.value != null => RefreshIndicator(
                   onRefresh: _onRefresh,
@@ -358,7 +358,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   }
 
   /// Submits an action and reports the outcome to the game's content widget
-  /// (via [GameContentContext.onAction]). Error display stays here — the game
+  /// (via [GameContentContext.onAction]). Error display stays here; the game
   /// only uses the [ActionSubmitResult] to manage optimistic rendering.
   ///
   /// An [EngineException] is a definitive server verdict → [rejected]; any
@@ -476,7 +476,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 /// All branches return a [CustomScrollView] with [AlwaysScrollableScrollPhysics]
 /// so the parent [RefreshIndicator] can detect a pull in every game state.
 ///
-/// A pure routing widget — provider subscriptions are owned by the leaf
+/// A pure routing widget; provider subscriptions are owned by the leaf
 /// widgets ([_PreGameContent], [_ActiveGameContent]) so observation updates
 /// only rebuild the subtree that needs them.
 class _GameBody extends StatelessWidget {

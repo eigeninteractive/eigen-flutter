@@ -133,7 +133,7 @@ the contributor's intent.
 
 **Use the command; do not hand-write the section.** Every `## [x]` heading needs
 a matching `[x]: <url>` reference definition at the bottom of the file, because
-that is the only thing that makes the heading parse as a link — and cider finds
+that is the only thing that makes the heading parse as a link, and cider finds
 its sections by looking for links, not by matching text. A heading without one is
 invisible to `cider release`, which then leaves your entry in place, appends an
 empty version section, and exits 0. `cider log` writes both halves; typing the
@@ -142,7 +142,7 @@ silent until a release is already open.
 
 Reformatting is expected and fine. cider re-serialises the whole file, so it will
 unindent your wrapped list continuations and drop blank lines after headings. It
-renders identically — leave it alone rather than restoring the wrapping, which
+renders identically. Leave it alone rather than restoring the wrapping, which
 only guarantees the next release diff is noisy again.
 
 ## Generated code

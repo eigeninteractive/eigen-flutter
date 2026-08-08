@@ -1,4 +1,4 @@
-/// Rock–Paper–Scissors — the reference game implementation.
+/// Rock–Paper–Scissors: the reference game implementation.
 ///
 /// A game package exports its [RpsModule] and its payload types. The module is
 /// what `main.dart` hands to `runEngineApp`; the payload types are exported

@@ -9,16 +9,16 @@ import 'package:eigen_flutter/features/game/presentation/widgets/timing_selector
 import 'package:eigen_flutter/features/game/providers/game_providers.dart';
 
 /// Solo-game picker (the "New Solo Game" FAB): choose an opponent for each bot
-/// seat and start a solo game (you + bots) immediately — no waiting room.
+/// seat and start a solo game (you + bots) immediately, with no waiting room.
 ///
-/// Fully generic — nothing branches on the game's identity. The opponent-seat
+/// Fully generic: nothing branches on the game's identity. The opponent-seat
 /// count is `playersForConfig(config) - 1`: the game's own `buildCreationConfig`
 /// carries the player count for variable-count games, and a generic count
 /// selector appears only when the game exposes a true range (`min < max`).
 ///
 /// Every seat defaults to the first available bot; the user overrides only the
 /// seats they care about. **Timing selects the bot class**: an *untimed* game
-/// offers **local** bots (driven by the present human's client — no deadline
+/// offers **local** bots (driven by the present human's client, so no deadline
 /// backstop needed); a *timed* game offers **server** bots (their endpoint may be
 /// unreachable, so a deadline is required) and never to guests. The server
 /// enforces this partition; switching timing re-derives the usable list, and any
@@ -41,7 +41,7 @@ class _PlayVsBotDialogState extends ConsumerState<PlayVsBotDialog> {
   late int _totalPlayers;
   // Resolved timing from the shared TimingSelector; seeded with its default.
   late ResolvedTiming _timing;
-  // The mode the picker opens in — computed from the (warm) bot catalog so it has
+  // The mode the picker opens in, computed from the (warm) bot catalog so it has
   // opponents. Held to pass the same key to TimingSelector and its seed.
   late final String? _initialTimingKey;
   // Sparse per-seat overrides: only seats the user explicitly changed. Every
@@ -118,7 +118,7 @@ class _PlayVsBotDialogState extends ConsumerState<PlayVsBotDialog> {
     if (b.schemaVersion > module.latestSchemaVersion) return false;
     // Config gate: the game's own botSeatable rule decides which bots support the
     // chosen config (the Dart twin of the server's GameRules.botSeatable, which
-    // enforces it at seating). Local UX only — no network round-trip per config.
+    // enforces it at seating). Local UX only, with no network round-trip per config.
     if (!rules.botSeatable(
       BotSeatableArgs(
         gameConfig: _config,
@@ -187,7 +187,7 @@ class _PlayVsBotDialogState extends ConsumerState<PlayVsBotDialog> {
                 onChanged: (timing) => setState(() => _timing = timing),
               ),
               const SizedBox(height: 16),
-              // Opponent selectors — filtered locally by module.botSeatable, so
+              // Opponent selectors, filtered locally by module.botSeatable, so
               // they update instantly as the config changes (no refetch).
               if (usable.isEmpty)
                 const Text('No AI opponents are available for this game yet.')

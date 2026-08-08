@@ -11,12 +11,12 @@ name: Checks
 # Releases are tag-triggered rather than main-triggered, so without it a merge
 # to `main` would go unverified until someone cut a tag.
 #
-# `workflow_call` re-executes these jobs rather than reusing an earlier result —
+# `workflow_call` re-executes these jobs rather than reusing an earlier result,
 # a tag can point at any commit, so the run gating a publish has to be against
 # the tagged tree.
 #
 # Validates the Flutter/Dart engine package in isolation so `main` stays green
-# for the apps that depend on it. No secrets needed — the engine reads no
+# for the apps that depend on it. No secrets needed; the engine reads no
 # env/Firebase config itself (apps inject runtime config via EngineConfig).
 # The server it talks to is validated in the eigen-server repo's own CI.
 on:
@@ -47,7 +47,7 @@ jobs:
       # markdown LINK, which requires a matching reference definition at the
       # bottom of the file. Without one `## [Unreleased]` parses as ordinary
       # text: `cider release` cannot find it, leaves the entries where they sit,
-      # and appends an EMPTY version section instead — while exiting 0.
+      # and appends an EMPTY version section instead, while exiting 0.
       #
       # That is exactly how the first release pull request came out, and nothing
       # anywhere said so. The next reviewer would have shipped an empty section
@@ -55,7 +55,7 @@ jobs:
       # unpublished.
       #
       # `cider log` writes both halves, so this can only break when CHANGELOG.md
-      # is edited by hand — precisely when nobody is thinking about cider's
+      # is edited by hand, precisely when nobody is thinking about cider's
       # parser. Runs before the toolchain because it needs nothing but grep.
       - name: Changelog headings are link references
         run: |
@@ -73,7 +73,7 @@ jobs:
           done < <(grep -o '^## \[[^]]*\]' CHANGELOG.md | sed 's/^## \[//; s/\]$//')
 
           [ "$missing" -eq 0 ] || {
-            echo "::error::Add entries with 'cider log <category> \"…\"' rather than editing CHANGELOG.md directly — it maintains these definitions for you."
+            echo "::error::Add entries with 'cider log <category> \"…\"' rather than editing CHANGELOG.md directly; it maintains these definitions for you."
             exit 1
           }
 
@@ -87,8 +87,8 @@ jobs:
         run: flutter pub get
 
       # Hand-written source only. `dart format` has no exclude flag, and
-      # `build_runner` output does not always survive it — so listing the
-      # files keeps the check on hand-written sources only — the committed
+      # `build_runner` output does not always survive it, so listing the
+      # files keeps the check on hand-written sources only: the committed
       # generated code is already formatted by its builders and is verified
       # instead by the build_runner + git-diff drift guard below.
       - name: Check formatting
@@ -116,8 +116,8 @@ jobs:
 
   # The RPS example is its own package with its own resolution, so the job
   # above does not reach it. It is also the only place the framework is
-  # exercised the way a real game uses it — through the barrel, against a
-  # hand-built GameContentContext — and its twin fixtures are the Dart half of
+  # exercised the way a real game uses it (through the barrel, against a
+  # hand-built GameContentContext) and its twin fixtures are the Dart half of
   # a contract the server's CI checks from the other side.
   example:
     name: Example (RPS / ${{ matrix.target }})

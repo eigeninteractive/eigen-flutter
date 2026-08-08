@@ -35,7 +35,7 @@ void main() {
       cursor.next();
       cursor.next();
       check(cursor.state).equals(2);
-      cursor.next(); // already at the last frame — no-op
+      cursor.next(); // already at the last frame, so a no-op
       check(cursor.state).equals(2);
     });
 
@@ -50,7 +50,7 @@ void main() {
       check(cursor.state).equals(1);
       cursor.previous();
       check(cursor.state).equals(0);
-      cursor.previous(); // already at the first frame — no-op
+      cursor.previous(); // already at the first frame, so a no-op
       check(cursor.state).equals(0);
     });
 

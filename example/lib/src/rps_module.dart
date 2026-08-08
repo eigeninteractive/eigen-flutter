@@ -16,7 +16,7 @@ class RpsModule extends GameModule {
   const RpsModule();
 
   /// One entry today. A breaking rules change adds `2: RpsRulesV2()` and keeps
-  /// this one until every v1 match has drained — infra picks the unit from the
+  /// this one until every v1 match has drained; infra picks the unit from the
   /// match's own `schemaVersion`, so both generations play side by side.
   @override
   Map<int, GameRules> get versions => const {1: RpsRulesV1()};
@@ -74,7 +74,7 @@ class RpsModule extends GameModule {
 
 /// The only setting RPS has. Whatever this reports is sent as the game's
 /// `config` at creation and arrives back as [RpsV1Config] for the match's whole
-/// life — the server validates it against the TS `configSchema`, so an
+/// life: the server validates it against the TS `configSchema`, so an
 /// out-of-range value is rejected there, not trusted from here.
 class _TargetWinsPicker extends StatefulWidget {
   const _TargetWinsPicker({required this.onChanged});
