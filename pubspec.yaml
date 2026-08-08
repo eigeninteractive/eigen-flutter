@@ -1,6 +1,6 @@
 name: eigen_flutter
 description: "EigenInteractive Flutter client: the whitelabel app half for turn-based multiplayer games on the EigenInteractive server."
-version: 0.3.5
+version: 0.3.6
 homepage: https://eigeninteractive.com
 repository: https://github.com/eigeninteractive/eigen-flutter
 documentation: https://eigeninteractive.com/docs/reference/dart
